@@ -1,16 +1,26 @@
 // One-time migration: data/members.csv -> the `members` Firestore collection.
-// Run against the LOCAL EMULATOR ONLY (see docs/firestore-schema.md for the
-// target schema). Drops the plaintext "PIN Code" column entirely; "PIN Hash"
-// is copied as-is since it's already a sha256 hex digest produced by the
-// exact same algorithm as util/hash.js, so existing hashes stay valid.
+// Drops the plaintext "PIN Code" column entirely; "PIN Hash" is copied as-is
+// since it's already a sha256 hex digest produced by the exact same
+// algorithm as util/hash.js, so existing hashes stay valid.
+//
+// Usage:
+//   node scripts/migrate-members-to-firestore.js            -> local emulator (localhost:8080)
+//   node scripts/migrate-members-to-firestore.js --prod      -> real project "industrial-muscle-fitness"
+//                                                                 (needs `gcloud auth application-default login` first)
 'use strict';
 const fs = require('fs');
 const path = require('path');
 const { parseCsv } = require('./lib/parse-csv');
 
-const EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST || 'localhost:8080';
-process.env.FIRESTORE_EMULATOR_HOST = EMULATOR_HOST;
-process.env.GCLOUD_PROJECT = process.env.GCLOUD_PROJECT || 'demo-industrial-muscle';
+const useProd = process.argv.includes('--prod');
+
+if (useProd) {
+  process.env.GCLOUD_PROJECT = 'industrial-muscle-fitness';
+} else {
+  const EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST || 'localhost:8080';
+  process.env.FIRESTORE_EMULATOR_HOST = EMULATOR_HOST;
+  process.env.GCLOUD_PROJECT = process.env.GCLOUD_PROJECT || 'demo-industrial-muscle';
+}
 
 const admin = require('firebase-admin');
 admin.initializeApp({ projectId: process.env.GCLOUD_PROJECT });
@@ -26,6 +36,12 @@ function parseTimestamp(raw) {
 }
 
 async function main() {
+  const existing = await db.collection('members').limit(1).get();
+  if (!existing.empty) {
+    console.error(`Aborting: the "members" collection in ${process.env.GCLOUD_PROJECT} already has data. Re-running would create duplicates.`);
+    process.exit(1);
+  }
+
   const csvText = fs.readFileSync(CSV_PATH, 'utf8');
   const rows = parseCsv(csvText);
   console.log(`Read ${rows.length} members from ${CSV_PATH}`);
@@ -60,7 +76,7 @@ async function main() {
     written++;
   }
 
-  console.log(`Wrote ${written} members to Firestore emulator at ${EMULATOR_HOST}, project ${process.env.GCLOUD_PROJECT}`);
+  console.log(`Wrote ${written} members to ${useProd ? 'the REAL Firestore project' : 'the local emulator'}: ${process.env.GCLOUD_PROJECT}`);
   console.log('Note: the plaintext "PIN Code" column from the CSV was intentionally NOT migrated.');
 }
 

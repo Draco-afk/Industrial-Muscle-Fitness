@@ -1,5 +1,6 @@
 {
   "projects": {
-    "default": "demo-industrial-muscle"
+    "default": "industrial-muscle-fitness",
+    "demo": "demo-industrial-muscle"
   }
 }

@@ -27,6 +27,28 @@ clasp pull    # fetch latest from Google
 clasp push    # push local changes to Google (overwrites live code — confirm before running)
 ```
 
-## Next steps (not started yet)
+## Firebase migration status
 
-- Firebase migration (Firestore for data, Firebase Auth for admin/member/trainer login) — deferred per your request.
+Real Firebase project: **`industrial-muscle-fitness`** (Spark plan), linked as the
+`default` alias in `firebase/.firebaserc`. `demo-industrial-muscle` stays available
+as the `demo` alias for local emulator work (no login/billing needed for that).
+
+Done against the real project:
+- Firestore database created (`asia-southeast1`), security rules + indexes deployed.
+- Authentication provisioned.
+- All 28 real members migrated in (`node scripts/migrate-members-to-firestore.js --prod`).
+
+Not done yet:
+- **Cloud Functions are not deployed** — they require upgrading the project to the
+  Blaze (pay-as-you-go) plan first. Local dev/testing works fine without it via
+  `firebase emulators:start` (see `firebase/README` usage in the migration plan).
+- Only the Auth + Members modules are ported (see `docs/firestore-schema.md` for
+  what's schema-only vs. implemented). 20 modules remain.
+- No frontend/Hosting yet — the existing HTML pages still call
+  `google.script.run`, not Firebase.
+
+Local machine setup notes (for reference): Firestore emulator needed a Java 21
+JDK (Eclipse Temurin, installed via winget) since only Java 8 was present.
+Deploying to the real project needed `gcloud auth application-default login`
+(Google Cloud SDK, installed via winget) for Application Default Credentials —
+the Firebase CLI's own login is a separate credential store from ADC.

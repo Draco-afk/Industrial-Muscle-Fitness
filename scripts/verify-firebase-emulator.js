@@ -4,15 +4,17 @@
 // REST API to exchange a custom token for an ID token.
 'use strict';
 
-const FUNCTIONS_BASE = 'http://127.0.0.1:5001/demo-industrial-muscle/us-central1';
+const PROJECT_ID = process.env.GCLOUD_PROJECT || 'demo-industrial-muscle';
+const FUNCTIONS_BASE = `http://127.0.0.1:5001/${PROJECT_ID}/us-central1`;
 const AUTH_EMULATOR = 'http://127.0.0.1:9099';
 const FIRESTORE_HOST = 'localhost:8080';
 
 process.env.FIRESTORE_EMULATOR_HOST = FIRESTORE_HOST;
-process.env.GCLOUD_PROJECT = 'demo-industrial-muscle';
+process.env.GCLOUD_PROJECT = PROJECT_ID;
 const admin = require('firebase-admin');
-admin.initializeApp({ projectId: 'demo-industrial-muscle' });
-const db = admin.firestore();
+admin.initializeApp({ projectId: PROJECT_ID });
+const { getFirestore } = require('firebase-admin/firestore');
+const db = getFirestore();
 
 let pass = 0, fail = 0;
 function check(name, condition, detail) {

@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Industrial Muscle - My Pass</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Urbanist:wght@700;900&family=Prompt:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <style>
+    body {
+      background-color: #050505;
+      color: #F3F4F6;
+      font-family: 'Prompt', sans-serif;
+      background-image: radial-gradient(ellipse at top, rgba(220, 38, 38, 0.10), transparent 55%);
+    }
+    .panel { background: rgba(15, 15, 15, 0.9); border: 1px solid #222; }
+  </style>
+</head>
+<body class="min-h-screen p-4 md:p-8">
+
+  <div id="loadingGate" class="fixed inset-0 bg-black flex items-center justify-center z-50">
+    <i class="fa-solid fa-circle-notch fa-spin text-3xl text-red-500"></i>
+  </div>
+
+  <div id="app" class="hidden max-w-md mx-auto space-y-4">
+    <header class="flex items-center justify-between mb-2">
+      <h1 class="text-xl font-black tracking-tight font-['Urbanist']">MY <span class="text-red-500">PASS</span></h1>
+      <button onclick="doLogout()" class="text-xs text-gray-500 hover:text-gray-300">
+        <i class="fa-solid fa-arrow-right-from-bracket mr-1"></i> ออกจากระบบ
+      </button>
+    </header>
+
+    <div id="expiryBanner" class="hidden rounded-xl px-4 py-3 text-xs font-medium"></div>
+
+    <div class="panel rounded-2xl p-6 relative overflow-hidden">
+      <div class="absolute top-0 left-0 w-1.5 h-full bg-red-600"></div>
+      <p class="text-gray-500 text-xs uppercase tracking-widest mb-1">Member</p>
+      <h2 id="fullName" class="text-2xl font-bold mb-4">-</h2>
+      <div class="grid grid-cols-2 gap-4 text-sm">
+        <div><p class="text-gray-500 text-[10px] uppercase">แพ็กเกจ</p><p id="package" class="font-medium">-</p></div>
+        <div><p class="text-gray-500 text-[10px] uppercase">สถานะ</p><p id="status" class="font-medium">-</p></div>
+        <div><p class="text-gray-500 text-[10px] uppercase">หมดอายุ</p><p id="expiryDate" class="font-medium">-</p></div>
+        <div><p class="text-gray-500 text-[10px] uppercase">เช็คอินสะสม</p><p id="checkInCount" class="font-medium">-</p></div>
+        <div><p class="text-gray-500 text-[10px] uppercase">รหัสแนะนำเพื่อน</p><p id="referralCode" class="font-medium font-mono">-</p></div>
+        <div><p class="text-gray-500 text-[10px] uppercase">เบอร์โทร</p><p id="phone" class="font-medium font-mono">-</p></div>
+      </div>
+    </div>
+
+    <div class="panel rounded-2xl p-5">
+      <h3 class="text-xs uppercase tracking-widest text-gray-500 mb-3">เปลี่ยนรหัส PIN</h3>
+      <div class="grid grid-cols-2 gap-3">
+        <input id="oldPin" type="password" maxlength="4" placeholder="PIN เดิม" class="bg-black border border-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-red-500 font-mono text-center tracking-widest">
+        <input id="newPin" type="password" maxlength="4" placeholder="PIN ใหม่" class="bg-black border border-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-red-500 font-mono text-center tracking-widest">
+      </div>
+      <button onclick="changePin()" class="w-full mt-3 bg-gray-900 hover:bg-gray-800 border border-gray-800 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider">บันทึกรหัสใหม่</button>
+      <p id="pinMsg" class="hidden text-xs text-center mt-2"></p>
+    </div>
+
+    <div class="panel rounded-2xl p-5">
+      <h3 class="text-xs uppercase tracking-widest text-gray-500 mb-3">ประวัติการชำระเงิน</h3>
+      <div id="paymentList" class="space-y-2 text-sm"></div>
+      <p id="paymentEmpty" class="hidden text-gray-600 text-xs text-center py-4">ยังไม่มีประวัติการชำระเงิน</p>
+    </div>
+  </div>
+
+  <script type="module">
+    import { callServer, auth, onAuthStateChanged, signOut } from '../shared/firebase-init.js';
+
+    onAuthStateChanged(auth, async (user) => {
+      if (!user) { window.location.href = '../member-login.html'; return; }
+      const tok = await user.getIdTokenResult();
+      if (tok.claims.role !== 'member') { window.location.href = '../member-login.html'; return; }
+      document.getElementById('loadingGate').classList.add('hidden');
+      document.getElementById('app').classList.remove('hidden');
+      await loadProfile();
+    });
+
+    window.doLogout = async function doLogout() {
+      await signOut(auth);
+      window.location.href = '../member-login.html';
+    };
+
+    async function loadProfile() {
+      let p;
+      try {
+        p = await callServer('getMemberProfile');
+      } catch (e) {
+        alert('โหลดข้อมูลไม่สำเร็จ: ' + (e.message || e));
+        return;
+      }
+
+      document.getElementById('fullName').textContent = p.fullName;
+      document.getElementById('package').textContent = p.package || '-';
+      document.getElementById('status').textContent = p.status;
+      document.getElementById('expiryDate').textContent = p.expiryDate || '-';
+      document.getElementById('checkInCount').textContent = p.checkInCount || 0;
+      document.getElementById('referralCode').textContent = p.referralCode || '-';
+      document.getElementById('phone').textContent = p.phone || '-';
+
+      const banner = document.getElementById('expiryBanner');
+      if (p.isExpired) {
+        banner.textContent = 'สมาชิกภาพของคุณหมดอายุแล้ว กรุณาต่ออายุที่หน้าเคาน์เตอร์';
+        banner.className = 'rounded-xl px-4 py-3 text-xs font-medium bg-red-500/15 text-red-300 border border-red-500/30';
+      } else if (p.nearExpiry) {
+        banner.textContent = `สมาชิกภาพของคุณจะหมดอายุในอีก ${p.daysLeft} วัน`;
+        banner.className = 'rounded-xl px-4 py-3 text-xs font-medium bg-yellow-500/15 text-yellow-300 border border-yellow-500/30';
+      }
+      if (p.isExpired || p.nearExpiry) banner.classList.remove('hidden');
+
+      if (p.isBirthdayMonth) {
+        const el = document.createElement('p');
+        el.className = 'text-xs text-yellow-400 mt-2';
+        el.innerHTML = `<i class="fa-solid fa-cake-candles mr-1"></i> เดือนเกิดของคุณ! รับส่วนลด ${p.birthdayDiscountLabel} เมื่อต่ออายุเดือนนี้`;
+        document.getElementById('app').insertBefore(el, document.querySelector('.panel'));
+      }
+
+      const list = document.getElementById('paymentList');
+      list.innerHTML = '';
+      document.getElementById('paymentEmpty').classList.toggle('hidden', (p.paymentHistory || []).length > 0);
+      for (const pay of p.paymentHistory || []) {
+        const row = document.createElement('div');
+        row.className = 'flex justify-between border-b border-gray-900 pb-2 text-xs';
+        row.innerHTML = `<span class="text-gray-400">${pay.timestamp}</span><span>${pay.package}</span><span class="text-gray-500 font-mono">${pay.receiptNo || ''}</span>`;
+        list.appendChild(row);
+      }
+    }
+
+    window.changePin = async function changePin() {
+      const oldPin = document.getElementById('oldPin').value.trim();
+      const newPin = document.getElementById('newPin').value.trim();
+      const msgEl = document.getElementById('pinMsg');
+      if (!/^\d{4}$/.test(oldPin) || !/^\d{4}$/.test(newPin)) {
+        return showPinMsg('กรุณากรอก PIN 4 หลักทั้งสองช่อง', false);
+      }
+      try {
+        const res = await callServer('changeMemberPin', { oldPin, newPin });
+        showPinMsg(res.message, res.success);
+        if (res.success) { document.getElementById('oldPin').value = ''; document.getElementById('newPin').value = ''; }
+      } catch (e) {
+        showPinMsg(e.message || 'เกิดข้อผิดพลาด', false);
+      }
+    };
+
+    function showPinMsg(msg, ok) {
+      const el = document.getElementById('pinMsg');
+      el.textContent = msg;
+      el.className = 'text-xs text-center mt-2 ' + (ok ? 'text-green-400' : 'text-red-400');
+      el.classList.remove('hidden');
+    }
+  </script>
+</body>
+</html>

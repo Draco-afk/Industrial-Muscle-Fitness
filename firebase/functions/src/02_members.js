@@ -42,6 +42,7 @@ async function getNextReceiptNumber_() {
 }
 
 async function getPackagePrice_(packageName) {
+  if (!packageName) return 0; // matches original getPackageMap_()[undefined] -> undefined -> 0
   const snap = await db.collection('packages').doc(packageName).get();
   return snap.exists ? (snap.data().price || 0) : 0;
 }

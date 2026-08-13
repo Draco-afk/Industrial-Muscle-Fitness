@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Industrial Muscle - Admin - Members</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Urbanist:wght@700;900&family=Prompt:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <style>
+    body {
+      background-color: #050505;
+      color: #F3F4F6;
+      font-family: 'Prompt', sans-serif;
+      background-image: radial-gradient(ellipse at top, rgba(220, 38, 38, 0.08), transparent 55%);
+    }
+    .panel { background: rgba(15, 15, 15, 0.9); border: 1px solid #222; }
+    table th { font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: #6b7280; text-align: left; padding: 10px 12px; }
+    table td { padding: 10px 12px; border-top: 1px solid #1f1f1f; font-size: 13px; }
+    .badge { padding: 2px 10px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+    .badge-active { background: rgba(34,197,94,0.15); color: #4ade80; }
+    .badge-suspended { background: rgba(234,179,8,0.15); color: #facc15; }
+    .badge-other { background: rgba(107,114,128,0.15); color: #9ca3af; }
+  </style>
+</head>
+<body class="min-h-screen p-4 md:p-8">
+
+  <div id="loadingGate" class="fixed inset-0 bg-black flex items-center justify-center z-50">
+    <i class="fa-solid fa-circle-notch fa-spin text-3xl text-red-500"></i>
+  </div>
+
+  <div id="app" class="hidden max-w-6xl mx-auto">
+    <header class="flex items-center justify-between mb-8">
+      <div>
+        <h1 class="text-2xl font-black tracking-tight font-['Urbanist']">INDUSTRIAL <span class="text-red-500">MUSCLE</span></h1>
+        <p class="text-xs text-gray-500 uppercase tracking-widest">Admin — Members</p>
+      </div>
+      <div class="flex items-center gap-3">
+        <span id="whoami" class="text-xs text-gray-500"></span>
+        <button onclick="doLogout()" class="text-xs bg-gray-900 hover:bg-gray-800 border border-gray-800 px-4 py-2 rounded-lg">
+          <i class="fa-solid fa-arrow-right-from-bracket mr-1"></i> ออกจากระบบ
+        </button>
+      </div>
+    </header>
+
+    <div class="flex items-center justify-between mb-4">
+      <div class="flex gap-4 text-xs text-gray-400">
+        <span>ทั้งหมด: <b id="statTotal" class="text-white">-</b></span>
+        <span>Active: <b id="statActive" class="text-green-400">-</b></span>
+      </div>
+      <button onclick="openAddModal()" class="bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-400 text-white text-xs font-bold uppercase tracking-wider px-5 py-2.5 rounded-xl shadow-lg hover:shadow-red-600/20">
+        <i class="fa-solid fa-plus mr-1"></i> เพิ่มสมาชิก
+      </button>
+    </div>
+
+    <div class="panel rounded-2xl overflow-hidden overflow-x-auto">
+      <table class="w-full">
+        <thead>
+          <tr>
+            <th>ชื่อ-นามสกุล</th>
+            <th>เบอร์โทร</th>
+            <th>แพ็กเกจ</th>
+            <th>หมดอายุ</th>
+            <th>สถานะ</th>
+            <th>เช็คอิน</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="memberRows"></tbody>
+      </table>
+      <p id="emptyState" class="hidden text-center text-gray-600 text-sm py-10">ยังไม่มีสมาชิกในระบบ</p>
+    </div>
+  </div>
+
+  <!-- Add / Edit modal -->
+  <div id="memberModal" class="hidden fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-40">
+    <div class="panel rounded-2xl p-6 max-w-md w-full space-y-4">
+      <h2 id="modalTitle" class="text-lg font-bold">เพิ่มสมาชิกใหม่</h2>
+      <input type="hidden" id="f_docId">
+      <div>
+        <label class="block text-[10px] uppercase tracking-widest text-gray-500 mb-1">ชื่อ-นามสกุล</label>
+        <input id="f_fullName" class="w-full bg-black border border-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-red-500">
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-[10px] uppercase tracking-widest text-gray-500 mb-1">เบอร์โทร</label>
+          <input id="f_phone" class="w-full bg-black border border-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-red-500">
+        </div>
+        <div>
+          <label class="block text-[10px] uppercase tracking-widest text-gray-500 mb-1">อีเมล</label>
+          <input id="f_email" class="w-full bg-black border border-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-red-500">
+        </div>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-[10px] uppercase tracking-widest text-gray-500 mb-1">แพ็กเกจ</label>
+          <input id="f_package" class="w-full bg-black border border-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-red-500" placeholder="Standard Monthly">
+        </div>
+        <div>
+          <label class="block text-[10px] uppercase tracking-widest text-gray-500 mb-1">สถานะ</label>
+          <select id="f_status" class="w-full bg-black border border-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-red-500">
+            <option value="Active">Active</option>
+            <option value="Suspended">Suspended</option>
+          </select>
+        </div>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-[10px] uppercase tracking-widest text-gray-500 mb-1">วันเริ่ม</label>
+          <input id="f_startDate" type="date" class="w-full bg-black border border-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-red-500">
+        </div>
+        <div>
+          <label class="block text-[10px] uppercase tracking-widest text-gray-500 mb-1">วันหมดอายุ</label>
+          <input id="f_expiryDate" type="date" class="w-full bg-black border border-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-red-500">
+        </div>
+      </div>
+      <div id="pinRow">
+        <label class="block text-[10px] uppercase tracking-widest text-gray-500 mb-1">PIN (4 หลัก, เว้นว่าง = 1234)</label>
+        <input id="f_pin" maxlength="4" class="w-full bg-black border border-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-red-500 font-mono">
+      </div>
+      <p id="modalErr" class="hidden text-red-400 text-xs bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2"></p>
+      <div class="flex gap-3 pt-2">
+        <button onclick="closeModal()" class="flex-1 bg-gray-900 hover:bg-gray-800 border border-gray-800 py-2.5 rounded-xl text-sm">ยกเลิก</button>
+        <button onclick="submitMember()" id="submitBtn" class="flex-1 bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-400 py-2.5 rounded-xl text-sm font-bold">บันทึก</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { callServer, auth, onAuthStateChanged, signOut } from '../shared/firebase-init.js';
+
+    let members = [];
+
+    onAuthStateChanged(auth, async (user) => {
+      if (!user) { window.location.href = '../login.html'; return; }
+      const tok = await user.getIdTokenResult();
+      if (tok.claims.role !== 'admin') { window.location.href = '../login.html'; return; }
+      document.getElementById('whoami').textContent = tok.claims.adminRole || 'Admin';
+      document.getElementById('loadingGate').classList.add('hidden');
+      document.getElementById('app').classList.remove('hidden');
+      await loadMembers();
+    });
+
+    window.doLogout = async function doLogout() {
+      await signOut(auth);
+      window.location.href = '../login.html';
+    };
+
+    async function loadMembers() {
+      try {
+        members = await callServer('getMemberList');
+      } catch (e) {
+        alert('โหลดรายชื่อสมาชิกไม่สำเร็จ: ' + (e.message || e));
+        members = [];
+      }
+      renderMembers();
+    }
+
+    function badgeClass(status) {
+      if (status === 'Active') return 'badge badge-active';
+      if (status === 'Suspended') return 'badge badge-suspended';
+      return 'badge badge-other';
+    }
+
+    function renderMembers() {
+      const tbody = document.getElementById('memberRows');
+      tbody.innerHTML = '';
+      document.getElementById('statTotal').textContent = members.length;
+      document.getElementById('statActive').textContent = members.filter((m) => m.status === 'Active').length;
+      document.getElementById('emptyState').classList.toggle('hidden', members.length > 0);
+
+      for (const m of members) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td class="font-medium">${escapeHtml(m.fullName)}${m.isBirthdayMonth ? ' <i class="fa-solid fa-cake-candles text-yellow-500 text-xs" title="เดือนเกิด"></i>' : ''}</td>
+          <td class="text-gray-400 font-mono">${escapeHtml(m.phone)}</td>
+          <td class="text-gray-400">${escapeHtml(m.package || '')}</td>
+          <td class="text-gray-400">${escapeHtml(m.expiryDate || '')}</td>
+          <td><span class="${badgeClass(m.status)}">${escapeHtml(m.status)}</span></td>
+          <td class="text-gray-400">${m.checkInCount || 0}</td>
+          <td class="text-right whitespace-nowrap">
+            <button data-act="checkin" class="text-green-400 hover:text-green-300 px-2" title="เช็คอิน"><i class="fa-solid fa-right-to-bracket"></i></button>
+            <button data-act="edit" class="text-blue-400 hover:text-blue-300 px-2" title="แก้ไข"><i class="fa-solid fa-pen"></i></button>
+            <button data-act="delete" class="text-red-400 hover:text-red-300 px-2" title="ลบ"><i class="fa-solid fa-trash"></i></button>
+          </td>`;
+        tr.querySelector('[data-act="checkin"]').onclick = () => checkInMember(m);
+        tr.querySelector('[data-act="edit"]').onclick = () => openEditModal(m);
+        tr.querySelector('[data-act="delete"]').onclick = () => deleteMember(m);
+        tbody.appendChild(tr);
+      }
+    }
+
+    function escapeHtml(s) {
+      return (s || '').toString().replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
+    async function checkInMember(m) {
+      const res = await callServer('manualCheckIn', { docId: m.docId });
+      alert(res.message);
+      if (res.success) await loadMembers();
+    }
+
+    async function deleteMember(m) {
+      if (!confirm(`ลบสมาชิก "${m.fullName}" ออกจากระบบถาวร?`)) return;
+      const res = await callServer('deleteMemberData', { docId: m.docId });
+      alert(res.message);
+      if (res.success) await loadMembers();
+    }
+
+    window.openAddModal = function openAddModal() {
+      document.getElementById('modalTitle').textContent = 'เพิ่มสมาชิกใหม่';
+      document.getElementById('f_docId').value = '';
+      ['f_fullName', 'f_phone', 'f_email', 'f_package', 'f_startDate', 'f_expiryDate', 'f_pin'].forEach((id) => document.getElementById(id).value = '');
+      document.getElementById('f_status').value = 'Active';
+      document.getElementById('pinRow').classList.remove('hidden');
+      document.getElementById('modalErr').classList.add('hidden');
+      document.getElementById('memberModal').classList.remove('hidden');
+    };
+
+    window.openEditModal = openEditModal;
+    function openEditModal(m) {
+      document.getElementById('modalTitle').textContent = 'แก้ไขข้อมูลสมาชิก';
+      document.getElementById('f_docId').value = m.docId;
+      document.getElementById('f_fullName').value = m.fullName || '';
+      document.getElementById('f_phone').value = m.phone || '';
+      document.getElementById('f_email').value = m.email || '';
+      document.getElementById('f_package').value = m.package || '';
+      document.getElementById('f_status').value = m.status || 'Active';
+      document.getElementById('f_startDate').value = m.startDate || '';
+      document.getElementById('f_expiryDate').value = m.expiryDate || '';
+      document.getElementById('f_pin').value = '';
+      document.getElementById('pinRow').classList.remove('hidden');
+      document.getElementById('modalErr').classList.add('hidden');
+      document.getElementById('memberModal').classList.remove('hidden');
+    }
+
+    window.closeModal = function closeModal() {
+      document.getElementById('memberModal').classList.add('hidden');
+    };
+
+    window.submitMember = async function submitMember() {
+      const docId = document.getElementById('f_docId').value;
+      const payload = {
+        fullName: document.getElementById('f_fullName').value.trim(),
+        phone: document.getElementById('f_phone').value.trim(),
+        email: document.getElementById('f_email').value.trim(),
+        package: document.getElementById('f_package').value.trim(),
+        status: document.getElementById('f_status').value,
+        startDate: document.getElementById('f_startDate').value,
+        expiryDate: document.getElementById('f_expiryDate').value
+      };
+      const pin = document.getElementById('f_pin').value.trim();
+      if (pin) payload.pin = pin;
+
+      if (!payload.fullName || !payload.phone || !payload.startDate || !payload.expiryDate) {
+        return showModalErr('กรุณากรอกชื่อ เบอร์โทร วันเริ่ม และวันหมดอายุให้ครบ');
+      }
+
+      const btn = document.getElementById('submitBtn');
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i>';
+
+      try {
+        const res = docId
+          ? await callServer('updateMemberData', { ...payload, docId })
+          : await callServer('saveMemberData', payload);
+        if (res.success) {
+          window.closeModal();
+          await loadMembers();
+          if (!docId) alert(res.message);
+        } else {
+          showModalErr(res.message);
+        }
+      } catch (e) {
+        showModalErr(e.message || 'เกิดข้อผิดพลาด');
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = 'บันทึก';
+      }
+    };
+
+    function showModalErr(msg) {
+      const el = document.getElementById('modalErr');
+      el.textContent = msg;
+      el.classList.remove('hidden');
+    }
+  </script>
+</body>
+</html>

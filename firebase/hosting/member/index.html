@@ -58,6 +58,18 @@
     </div>
 
     <div class="panel rounded-2xl p-5">
+      <h3 class="text-xs uppercase tracking-widest text-gray-500 mb-3">จองคิวเทรนเนอร์</h3>
+      <div class="grid grid-cols-2 gap-3 mb-3">
+        <select id="bkTrainer" class="bg-black border border-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-red-500"><option value="">เลือกเทรนเนอร์...</option></select>
+        <input id="bkDate" type="date" class="bg-black border border-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-red-500">
+      </div>
+      <button onclick="loadSlots()" class="w-full bg-gray-900 hover:bg-gray-800 border border-gray-800 py-2 rounded-xl text-xs font-bold uppercase tracking-wider mb-3">ดูคิวว่าง</button>
+      <div id="slotGrid" class="grid grid-cols-3 gap-2"></div>
+      <p id="slotMsg" class="text-xs text-gray-500 mt-2"></p>
+      <div id="myBookings" class="mt-4 space-y-2 text-sm"></div>
+    </div>
+
+    <div class="panel rounded-2xl p-5">
       <h3 class="text-xs uppercase tracking-widest text-gray-500 mb-3">ประวัติการชำระเงิน</h3>
       <div id="paymentList" class="space-y-2 text-sm"></div>
       <p id="paymentEmpty" class="hidden text-gray-600 text-xs text-center py-4">ยังไม่มีประวัติการชำระเงิน</p>
@@ -73,13 +85,65 @@
       if (tok.claims.role !== 'member') { window.location.href = '../member-login.html'; return; }
       document.getElementById('loadingGate').classList.add('hidden');
       document.getElementById('app').classList.remove('hidden');
-      await loadProfile();
+      document.getElementById('bkDate').value = new Date().toISOString().slice(0, 10);
+      await Promise.all([loadProfile(), loadTrainerOptions(), loadMyBookings()]);
     });
 
     window.doLogout = async function doLogout() {
       await signOut(auth);
       window.location.href = '../member-login.html';
     };
+
+    function escapeHtml(s) {
+      return (s || '').toString().replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
+    async function loadTrainerOptions() {
+      const list = await callServer('getAvailableTrainers');
+      document.getElementById('bkTrainer').innerHTML = '<option value="">เลือกเทรนเนอร์...</option>' +
+        list.map((t) => `<option value="${t.trainerId}">${escapeHtml(t.fullName)} (${escapeHtml(t.specialty)})</option>`).join('');
+    }
+
+    window.loadSlots = async function loadSlots() {
+      const trainerId = document.getElementById('bkTrainer').value;
+      const dateStr = document.getElementById('bkDate').value;
+      const grid = document.getElementById('slotGrid');
+      const msg = document.getElementById('slotMsg');
+      grid.innerHTML = ''; msg.textContent = '';
+      if (!trainerId || !dateStr) { msg.textContent = 'กรุณาเลือกเทรนเนอร์และวันที่ก่อน'; return; }
+      const res = await callServer('getTrainerAvailableSlots', { trainerId, dateStr });
+      if (!res.success) { msg.textContent = res.message || 'เกิดข้อผิดพลาด'; return; }
+      if (!res.slots.length) {
+        msg.textContent = res.message || 'ไม่มีคิวว่างในวันนี้';
+        const joinBtn = document.createElement('button');
+        joinBtn.className = 'text-xs text-red-400 hover:underline mt-1';
+        joinBtn.textContent = 'เข้าคิวรอ (Waitlist) แทน?';
+        joinBtn.onclick = () => alert('เลือกช่วงเวลาที่ต้องการรอก่อน แล้วกดเข้าคิวรอในหน้าถัดไป (ฟีเจอร์เต็มรูปแบบกำลังพัฒนา)');
+        return;
+      }
+      for (const slot of res.slots) {
+        const btn = document.createElement('button');
+        btn.className = 'bg-black border border-gray-800 rounded-lg py-2 text-xs font-mono hover:border-red-500';
+        btn.textContent = slot;
+        btn.onclick = async () => {
+          const bookRes = await callServer('bookTrainerSlot', { trainerId, dateStr, timeSlot: slot });
+          alert(bookRes.message);
+          if (bookRes.success) { await loadSlots(); await loadMyBookings(); }
+        };
+        grid.appendChild(btn);
+      }
+    };
+
+    async function loadMyBookings() {
+      const list = await callServer('getMyBookings');
+      const el = document.getElementById('myBookings');
+      if (!list.length) { el.innerHTML = ''; return; }
+      el.innerHTML = '<p class="text-[10px] uppercase tracking-widest text-gray-500 mb-1">คิวของฉัน</p>' + list.map((b) => `
+        <div class="flex justify-between items-center border-b border-gray-900 pb-2 text-xs">
+          <span>${escapeHtml(b.trainerName)} — ${escapeHtml(b.date)} ${escapeHtml(b.timeSlot)}</span>
+          <span class="text-gray-500">${escapeHtml(b.status)}</span>
+        </div>`).join('');
+    }
 
     async function loadProfile() {
       let p;

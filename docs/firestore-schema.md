@@ -18,17 +18,17 @@ General rules applied throughout:
 | Sheet | Firestore collection | Status |
 |---|---|---|
 | Members | `members` | ✅ implemented |
-| Admins | `admins` | ✅ implemented |
-| Trainers | `trainers` | ✅ implemented (login/PIN fields only — full CRUD not ported) |
+| Admins | `admins` | ✅ implemented (login only — no admin-management CRUD yet) |
+| Trainers | `trainers` | ✅ implemented (full CRUD + own-profile) |
 | AuditLog | `auditLog` | ✅ implemented |
 | Logs (check-in) | `checkinLogs` | ✅ implemented |
-| Packages | `packages` | ⏳ schema only |
+| Packages | `packages` | ✅ implemented |
 | Payments | `payments` | ✅ implemented (write path from `saveMemberData` only) |
 | DailyPayments | `dailyPayments` | ⏳ schema only |
 | DailyPaymentOverrides | `dailyPaymentOverrides` | ⏳ schema only |
 | Expenses | `expenses` | ⏳ schema only |
-| Bookings | `bookings` | ⏳ schema only |
-| Waitlist | `waitlist` | ⏳ schema only |
+| Bookings | `bookings` | ✅ implemented |
+| Waitlist | `waitlist` | ✅ implemented |
 | Coupons | `coupons` | ⏳ schema only |
 | Products | `products` | ⏳ schema only |
 

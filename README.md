@@ -42,41 +42,69 @@ Not done yet:
 - **Cloud Functions are not deployed** — they require upgrading the project to the
   Blaze (pay-as-you-go) plan first. Local dev/testing works fine without it via
   `firebase emulators:start` (see below).
-- Only the Auth + Members modules are ported (see `docs/firestore-schema.md` for
-  what's schema-only vs. implemented). 20 modules remain.
+- Auth, Members, Packages, Trainers, and Bookings/Waitlist are ported (see
+  `docs/firestore-schema.md` for what's schema-only vs. implemented). Remaining:
+  Coupons, Products, DailyPOS, Receipts/PDF, Reports/Dashboard, Automation,
+  Backup, WebhookApi, Fingerprint, LineIntegration, PaymentQR, Diagnostics,
+  full Admins CRUD.
+
+### ⚠️ Emulator vs. production — a real near-miss
+
+Bash tool calls in this environment each start a **fresh shell** — `export FIRESTORE_EMULATOR_HOST=...`
+in one command does **not** carry over to the next command. Combined with
+`gcloud auth application-default login` having been run for real deploys,
+any one-off Node script that forgets to set `FIRESTORE_EMULATOR_HOST` inline
+will silently connect to **real production Firestore** using those
+credentials instead of failing loudly. This actually happened once while
+building this project (a throwaway test admin account briefly existed in
+production `admins`; it was caught and deleted). Always set the env var
+inline on the same command line, e.g.:
+```bash
+FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 GCLOUD_PROJECT=industrial-muscle-fitness node your-script.js
+```
+`scripts/migrate-members-to-firestore.js` is safe by design (defaults to the
+emulator unless `--prod` is passed) — the risk is only in ad-hoc one-liners.
 
 ## Frontend (`firebase/hosting/`)
 
-New pages built against the Auth + Members backend (plain ES modules + the
-Firebase SDK from CDN, no build step):
+New pages (plain ES modules + the Firebase SDK from CDN, no build step):
 
 - `login.html` / `member-login.html` — admin and member login, same visual
   design as the original `Login.html` / `MemberLogin.html`.
 - `admin/members.html` — member list, add/edit/delete, manual check-in.
-- `member/index.html` — member's own profile, payment history, PIN change.
+- `admin/trainers.html` — trainer list, add/edit/delete, busy-status toggle.
+- `admin/bookings.html` — book a trainer slot on a member's behalf, view/cancel all bookings.
+- `member/index.html` — member's own profile, payment history, PIN change,
+  trainer booking (browse slots, book, view own bookings).
 - `shared/firebase-init.js` — Firebase app/auth/functions init + a
   `callServer()` helper. Auto-connects to the local emulator suite when
   served from `localhost`, talks to the real project otherwise — same code
   both ways, no separate "dev" build.
 
-Not built yet: everything the other 20 backend modules would power
-(trainers, bookings, payments, coupons, LINE, reports, etc.) — the admin
-dashboard only covers what `02_members.js` implements today.
+Not built yet: pages for the still-unported backend modules (payments/POS,
+coupons, products, reports, LINE settings, etc.).
 
 ### Running it locally
 
 ```bash
 cd firebase
-firebase emulators:start --only firestore,auth,functions,hosting --project industrial-muscle-fitness
+firebase emulators:start --only firestore,auth,functions,hosting,storage --project industrial-muscle-fitness
 # in another terminal, seed data into the running emulator:
 cd ..
-GCLOUD_PROJECT=industrial-muscle-fitness node scripts/migrate-members-to-firestore.js
+FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 GCLOUD_PROJECT=industrial-muscle-fitness node scripts/migrate-members-to-firestore.js
 ```
 Then open `http://localhost:5000/login.html`. There's no admin account in a
 fresh emulator — create one by hand (Firestore emulator UI at
 `http://localhost:4000/firestore`, `admins` collection, fields `username`,
 `passwordHash` [sha256 hex of the password — see `firebase/functions/src/util/hash.js`],
-`role`, `email`).
+`role`, `email`), or via the one-liner in `scripts/verify-firebase-emulator.js`'s
+seeding step.
+
+Two automated regression suites cover everything ported so far:
+```bash
+FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 GCLOUD_PROJECT=industrial-muscle-fitness node scripts/verify-firebase-emulator.js
+FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 GCLOUD_PROJECT=industrial-muscle-fitness node scripts/verify-trainers-bookings-emulator.js
+```
 
 Local machine setup notes (for reference): Firestore emulator needed a Java 21
 JDK (Eclipse Temurin, installed via winget) since only Java 8 was present.

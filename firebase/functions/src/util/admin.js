@@ -5,6 +5,7 @@
 const admin = require('firebase-admin');
 const { getFirestore, FieldValue, Timestamp } = require('firebase-admin/firestore');
 const { getAuth } = require('firebase-admin/auth');
+const { getStorage } = require('firebase-admin/storage');
 
 if (!admin.apps.length) {
   admin.initializeApp();
@@ -12,5 +13,6 @@ if (!admin.apps.length) {
 
 const db = getFirestore();
 const auth = getAuth();
+const bucket = getStorage().bucket();
 
-module.exports = { admin, db, auth, FieldValue, Timestamp };
+module.exports = { admin, db, auth, bucket, FieldValue, Timestamp };

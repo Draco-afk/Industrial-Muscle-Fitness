@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Industrial Muscle - Admin - Bookings</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Urbanist:wght@700;900&family=Prompt:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <style>
+    body { background-color: #050505; color: #F3F4F6; font-family: 'Prompt', sans-serif; background-image: radial-gradient(ellipse at top, rgba(220, 38, 38, 0.08), transparent 55%); }
+    .panel { background: rgba(15, 15, 15, 0.9); border: 1px solid #222; }
+    table th { font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: #6b7280; text-align: left; padding: 10px 12px; }
+    table td { padding: 10px 12px; border-top: 1px solid #1f1f1f; font-size: 13px; }
+    .badge { padding: 2px 10px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+    .badge-Booked { background: rgba(59,130,246,0.15); color: #60a5fa; }
+    .badge-Completed { background: rgba(34,197,94,0.15); color: #4ade80; }
+    .badge-Cancelled { background: rgba(107,114,128,0.15); color: #9ca3af; }
+    .navlink { font-size: 12px; color: #6b7280; padding: 6px 12px; border-radius: 8px; }
+    .navlink.active, .navlink:hover { color: #fff; background: rgba(255,255,255,0.06); }
+    .slot-btn { padding: 6px 4px; border-radius: 8px; font-size: 11px; font-family: monospace; border: 1px solid #333; cursor: pointer; text-align: center; }
+    .slot-btn.free { background: rgba(34,197,94,0.1); color: #4ade80; border-color: rgba(34,197,94,0.3); }
+    .slot-btn.free:hover { background: rgba(34,197,94,0.2); }
+  </style>
+</head>
+<body class="min-h-screen p-4 md:p-8">
+
+  <div id="loadingGate" class="fixed inset-0 bg-black flex items-center justify-center z-50">
+    <i class="fa-solid fa-circle-notch fa-spin text-3xl text-red-500"></i>
+  </div>
+
+  <div id="app" class="hidden max-w-6xl mx-auto">
+    <header class="flex items-center justify-between mb-4">
+      <div>
+        <h1 class="text-2xl font-black tracking-tight font-['Urbanist']">INDUSTRIAL <span class="text-red-500">MUSCLE</span></h1>
+        <p class="text-xs text-gray-500 uppercase tracking-widest">Admin — Bookings</p>
+      </div>
+      <div class="flex items-center gap-3">
+        <span id="whoami" class="text-xs text-gray-500"></span>
+        <button onclick="doLogout()" class="text-xs bg-gray-900 hover:bg-gray-800 border border-gray-800 px-4 py-2 rounded-lg">
+          <i class="fa-solid fa-arrow-right-from-bracket mr-1"></i> ออกจากระบบ
+        </button>
+      </div>
+    </header>
+
+    <nav class="flex gap-2 mb-6">
+      <a href="members.html" class="navlink">สมาชิก</a>
+      <a href="trainers.html" class="navlink">เทรนเนอร์</a>
+      <a href="bookings.html" class="navlink active">การจอง</a>
+    </nav>
+
+    <div class="panel rounded-2xl p-5 mb-6">
+      <h3 class="text-xs uppercase tracking-widest text-gray-500 mb-3">จองคิวให้สมาชิก</h3>
+      <div class="grid md:grid-cols-4 gap-3">
+        <select id="pickMember" class="bg-black border border-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-red-500"><option value="">เลือกสมาชิก...</option></select>
+        <select id="pickTrainer" class="bg-black border border-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-red-500"><option value="">เลือกเทรนเนอร์...</option></select>
+        <input id="pickDate" type="date" class="bg-black border border-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-red-500">
+        <button onclick="loadSlots()" class="bg-gray-900 hover:bg-gray-800 border border-gray-800 rounded-lg px-3 py-2 text-sm">ดูคิวว่าง</button>
+      </div>
+      <div id="slotGrid" class="grid grid-cols-4 md:grid-cols-8 gap-2 mt-4"></div>
+      <p id="slotMsg" class="text-xs text-gray-500 mt-2"></p>
+    </div>
+
+    <div class="panel rounded-2xl overflow-hidden overflow-x-auto">
+      <table class="w-full">
+        <thead><tr><th>วันที่</th><th>เวลา</th><th>เทรนเนอร์</th><th>สมาชิก</th><th>สถานะ</th><th></th></tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+      <p id="emptyState" class="hidden text-center text-gray-600 text-sm py-10">ยังไม่มีรายการจอง</p>
+    </div>
+  </div>
+
+  <script type="module">
+    import { callServer, auth, onAuthStateChanged, signOut } from '../shared/firebase-init.js';
+
+    let members = [], trainers = [];
+
+    onAuthStateChanged(auth, async (user) => {
+      if (!user) { window.location.href = '../login.html'; return; }
+      const tok = await user.getIdTokenResult();
+      if (tok.claims.role !== 'admin') { window.location.href = '../login.html'; return; }
+      document.getElementById('whoami').textContent = tok.claims.adminRole || 'Admin';
+      document.getElementById('loadingGate').classList.add('hidden');
+      document.getElementById('app').classList.remove('hidden');
+      document.getElementById('pickDate').value = new Date().toISOString().slice(0, 10);
+      await Promise.all([loadMembers(), loadTrainers(), loadBookings()]);
+    });
+
+    window.doLogout = async function doLogout() { await signOut(auth); window.location.href = '../login.html'; };
+
+    function escapeHtml(s) {
+      return (s || '').toString().replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
+    async function loadMembers() {
+      members = await callServer('getMemberList');
+      const sel = document.getElementById('pickMember');
+      sel.innerHTML = '<option value="">เลือกสมาชิก...</option>' + members.map((m) => `<option value="${m.docId}">${escapeHtml(m.fullName)} (${escapeHtml(m.phone)})</option>`).join('');
+    }
+
+    async function loadTrainers() {
+      trainers = await callServer('getTrainerList');
+      const sel = document.getElementById('pickTrainer');
+      sel.innerHTML = '<option value="">เลือกเทรนเนอร์...</option>' + trainers.map((t) => `<option value="${t.trainerId}">${escapeHtml(t.fullName)}</option>`).join('');
+    }
+
+    window.loadSlots = async function loadSlots() {
+      const trainerId = document.getElementById('pickTrainer').value;
+      const dateStr = document.getElementById('pickDate').value;
+      const grid = document.getElementById('slotGrid');
+      const msg = document.getElementById('slotMsg');
+      grid.innerHTML = '';
+      msg.textContent = '';
+      if (!trainerId || !dateStr) { msg.textContent = 'กรุณาเลือกเทรนเนอร์และวันที่ก่อน'; return; }
+
+      const res = await callServer('getTrainerAvailableSlotsAdmin', { trainerId, dateStr });
+      if (!res.success) { msg.textContent = res.message || 'เกิดข้อผิดพลาด'; return; }
+      if (!res.slots.length) { msg.textContent = res.message || 'ไม่มีคิวว่างในวันนี้'; return; }
+
+      for (const slot of res.slots) {
+        const btn = document.createElement('div');
+        btn.className = 'slot-btn free';
+        btn.textContent = slot;
+        btn.onclick = () => bookSlot(trainerId, dateStr, slot);
+        grid.appendChild(btn);
+      }
+    };
+
+    async function bookSlot(trainerId, dateStr, timeSlot) {
+      const memberDocId = document.getElementById('pickMember').value;
+      if (!memberDocId) { alert('กรุณาเลือกสมาชิกก่อนจอง'); return; }
+      const res = await callServer('adminBookTrainerSlot', { memberDocId, trainerId, dateStr, timeSlot });
+      alert(res.message);
+      if (res.success) { await loadBookings(); await loadSlots(); }
+    }
+
+    async function loadBookings() {
+      let bookings = [];
+      try { bookings = await callServer('getAllBookings'); } catch (e) { alert('โหลดรายการจองไม่สำเร็จ: ' + (e.message || e)); }
+      const tbody = document.getElementById('rows');
+      tbody.innerHTML = '';
+      document.getElementById('emptyState').classList.toggle('hidden', bookings.length > 0);
+      for (const b of bookings) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td class="text-gray-400">${escapeHtml(b.date)}</td>
+          <td class="text-gray-400 font-mono">${escapeHtml(b.timeSlot)}</td>
+          <td class="font-medium">${escapeHtml(b.trainerName)}</td>
+          <td class="text-gray-400">${escapeHtml(b.memberName)}</td>
+          <td><span class="badge badge-${b.status}">${escapeHtml(b.status)}</span></td>
+          <td class="text-right">
+            ${b.status === 'Booked' ? '<button data-act="cancel" class="text-red-400 hover:text-red-300 text-xs">ยกเลิก</button>' : ''}
+          </td>`;
+        if (b.status === 'Booked') {
+          tr.querySelector('[data-act="cancel"]').onclick = async () => {
+            const res = await callServer('updateBookingStatus', { bookingId: b.bookingId, newStatus: 'Cancelled' });
+            alert(res.message);
+            if (res.success) await loadBookings();
+          };
+        }
+        tbody.appendChild(tr);
+      }
+    }
+  </script>
+</body>
+</html>

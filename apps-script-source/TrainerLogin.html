@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>INDUSTRIAL Muscle - Trainer Login</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Urbanist:wght@700;900&family=Prompt:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+  <style>
+    body {
+      background-color: #050505;
+      color: #F3F4F6;
+      font-family: 'Prompt', sans-serif;
+      background-image:
+        repeating-linear-gradient(90deg, rgba(255,255,255,0.025) 0px, rgba(255,255,255,0.025) 1px, transparent 1px, transparent 14px),
+        radial-gradient(ellipse at top, rgba(220, 38, 38, 0.10), transparent 55%);
+      background-size: 14px 100%, 100% 100%;
+    }
+    .industrial-card {
+      background: rgba(15, 15, 15, 0.9);
+      backdrop-filter: blur(10px);
+      border: 1px solid #222;
+      box-shadow: 0 0 50px rgba(0,0,0,0.5), inset 0 0 20px rgba(220, 38, 38, 0.05);
+    }
+  </style>
+</head>
+<body class="min-h-screen flex items-center justify-center p-6">
+
+  <div class="industrial-card rounded-3xl p-10 max-w-md w-full relative overflow-hidden">
+    <div class="absolute top-0 left-0 w-1.5 h-full bg-red-600"></div>
+
+    <div class="text-center mb-10">
+      <h1 class="text-4xl font-black text-white tracking-tighter mb-1 font-['Urbanist']">INDUSTRIAL</h1>
+      <h1 class="text-xl font-bold text-red-500 tracking-[0.3em] uppercase mb-4 font-['Urbanist'] drop-shadow-[0_0_12px_rgba(220,38,38,0.5)]">Muscle</h1>
+      <div class="h-px bg-gradient-to-r from-transparent via-gray-800 to-transparent w-full my-6"></div>
+      <p class="text-gray-500 text-sm tracking-widest uppercase"><i class="fa-solid fa-person-running mr-2"></i>Trainer Access</p>
+    </div>
+
+    <!-- ============ กำลังเช็ค token ที่บันทึกไว้ (เข้าระบบอัตโนมัติ ไม่ขอสแกนซ้ำ) ============ -->
+    <div id="checkingSection" class="text-center py-8">
+      <i class="fa-solid fa-circle-notch fa-spin text-2xl text-red-500 mb-3"></i>
+      <p class="text-gray-500 text-xs mb-6">กำลังเข้าสู่ระบบอัตโนมัติ...</p>
+      <button onclick="useAnotherAccount()" class="text-gray-600 hover:text-gray-400 text-xs cursor-pointer">
+        ไม่ใช่คุณ? เข้าสู่ระบบด้วยเบอร์โทรอื่น
+      </button>
+    </div>
+
+    <!-- ============ ฟอร์มล็อกอินปกติ ============ -->
+    <div id="normalLoginForm" class="hidden space-y-6">
+      <div>
+        <label class="block text-[10px] uppercase tracking-[0.2em] text-gray-500 mb-2 font-bold ml-1">เบอร์โทรศัพท์</label>
+        <div class="flex items-center bg-black/50 border border-gray-800 rounded-xl px-4 py-3 focus-within:border-red-500 transition-all">
+          <i class="fa-solid fa-mobile-screen text-gray-600 mr-3 text-sm"></i>
+          <input type="tel" id="trainerPhone" maxlength="10" placeholder="0812345678" inputmode="numeric"
+                 class="bg-transparent w-full text-white placeholder-gray-700 outline-none font-mono tracking-wider"
+                 oninput="this.value = this.value.replace(/[^0-9]/g, '');">
+        </div>
+      </div>
+
+      <div>
+        <label class="block text-[10px] uppercase tracking-[0.2em] text-gray-500 mb-2 font-bold ml-1">รหัส PIN (4 หลัก)</label>
+        <div class="flex items-center bg-black/50 border border-gray-800 rounded-xl px-4 py-3 focus-within:border-red-500 transition-all">
+          <i class="fa-solid fa-key text-gray-600 mr-3 text-sm"></i>
+          <input type="password" id="trainerPin" maxlength="4" placeholder="••••" inputmode="numeric"
+                 class="bg-transparent w-full text-white placeholder-gray-700 outline-none tracking-[0.8em] text-center font-bold"
+                 oninput="this.value = this.value.replace(/[^0-9]/g, '');">
+        </div>
+        <p class="text-[10px] text-gray-600 mt-2 ml-1">รหัสเริ่มต้นคือ 1234 หากยังไม่เคยเปลี่ยน (สอบถามได้ที่แอดมิน)</p>
+      </div>
+
+      <label class="flex items-center gap-2 cursor-pointer">
+        <input type="checkbox" id="rememberMeChk" checked class="w-4 h-4 accent-red-600 cursor-pointer">
+        <span class="text-gray-400 text-xs">จดจำฉันไว้ในเครื่องนี้ (ไม่ต้องกรอกซ้ำครั้งหน้า)</span>
+      </label>
+
+      <button onclick="checkTrainerLogin()" id="loginBtn"
+              class="w-full bg-gradient-to-r from-red-700 to-red-600 hover:from-red-600 hover:to-red-500 text-white font-black py-4 rounded-xl text-sm tracking-[0.2em] uppercase mt-4 cursor-pointer transition-all shadow-lg hover:shadow-red-600/20">
+        เข้าสู่ระบบ
+      </button>
+
+      <p id="errMsg" class="text-red-500 text-[11px] text-center mt-4 hidden bg-red-500/10 py-2 rounded-lg border border-red-500/20">
+        <i class="fa-solid fa-triangle-exclamation mr-1"></i> <span id="errMsgText">เข้าสู่ระบบไม่สำเร็จ</span>
+      </p>
+    </div>
+  </div>
+
+  <script>
+    const STORAGE_PREFIX = 'im_trainer';
+
+    // ==========================================
+    // 🔐 WebAuthn: ใช้ Face ID / ลายนิ้วมือของเครื่องเป็น "กุญแจปลดล็อกในเครื่อง" เท่านั้น
+    // ==========================================
+    function isBiometricSupported() {
+      return !!(window.PublicKeyCredential && navigator.credentials);
+    }
+
+    function bufToBase64(buf) {
+      let binary = '';
+      const bytes = new Uint8Array(buf);
+      for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+      return btoa(binary);
+    }
+
+    function base64ToBuf(b64) {
+      const bin = atob(b64);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      return bytes.buffer;
+    }
+
+    async function enableBiometric() {
+      try {
+        const challenge = crypto.getRandomValues(new Uint8Array(32));
+        const userId = crypto.getRandomValues(new Uint8Array(16));
+        const cred = await navigator.credentials.create({
+          publicKey: {
+            challenge: challenge,
+            rp: { name: 'Industrial Muscle' },
+            user: { id: userId, name: 'trainer', displayName: 'Trainer' },
+            pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }],
+            authenticatorSelection: { authenticatorAttachment: 'platform', userVerification: 'required' },
+            timeout: 60000
+          }
+        });
+        if (cred) {
+          localStorage.setItem(STORAGE_PREFIX + '_biometric_id', bufToBase64(cred.rawId));
+          localStorage.setItem(STORAGE_PREFIX + '_biometric', '1');
+          return true;
+        }
+      } catch (e) {
+        console.log('เปิดใช้งานไบโอเมตริกไม่สำเร็จหรือถูกยกเลิก', e);
+      }
+      return false;
+    }
+
+    // ==========================================
+    // 🔁 Auto-Login ด้วย token ที่บันทึกไว้ในเครื่อง (ขอสแกนหน้า/ลายนิ้วมือแค่ครั้งแรกครั้งเดียวตอนเปิดใช้งาน
+    // ครั้งถัดๆ ไปจะเข้าระบบอัตโนมัติเลยโดยไม่ขอสแกนซ้ำอีก)
+    // ==========================================
+    function showSection(id) {
+      ['checkingSection', 'normalLoginForm'].forEach(s => {
+        document.getElementById(s).classList.toggle('hidden', s !== id);
+      });
+    }
+
+    function attemptAutoLogin(token) {
+      google.script.run
+        .withSuccessHandler(res => {
+          if (res.valid) {
+            window.top.location.href = "<?= getScriptUrl() ?>?page=trainer-main&token=" + token;
+          } else {
+            clearSavedAccount();
+            showSection('normalLoginForm');
+          }
+        })
+        .withFailureHandler(() => { showSection('normalLoginForm'); })
+        .checkTrainerTokenValid(token);
+    }
+
+    function clearSavedAccount() {
+      localStorage.removeItem(STORAGE_PREFIX + '_token');
+      localStorage.removeItem(STORAGE_PREFIX + '_biometric');
+      localStorage.removeItem(STORAGE_PREFIX + '_biometric_id');
+    }
+
+    function useAnotherAccount() {
+      clearSavedAccount();
+      showSection('normalLoginForm');
+    }
+
+    // ==========================================
+    // 🔑 ล็อกอินด้วยเบอร์โทร + PIN ตามปกติ
+    // ==========================================
+    async function checkTrainerLogin() {
+      const phone = document.getElementById('trainerPhone').value.trim();
+      const pin = document.getElementById('trainerPin').value.trim();
+      const btn = document.getElementById('loginBtn');
+
+      if (!phone || phone.length < 9) {
+        showError('กรุณากรอกเบอร์โทรศัพท์ให้ถูกต้อง');
+        return;
+      }
+      if (!/^\d{4}$/.test(pin)) {
+        showError('กรุณากรอกรหัส PIN 4 หลัก');
+        return;
+      }
+
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i> กำลังตรวจสอบ...';
+      document.getElementById('errMsg').classList.add('hidden');
+
+      google.script.run
+        .withSuccessHandler(async function(res) {
+          if (res.success) {
+            if (document.getElementById('rememberMeChk').checked) {
+              localStorage.setItem(STORAGE_PREFIX + '_token', res.token);
+
+              if (isBiometricSupported() && !localStorage.getItem(STORAGE_PREFIX + '_biometric')) {
+                if (confirm('ต้องการยืนยันตัวตนด้วย Face ID / ลายนิ้วมือตอนนี้ไหม?\n\n(ขอสิทธิ์แค่ครั้งนี้ครั้งเดียว หลังจากนี้จะเข้าสู่ระบบให้อัตโนมัติทุกครั้งโดยไม่ถามซ้ำอีก)')) {
+                  await enableBiometric();
+                }
+              }
+            }
+            window.top.location.href = "<?= getScriptUrl() ?>?page=trainer-main&token=" + res.token;
+          } else {
+            showError(res.message || 'เข้าสู่ระบบไม่สำเร็จ');
+            btn.disabled = false;
+            btn.innerHTML = 'เข้าสู่ระบบ';
+          }
+        })
+        .withFailureHandler(function(err) {
+          showError(err.message || 'เกิดข้อผิดพลาด กรุณาลองใหม่');
+          btn.disabled = false;
+          btn.innerHTML = 'เข้าสู่ระบบ';
+        })
+        .loginTrainer(phone, pin);
+    }
+
+    function showError(msg) {
+      document.getElementById('errMsgText').innerText = msg;
+      document.getElementById('errMsg').classList.remove('hidden');
+    }
+
+    document.getElementById('trainerPin').addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') checkTrainerLogin();
+    });
+    document.getElementById('trainerPhone').addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') document.getElementById('trainerPin').focus();
+    });
+
+    // ==========================================
+    // 🚀 เริ่มต้นหน้า: เช็คว่ามี token บันทึกไว้ในเครื่องนี้ไหม
+    // ==========================================
+    window.onload = () => {
+      const savedToken = localStorage.getItem(STORAGE_PREFIX + '_token');
+      if (!savedToken) {
+        showSection('normalLoginForm');
+        return;
+      }
+      // มี token บันทึกไว้แล้ว -> เข้าระบบอัตโนมัติเลย ไม่ขอสแกนหน้า/ลายนิ้วมือซ้ำอีก
+      showSection('checkingSection');
+      attemptAutoLogin(savedToken);
+    };
+  </script>
+</body>
+</html>

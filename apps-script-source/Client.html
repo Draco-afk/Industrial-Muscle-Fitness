@@ -1,0 +1,870 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="IM Muscle">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#050505">
+  <title>INDUSTRIAL Muscle - My Pass</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Urbanist:wght@700;900&family=Prompt:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+  <style>
+    body {
+      background-color: #050505; color: #F3F4F6; font-family: 'Prompt', sans-serif;
+      background-image:
+        repeating-linear-gradient(90deg, rgba(255,255,255,0.02) 0px, rgba(255,255,255,0.02) 1px, transparent 1px, transparent 16px),
+        radial-gradient(ellipse at top, rgba(220, 38, 38, 0.08), transparent 55%);
+      background-attachment: fixed;
+    }
+    .glass-card { background: rgba(20, 20, 20, 0.7); backdrop-filter: blur(12px); border: 1px solid #222; }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between max-w-md mx-auto p-4 sm:p-6">
+
+  <header class="text-center pt-4 pb-2">
+    <h1 class="text-3xl font-black text-white tracking-tighter font-['Urbanist'] leading-none">INDUSTRIAL</h1>
+    <p class="text-red-500 font-bold tracking-[0.3em] text-xs uppercase">Muscle App</p>
+  </header>
+
+  <main id="loadingSection" class="flex-1 flex flex-col items-center justify-center text-gray-500 text-sm">
+    <i class="fa-solid fa-circle-notch fa-spin text-2xl mb-3 text-red-500"></i>
+    กำลังโหลดข้อมูลสมาชิก...
+  </main>
+
+  <main id="memberDashboard" class="hidden flex-1 flex flex-col space-y-6 my-4">
+
+    <!-- ============ แบนเนอร์แจ้งเตือนใกล้หมดอายุ / หมดอายุ ============ -->
+    <div id="expiryAlertBanner" class="hidden rounded-2xl p-4 flex items-center gap-3">
+      <i id="expiryAlertIcon" class="fa-solid fa-triangle-exclamation text-xl shrink-0"></i>
+      <p id="expiryAlertText" class="text-xs font-bold leading-relaxed">--</p>
+    </div>
+
+    <!-- ============ แบนเนอร์โปรโมชั่นวันเกิด ============ -->
+    <div id="birthdayBanner" class="hidden rounded-2xl p-4 flex items-center gap-3 bg-pink-950/40 border border-pink-700">
+      <i class="fa-solid fa-cake-candles text-xl shrink-0 text-pink-400"></i>
+      <p id="birthdayBannerText" class="text-xs font-bold leading-relaxed text-pink-300">🎂 เดือนเกิดของคุณ! ต่ออายุสมาชิกภาพเดือนนี้รับส่วนลด 5% ทันที</p>
+    </div>
+
+    <div class="glass-card p-6 rounded-3xl relative overflow-hidden">
+      <div class="absolute -right-6 -bottom-6 w-28 h-28 bg-red-600/10 rounded-full blur-xl"></div>
+
+      <div class="flex justify-between items-start mb-4">
+        <div>
+          <span id="displayStatus" class="px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-green-950 text-green-400 border border-green-800">Active</span>
+          <h2 id="displayName" class="text-xl font-bold text-white mt-2">--</h2>
+          <p id="displayPackage" class="text-xs text-red-400 font-medium">--</p>
+        </div>
+        <button onclick="logoutClient()" class="text-gray-500 hover:text-red-400 text-xs p-2">
+          <i class="fa-solid fa-power-off"></i>
+        </button>
+      </div>
+
+      <div class="border-t border-gray-800/80 pt-3 mt-3 flex justify-between text-xs text-gray-400">
+        <span>วันหมดอายุ:</span>
+        <span id="displayExpiry" class="text-white font-mono font-bold">--</span>
+      </div>
+    </div>
+
+    <div class="glass-card p-4 rounded-2xl text-left">
+      <div class="flex items-center gap-4">
+        <div class="w-12 h-12 bg-red-500/10 text-red-500 rounded-xl flex items-center justify-center text-xl shrink-0">
+          <i class="fa-solid fa-key"></i>
+        </div>
+        <div class="flex-1">
+          <p class="text-xs font-bold text-white">รหัส PIN เข้ายิมส่วนตัว</p>
+          <p class="text-[11px] text-gray-400">ใช้กดผ่านคีย์แพดหน้าประตู: <span id="displayPin" class="text-red-400 font-mono font-bold text-sm ml-1">****</span></p>
+        </div>
+        <button onclick="toggleChangePinForm()" class="text-red-500 hover:text-red-400 text-xs px-3 py-1.5 border border-red-800 rounded-lg shrink-0 cursor-pointer">
+          แก้ไข
+        </button>
+      </div>
+
+      <div id="changePinForm" class="hidden mt-4 pt-4 border-t border-gray-800 space-y-3">
+        <input type="password" id="oldPinInput" maxlength="4" inputmode="numeric" placeholder="PIN เดิม"
+               class="w-full bg-black border border-gray-800 rounded-xl p-3 text-white text-center tracking-[0.6em] outline-none text-sm"
+               oninput="this.value = this.value.replace(/[^0-9]/g, '');">
+        <input type="password" id="newPinInput" maxlength="4" inputmode="numeric" placeholder="PIN ใหม่ (4 หลัก)"
+               class="w-full bg-black border border-gray-800 rounded-xl p-3 text-white text-center tracking-[0.6em] outline-none text-sm"
+               oninput="this.value = this.value.replace(/[^0-9]/g, '');">
+        <button onclick="submitChangePin()" id="btnChangePin" class="w-full bg-red-600 hover:bg-red-500 text-white font-bold py-3 rounded-xl text-xs uppercase cursor-pointer">
+          บันทึก PIN ใหม่
+        </button>
+      </div>
+    </div>
+
+    <!-- ============ ทางเข้าบัตรสมาชิกดิจิทัล ============ -->
+    <button onclick="openCardScreen()" class="glass-card p-5 rounded-3xl w-full flex items-center justify-between cursor-pointer hover:border-red-600/50 border border-transparent transition-all">
+      <div class="flex items-center gap-4 text-left">
+        <div class="w-12 h-12 bg-red-500/10 text-red-500 rounded-xl flex items-center justify-center text-xl shrink-0">
+          <i class="fa-solid fa-id-card"></i>
+        </div>
+        <div>
+          <p class="text-sm font-bold text-white">บัตรสมาชิกดิจิทัล</p>
+          <p class="text-[11px] text-gray-500">ดูบัตร เพิ่มไปหน้าจอโฮมได้เลย</p>
+        </div>
+      </div>
+      <i class="fa-solid fa-chevron-right text-gray-600"></i>
+    </button>
+
+    <!-- ============ ทางเข้าสู่หน้าเทรนเนอร์ & จองคิว ============ -->
+    <button onclick="openTrainerScreen()" class="glass-card p-5 rounded-3xl w-full flex items-center justify-between cursor-pointer hover:border-red-600/50 border border-transparent transition-all">
+      <div class="flex items-center gap-4 text-left">
+        <div class="w-12 h-12 bg-red-500/10 text-red-500 rounded-xl flex items-center justify-center text-xl shrink-0">
+          <i class="fa-solid fa-person-running"></i>
+        </div>
+        <div>
+          <p class="text-sm font-bold text-white">เทรนเนอร์ & จองคิว</p>
+          <p class="text-[11px] text-gray-500">ดูโปรไฟล์เทรนเนอร์ จองคิว และดูคิวของฉัน</p>
+        </div>
+      </div>
+      <i class="fa-solid fa-chevron-right text-gray-600"></i>
+    </button>
+
+
+    <div class="glass-card p-5 rounded-3xl">
+      <h3 class="text-xs font-bold text-gray-300 uppercase tracking-wider mb-4">
+        <i class="fa-solid fa-clock-rotate-left mr-2 text-red-500"></i>ประวัติการชำระเงินล่าสุด
+      </h3>
+      <div id="paymentHistoryList" class="space-y-3">
+        <p class="text-gray-600 text-xs text-center py-4">ไม่มีประวัติการชำระเงิน</p>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- ============ หน้าเทรนเนอร์ & จองคิว (แยกหน้าเต็มจอ) ============ -->
+  <div id="trainerScreen" class="hidden fixed inset-0 z-40 bg-[#050505] overflow-y-auto">
+    <div class="max-w-md mx-auto p-4 sm:p-6 min-h-screen flex flex-col space-y-6">
+
+      <header class="flex items-center gap-3 pt-2 pb-2">
+        <button onclick="closeTrainerScreen()" class="w-9 h-9 rounded-full bg-black/50 border border-gray-800 flex items-center justify-center text-gray-400 hover:text-white cursor-pointer shrink-0">
+          <i class="fa-solid fa-arrow-left"></i>
+        </button>
+        <div>
+          <h1 class="text-lg font-black text-white leading-none">เทรนเนอร์ & จองคิว</h1>
+          <p class="text-red-500 text-[10px] uppercase tracking-widest font-bold">Trainers & Booking</p>
+        </div>
+      </header>
+
+      <!-- ============ เทรนเนอร์ของเรา (โปรไฟล์ + ประวัติ) ============ -->
+      <div class="glass-card p-5 rounded-3xl">
+        <h3 class="text-sm font-bold text-gray-300 uppercase tracking-wider mb-4">
+          <i class="fa-solid fa-star mr-2 text-red-500"></i>เทรนเนอร์ของเรา
+        </h3>
+        <p class="text-gray-500 text-xs mb-4">แตะที่รูปเทรนเนอร์เพื่อดูประวัติและตารางเวลาแบบเต็ม</p>
+        <div id="trainerProfileGrid" class="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          <p class="text-gray-600 text-xs text-center py-6 col-span-full">กำลังโหลดข้อมูลเทรนเนอร์...</p>
+        </div>
+      </div>
+
+      <!-- ============ จองคิวเทรนเนอร์ ============ -->
+      <div class="glass-card p-5 rounded-3xl" id="trainerBookingSection">
+        <h3 class="text-sm font-bold text-gray-300 uppercase tracking-wider mb-4">
+          <i class="fa-solid fa-person-running mr-2 text-red-500"></i>จองคิวเทรนเนอร์
+        </h3>
+
+        <div class="space-y-3 mb-4">
+          <select id="trainerSelect" onchange="onTrainerChange()" class="w-full bg-black border border-gray-800 rounded-xl p-3 text-white text-sm outline-none cursor-pointer">
+            <option value="">-- เลือกเทรนเนอร์ --</option>
+          </select>
+          <input type="date" id="bookingDate" onchange="loadTrainerSlots()" class="w-full bg-black border border-gray-800 rounded-xl p-3 text-white text-sm outline-none">
+        </div>
+
+        <div id="slotsContainer" class="grid grid-cols-3 gap-2 mb-2"></div>
+        <p id="slotsMsg" class="text-gray-600 text-xs text-center py-2"></p>
+
+        <button onclick="confirmBooking()" id="btnConfirmBooking" class="hidden w-full bg-red-600 hover:bg-red-500 text-white font-bold py-3 rounded-xl text-xs uppercase mt-2 cursor-pointer">
+          ยืนยันการจองคิว: <span id="selectedSlotText"></span>
+        </button>
+      </div>
+
+      <!-- ============ คิวเทรนเนอร์ของฉัน ============ -->
+      <div class="glass-card p-5 rounded-3xl mb-6">
+        <h3 class="text-sm font-bold text-gray-300 uppercase tracking-wider mb-4">
+          <i class="fa-solid fa-calendar-check mr-2 text-red-500"></i>คิวเทรนเนอร์ของฉัน
+        </h3>
+        <div id="myBookingsList" class="space-y-3">
+          <p class="text-gray-600 text-xs text-center py-4">ไม่มีคิวที่จอง</p>
+        </div>
+      </div>
+
+      <!-- ============ คิวที่รอ (Waitlist) ============ -->
+      <div class="glass-card p-5 rounded-3xl mb-6">
+        <h3 class="text-sm font-bold text-gray-300 uppercase tracking-wider mb-4">
+          <i class="fa-solid fa-hourglass-half mr-2 text-yellow-500"></i>คิวที่รออยู่ (Waitlist)
+        </h3>
+        <div id="myWaitlistList" class="space-y-3">
+          <p class="text-gray-600 text-xs text-center py-4">ไม่มีคิวที่รออยู่</p>
+        </div>
+      </div>
+
+      <!-- ============ เชื่อมต่อ LINE รับแจ้งเตือน ============ -->
+      <div class="glass-card p-5 rounded-3xl mb-6">
+        <div class="flex items-center gap-4 mb-3">
+          <div class="w-12 h-12 bg-green-500/10 text-green-500 rounded-xl flex items-center justify-center text-xl shrink-0">
+            <i class="fa-brands fa-line"></i>
+          </div>
+          <div class="flex-1">
+            <p class="text-xs font-bold text-white">แจ้งเตือนใกล้หมดอายุ / วันเกิด / คูปองใหม่ ทาง LINE</p>
+            <p id="memberLineStatusText" class="text-[11px] text-gray-400">กำลังโหลด...</p>
+          </div>
+        </div>
+
+        <div id="memberLineNotLinkedSection" class="hidden space-y-3">
+          <button onclick="startMemberLineLink()" class="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-3 rounded-xl text-xs uppercase cursor-pointer">
+            <i class="fa-brands fa-line mr-1"></i> เชื่อมต่อ LINE
+          </button>
+          <div id="memberLineLinkInstructions" class="hidden bg-black/40 border border-gray-800 rounded-xl p-4 text-xs text-gray-300 space-y-2">
+            <p>1. เพิ่มเพื่อน LINE ร้านตามลิงก์นี้:</p>
+            <a id="memberLineAddFriendLink" href="#" target="_blank" class="text-green-400 underline break-all block">แตะเพื่อเพิ่มเพื่อน</a>
+            <p>2. พิมพ์รหัสนี้ส่งในแชท LINE:</p>
+            <p id="memberLineLinkCodeDisplay" class="text-2xl font-black text-white text-center tracking-widest py-2">------</p>
+            <p class="text-gray-500 text-[10px]">รหัสนี้ใช้ได้ครั้งเดียว หลังส่งสำเร็จหน้านี้จะอัปเดตให้อัตโนมัติ</p>
+          </div>
+        </div>
+
+        <div id="memberLineLinkedSection" class="hidden">
+          <button onclick="unlinkMemberLineUI()" class="w-full bg-gray-800 hover:bg-gray-700 text-white font-bold py-3 rounded-xl text-xs uppercase cursor-pointer">
+            ยกเลิกการเชื่อมต่อ LINE
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ============ บัตรสมาชิกดิจิทัล (แยกหน้าเต็มจอ) ============ -->
+  <div id="cardScreen" class="hidden fixed inset-0 z-40 bg-[#050505] overflow-y-auto">
+    <div class="max-w-md mx-auto p-4 sm:p-6 min-h-screen flex flex-col space-y-6">
+
+      <header class="flex items-center gap-3 pt-2 pb-2">
+        <button onclick="closeCardScreen()" class="w-9 h-9 rounded-full bg-black/50 border border-gray-800 flex items-center justify-center text-gray-400 hover:text-white cursor-pointer shrink-0">
+          <i class="fa-solid fa-arrow-left"></i>
+        </button>
+        <h2 class="text-lg font-bold text-white">บัตรสมาชิกดิจิทัล</h2>
+      </header>
+
+      <!-- ============ ตัวบัตร ============ -->
+      <div class="relative rounded-3xl p-6 overflow-hidden shadow-2xl" style="background: linear-gradient(135deg, #1a0000 0%, #000000 60%, #2a0000 100%); border: 1px solid #7f1d1d;">
+        <div class="absolute -right-10 -top-10 w-40 h-40 bg-red-600/20 rounded-full blur-2xl"></div>
+        <div class="absolute -left-8 -bottom-8 w-32 h-32 bg-red-600/10 rounded-full blur-2xl"></div>
+
+        <div class="relative flex justify-between items-start mb-8">
+          <div>
+            <h1 class="text-xl font-black text-white tracking-tighter font-['Urbanist'] leading-none">INDUSTRIAL</h1>
+            <p class="text-red-500 font-bold tracking-[0.3em] text-[9px] uppercase">Muscle Gym Member</p>
+          </div>
+          <span id="cardStatusBadge" class="text-[9px] px-3 py-1 rounded-full border font-bold uppercase tracking-widest shrink-0">--</span>
+        </div>
+
+        <div class="relative mb-6">
+          <p class="text-gray-500 text-[9px] uppercase tracking-widest mb-1">ชื่อสมาชิก</p>
+          <p id="cardMemberName" class="text-white text-xl font-bold">--</p>
+        </div>
+
+        <div class="relative grid grid-cols-2 gap-4 mb-6">
+          <div>
+            <p class="text-gray-500 text-[9px] uppercase tracking-widest mb-1">แพ็กเกจ</p>
+            <p id="cardPackage" class="text-red-400 text-sm font-bold">--</p>
+          </div>
+          <div>
+            <p class="text-gray-500 text-[9px] uppercase tracking-widest mb-1">สมาชิกตั้งแต่</p>
+            <p id="cardStartDate" class="text-gray-300 text-sm font-mono">--</p>
+          </div>
+        </div>
+
+        <div class="relative flex justify-between items-end pt-4 border-t border-red-900/40">
+          <div>
+            <p class="text-gray-500 text-[9px] uppercase tracking-widest mb-1">วันหมดอายุ</p>
+            <p id="cardExpiryDate" class="text-white text-lg font-black font-mono">--</p>
+          </div>
+          <div class="text-right">
+            <p class="text-gray-500 text-[9px] uppercase tracking-widest mb-1">เบอร์โทร</p>
+            <p id="cardPhone" class="text-gray-400 text-xs font-mono">--</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ เพิ่มไปหน้าจอโฮม ============ -->
+      <div class="glass-card p-5 rounded-3xl">
+        <h3 class="text-xs font-bold text-white uppercase tracking-wider mb-2">
+          <i class="fa-solid fa-mobile-screen-button mr-2 text-red-500"></i>เพิ่มไปที่หน้าจอโฮม
+        </h3>
+        <p class="text-gray-500 text-[11px] mb-3">เพิ่มไอคอนไว้ที่หน้าจอโฮม เปิดดูบัตรนี้ได้เร็วขึ้นโดยไม่ต้องเข้าแอปใหม่ทุกครั้ง</p>
+        <div id="addToHomeInstructions" class="bg-black/40 border border-gray-800 rounded-xl p-4 text-xs text-gray-300 space-y-1"></div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ============ Modal โปรไฟล์เทรนเนอร์ ============ -->
+  <div id="trainerProfileModal" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-4">
+    <div class="glass-card w-full max-w-md rounded-3xl p-6 relative max-h-[85vh] overflow-y-auto custom-scroll">
+      <button onclick="closeTrainerProfile()" class="absolute top-4 right-4 text-gray-500 hover:text-white cursor-pointer"><i class="fa-solid fa-xmark text-lg"></i></button>
+
+      <div class="text-center mb-5">
+        <div class="w-24 h-24 mx-auto rounded-2xl bg-black border-2 border-red-700 overflow-hidden mb-3 relative">
+          <div class="absolute inset-0 flex items-center justify-center">
+            <i id="modalTrainerPlaceholder" class="fa-solid fa-user text-4xl text-gray-700"></i>
+          </div>
+          <img id="modalTrainerPhoto" src="" onerror="this.classList.add('hidden'); document.getElementById('modalTrainerPlaceholder').classList.remove('hidden');" class="hidden absolute inset-0 w-full h-full object-cover">
+        </div>
+        <h2 id="modalTrainerName" class="text-xl font-bold text-white">--</h2>
+        <p id="modalTrainerSpecialty" class="text-red-400 text-xs font-medium mt-1">--</p>
+      </div>
+
+      <div class="mb-5">
+        <p class="text-[10px] uppercase font-bold text-gray-500 tracking-widest mb-2">ประวัติ / ผลงาน</p>
+        <p id="modalTrainerBio" class="text-gray-300 text-sm leading-relaxed whitespace-pre-line">ยังไม่มีข้อมูลประวัติ</p>
+      </div>
+
+      <div class="mb-6">
+        <p class="text-[10px] uppercase font-bold text-gray-500 tracking-widest mb-2">ตารางเวลาทำงาน</p>
+        <div id="modalTrainerDays" class="flex flex-wrap gap-1.5 mb-2"></div>
+        <p id="modalTrainerHours" class="text-gray-400 text-xs font-mono">--:-- - --:--</p>
+      </div>
+
+      <button onclick="bookThisTrainer()" class="w-full bg-red-600 hover:bg-red-500 text-white font-bold py-3 rounded-xl text-xs uppercase cursor-pointer">
+        <i class="fa-solid fa-calendar-check mr-1"></i> จองคิวกับเทรนเนอร์คนนี้
+      </button>
+    </div>
+  </div>
+
+  <footer class="text-center py-4 text-[10px] text-gray-600">
+    <p>© INDUSTRIAL MUSCLE GYM. ALL RIGHTS RESERVED.</p>
+  </footer>
+
+  <script>
+    // ได้รับ token มาจากการ Login ที่ผ่านการตรวจสอบแล้วเท่านั้น (MemberLogin.html -> loginMember())
+    const SESSION_TOKEN = "<?= sessionToken ?>";
+
+    let selectedTrainerId = '';
+    let selectedSlot = '';
+
+    function loadProfile() {
+      google.script.run
+        .withSuccessHandler(renderMemberDashboard)
+        .withFailureHandler(goToMemberLoginIfExpired)
+        .getMemberProfile(SESSION_TOKEN);
+    }
+
+    function goToMemberLoginIfExpired(err) {
+      const msg = (err && err.message) ? err.message : String(err);
+      if (msg.indexOf('Session') !== -1) {
+        localStorage.removeItem('im_member_token');
+      }
+      alert(msg.indexOf('Session') !== -1 ? 'Session หมดอายุ กรุณา Login ใหม่' : ('เกิดข้อผิดพลาด: ' + msg));
+      window.top.location.href = "<?= getScriptUrl() ?>?page=member";
+    }
+
+    let currentMemberProfile = null;
+
+    function renderMemberDashboard(m) {
+      currentMemberProfile = m;
+      document.getElementById('loadingSection').classList.add('hidden');
+      document.getElementById('memberDashboard').classList.remove('hidden');
+
+      document.getElementById('displayName').innerText = m.fullName;
+      document.getElementById('displayPackage').innerText = m.package;
+      document.getElementById('displayExpiry').innerText = m.expiryDate;
+      document.getElementById('displayPin').innerText = m.pin || 'ไม่ได้ตั้งไว้';
+
+      const statusEl = document.getElementById('displayStatus');
+      if (m.status === 'Active') {
+        statusEl.innerText = 'Active';
+        statusEl.className = 'px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-green-950 text-green-400 border border-green-800';
+      } else if (m.status === 'Suspended') {
+        statusEl.innerText = 'Freeze';
+        statusEl.className = 'px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-yellow-950 text-yellow-400 border border-yellow-800';
+      } else {
+        statusEl.innerText = m.status || 'Inactive';
+        statusEl.className = 'px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-gray-800 text-gray-400 border border-gray-700';
+      }
+
+      renderExpiryAlertBanner(m);
+      document.getElementById('birthdayBanner').classList.toggle('hidden', !m.isBirthdayMonth);
+      if (m.isBirthdayMonth && m.birthdayDiscountLabel) {
+        document.getElementById('birthdayBannerText').innerText = '🎂 เดือนเกิดของคุณ! ต่ออายุสมาชิกภาพเดือนนี้รับส่วนลด ' + m.birthdayDiscountLabel + ' ทันที';
+      }
+      renderMemberLineStatus(m.lineLinked);
+
+      const historyEl = document.getElementById('paymentHistoryList');
+      if (m.paymentHistory && m.paymentHistory.length > 0) {
+        historyEl.innerHTML = '';
+        m.paymentHistory.forEach(p => {
+          const row = document.createElement('div');
+          row.className = "flex justify-between items-center text-xs border-b border-gray-900 pb-2 last:border-0 last:pb-0";
+          row.innerHTML = `
+            <div>
+              <p class="text-white font-medium">${p.package}</p>
+              <p class="text-gray-600 text-[10px] font-mono">${p.timestamp}</p>
+            </div>
+            <span class="text-green-400 font-mono font-bold">${p.newExpiry}</span>
+          `;
+          historyEl.appendChild(row);
+        });
+      }
+    }
+
+    function renderExpiryAlertBanner(m) {
+      const banner = document.getElementById('expiryAlertBanner');
+      const icon = document.getElementById('expiryAlertIcon');
+      const text = document.getElementById('expiryAlertText');
+
+      if (m.isExpired) {
+        banner.className = 'rounded-2xl p-4 flex items-center gap-3 bg-red-950/50 border border-red-800';
+        icon.className = 'fa-solid fa-circle-xmark text-xl shrink-0 text-red-500';
+        text.className = 'text-xs font-bold leading-relaxed text-red-300';
+        text.innerText = 'สมาชิกภาพของคุณหมดอายุไปแล้ว ' + Math.abs(m.daysLeft) + ' วัน กรุณาติดต่อเจ้าหน้าที่เพื่อต่ออายุ';
+        banner.classList.remove('hidden');
+      } else if (m.nearExpiry) {
+        banner.className = 'rounded-2xl p-4 flex items-center gap-3 bg-yellow-950/40 border border-yellow-700';
+        icon.className = 'fa-solid fa-triangle-exclamation text-xl shrink-0 text-yellow-500';
+        text.className = 'text-xs font-bold leading-relaxed text-yellow-300';
+        text.innerText = m.daysLeft === 0
+          ? 'สมาชิกภาพของคุณหมดอายุวันนี้! กรุณาต่ออายุเพื่อใช้บริการต่อเนื่อง'
+          : 'สมาชิกภาพของคุณใกล้หมดอายุ เหลืออีก ' + m.daysLeft + ' วัน กรุณาต่ออายุล่วงหน้า';
+        banner.classList.remove('hidden');
+      } else {
+        banner.classList.add('hidden');
+      }
+    }
+
+    function toggleChangePinForm() {
+      document.getElementById('changePinForm').classList.toggle('hidden');
+    }
+
+    function submitChangePin() {
+      const oldPin = document.getElementById('oldPinInput').value.trim();
+      const newPin = document.getElementById('newPinInput').value.trim();
+      if (!/^\d{4}$/.test(oldPin) || !/^\d{4}$/.test(newPin)) {
+        alert('กรุณากรอก PIN เดิมและ PIN ใหม่ให้ครบ 4 หลัก');
+        return;
+      }
+      const btn = document.getElementById('btnChangePin');
+      btn.disabled = true; btn.innerText = 'กำลังบันทึก...';
+
+      google.script.run
+        .withSuccessHandler(res => {
+          alert(res.message);
+          btn.disabled = false; btn.innerText = 'บันทึก PIN ใหม่';
+          if (res.success) {
+            document.getElementById('oldPinInput').value = '';
+            document.getElementById('newPinInput').value = '';
+            document.getElementById('changePinForm').classList.add('hidden');
+            loadProfile(); // รีโหลดข้อมูลเพื่ออัปเดต displayPin
+          }
+        })
+        .withFailureHandler(err => {
+          goToMemberLoginIfExpired(err);
+          btn.disabled = false; btn.innerText = 'บันทึก PIN ใหม่';
+        })
+        .changeMemberPin(SESSION_TOKEN, oldPin, newPin);
+    }
+
+    // ==========================================
+    // เทรนเนอร์ของเรา (โปรไฟล์ + ประวัติ) + จองคิวเทรนเนอร์
+    // ==========================================
+    function openTrainerScreen() {
+      document.getElementById('trainerScreen').classList.remove('hidden');
+    }
+
+    function closeTrainerScreen() {
+      document.getElementById('trainerScreen').classList.add('hidden');
+    }
+
+    function openCardScreen() {
+      if (!currentMemberProfile) return;
+      const m = currentMemberProfile;
+
+      document.getElementById('cardMemberName').innerText = m.fullName;
+      document.getElementById('cardPackage').innerText = m.package;
+      document.getElementById('cardStartDate').innerText = m.startDate || '--';
+      document.getElementById('cardExpiryDate').innerText = m.expiryDate || '--';
+      document.getElementById('cardPhone').innerText = m.phone || '--';
+
+      const badge = document.getElementById('cardStatusBadge');
+      if (m.status === 'Active') {
+        badge.innerText = 'ACTIVE';
+        badge.className = 'text-[9px] px-3 py-1 rounded-full border font-bold uppercase tracking-widest shrink-0 bg-green-950 text-green-400 border-green-800';
+      } else if (m.status === 'Suspended') {
+        badge.innerText = 'FREEZE';
+        badge.className = 'text-[9px] px-3 py-1 rounded-full border font-bold uppercase tracking-widest shrink-0 bg-yellow-950 text-yellow-400 border-yellow-800';
+      } else {
+        badge.innerText = m.status || 'INACTIVE';
+        badge.className = 'text-[9px] px-3 py-1 rounded-full border font-bold uppercase tracking-widest shrink-0 bg-gray-800 text-gray-400 border-gray-700';
+      }
+
+      renderAddToHomeInstructions();
+      document.getElementById('cardScreen').classList.remove('hidden');
+    }
+
+    function closeCardScreen() {
+      document.getElementById('cardScreen').classList.add('hidden');
+    }
+
+    function renderAddToHomeInstructions() {
+      const el = document.getElementById('addToHomeInstructions');
+      const ua = navigator.userAgent;
+      const isIOS = /iPad|iPhone|iPod/.test(ua);
+      const isAndroid = /Android/.test(ua);
+
+      if (isIOS) {
+        el.innerHTML =
+          '<p>1. แตะปุ่ม <b>แชร์</b> <i class="fa-solid fa-arrow-up-from-bracket"></i> ที่แถบด้านล่างของ Safari</p>' +
+          '<p>2. เลื่อนหา <b>"เพิ่มไปยังหน้าจอโฮม"</b> (Add to Home Screen)</p>' +
+          '<p>3. กด <b>"เพิ่ม"</b> — จะมีไอคอนแอปนี้อยู่ที่หน้าจอโฮมทันที</p>';
+      } else if (isAndroid) {
+        el.innerHTML =
+          '<p>1. แตะเมนู <b>⋮</b> มุมขวาบนของเบราว์เซอร์</p>' +
+          '<p>2. เลือก <b>"เพิ่มไปยังหน้าจอโฮม"</b> หรือ <b>"ติดตั้งแอป"</b></p>' +
+          '<p>3. กดยืนยัน — จะมีไอคอนแอปนี้อยู่ที่หน้าจอโฮมทันที</p>';
+      } else {
+        el.innerHTML = '<p>เปิดหน้านี้จากมือถือ แล้วใช้เมนูเบราว์เซอร์เพื่อ "เพิ่มไปยังหน้าจอโฮม"</p>';
+      }
+    }
+
+    let localTrainersForProfile = [];
+    const TRAINER_DAY_LABEL_ = { Mon: 'จันทร์', Tue: 'อังคาร', Wed: 'พุธ', Thu: 'พฤหัสบดี', Fri: 'ศุกร์', Sat: 'เสาร์', Sun: 'อาทิตย์' };
+
+    function loadAvailableTrainers() {
+      google.script.run
+        .withSuccessHandler(list => {
+          localTrainersForProfile = list || [];
+
+          const select = document.getElementById('trainerSelect');
+          select.innerHTML = '<option value="">-- เลือกเทรนเนอร์ --</option>';
+          list.forEach(t => {
+            const opt = document.createElement('option');
+            opt.value = t.trainerId;
+            opt.innerText = t.fullName + (t.specialty ? ' (' + t.specialty + ')' : '');
+            select.appendChild(opt);
+          });
+
+          renderTrainerProfileGrid(list);
+        })
+        .withFailureHandler(goToMemberLoginIfExpired)
+        .getAvailableTrainers(SESSION_TOKEN);
+    }
+
+    function renderTrainerProfileGrid(list) {
+      const grid = document.getElementById('trainerProfileGrid');
+      if (!list || list.length === 0) {
+        grid.innerHTML = '<p class="text-gray-600 text-xs text-center py-6 col-span-full">ยังไม่มีเทรนเนอร์ในระบบ</p>';
+        return;
+      }
+      grid.innerHTML = '';
+      list.forEach(t => {
+        const card = document.createElement('div');
+        card.className = 'bg-black/40 border border-gray-800 hover:border-red-500/50 rounded-2xl p-3 text-center cursor-pointer transition-all';
+        card.onclick = () => openTrainerProfile(t.trainerId);
+        const photoHtml = t.photoUrl
+          ? `<div class="w-16 h-16 rounded-xl bg-gray-900 mx-auto mb-2 flex items-center justify-center border-2 border-gray-800 overflow-hidden relative"><img src="${t.photoUrl}" onerror="this.style.display='none'" class="w-full h-full object-cover absolute inset-0"><i class="fa-solid fa-user text-xl text-gray-700 relative"></i></div>`
+          : `<div class="w-16 h-16 rounded-xl bg-gray-900 mx-auto mb-2 flex items-center justify-center border-2 border-gray-800"><i class="fa-solid fa-user text-xl text-gray-700"></i></div>`;
+        const busyBadgeHtml = t.busyStatus === 'Busy'
+          ? '<span class="text-[9px] bg-red-950 text-red-400 border border-red-800 px-1.5 py-0.5 rounded-full font-bold mt-1 inline-block">ติดลูกค้า</span>'
+          : '<span class="text-[9px] bg-green-950 text-green-400 border border-green-800 px-1.5 py-0.5 rounded-full font-bold mt-1 inline-block">ว่าง</span>';
+        card.innerHTML = photoHtml +
+          `<p class="text-white text-xs font-bold truncate">${t.fullName}</p>` +
+          `<p class="text-red-400 text-[10px] truncate">${t.specialty || 'เทรนเนอร์'}</p>` +
+          busyBadgeHtml;
+        grid.appendChild(card);
+      });
+    }
+
+    let selectedProfileTrainerId = '';
+
+    function openTrainerProfile(trainerId) {
+      const t = localTrainersForProfile.find(x => x.trainerId === trainerId);
+      if (!t) return;
+      selectedProfileTrainerId = trainerId;
+
+      const photo = document.getElementById('modalTrainerPhoto');
+      const placeholder = document.getElementById('modalTrainerPlaceholder');
+      if (t.photoUrl) { photo.src = t.photoUrl; photo.classList.remove('hidden'); placeholder.classList.add('hidden'); }
+      else { photo.classList.add('hidden'); placeholder.classList.remove('hidden'); }
+
+      document.getElementById('modalTrainerName').innerText = t.fullName;
+      document.getElementById('modalTrainerSpecialty').innerText = t.specialty || 'เทรนเนอร์ประจำยิม';
+      document.getElementById('modalTrainerBio').innerText = t.bio && t.bio.trim() ? t.bio : 'ยังไม่มีข้อมูลประวัติ';
+
+      const daysEl = document.getElementById('modalTrainerDays');
+      daysEl.innerHTML = '';
+      (t.workingDays || []).forEach(d => {
+        const chip = document.createElement('span');
+        chip.className = 'text-[10px] bg-red-950 text-red-400 border border-red-800 px-2 py-1 rounded-full font-bold';
+        chip.innerText = TRAINER_DAY_LABEL_[d] || d;
+        daysEl.appendChild(chip);
+      });
+      document.getElementById('modalTrainerHours').innerText = (t.startHour || '--:--') + ' - ' + (t.endHour || '--:--') + ' น.';
+
+      document.getElementById('trainerProfileModal').classList.remove('hidden');
+    }
+
+    function closeTrainerProfile() {
+      document.getElementById('trainerProfileModal').classList.add('hidden');
+    }
+
+    function bookThisTrainer() {
+      closeTrainerProfile();
+      document.getElementById('trainerSelect').value = selectedProfileTrainerId;
+      onTrainerChange();
+      document.getElementById('trainerBookingSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    function onTrainerChange() {
+      selectedTrainerId = document.getElementById('trainerSelect').value;
+      if (!document.getElementById('bookingDate').value) {
+        document.getElementById('bookingDate').valueAsDate = new Date();
+      }
+      loadTrainerSlots();
+    }
+
+    function loadTrainerSlots() {
+      const dateStr = document.getElementById('bookingDate').value;
+      const container = document.getElementById('slotsContainer');
+      const msg = document.getElementById('slotsMsg');
+      container.innerHTML = '';
+      msg.innerText = '';
+      document.getElementById('btnConfirmBooking').classList.add('hidden');
+      selectedSlot = '';
+
+      if (!selectedTrainerId || !dateStr) return;
+      msg.innerText = 'กำลังโหลดช่วงเวลาว่าง...';
+
+      google.script.run
+        .withSuccessHandler(res => {
+          msg.innerText = '';
+          if (!res.success) { msg.innerText = res.message || 'เกิดข้อผิดพลาด'; return; }
+
+          const freeSlots = res.slots || [];
+          const bookedSlots = res.bookedSlots || [];
+          if (freeSlots.length === 0 && bookedSlots.length === 0) {
+            msg.innerText = res.message || 'ไม่มีช่วงเวลาในวันที่เลือก';
+            return;
+          }
+
+          freeSlots.forEach(slot => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'bg-black border border-gray-800 hover:border-red-500 text-gray-300 text-[11px] py-2 rounded-lg cursor-pointer';
+            btn.innerText = slot;
+            btn.onclick = () => selectSlot(slot, btn);
+            container.appendChild(btn);
+          });
+
+          bookedSlots.forEach(slot => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'bg-yellow-950/40 border border-yellow-800 text-yellow-500 text-[10px] py-2 rounded-lg cursor-pointer flex flex-col items-center leading-tight';
+            btn.innerHTML = slot + '<span class="text-[8px] mt-0.5">เต็ม - เข้าคิวรอ</span>';
+            btn.onclick = () => joinWaitlistUI(slot);
+            container.appendChild(btn);
+          });
+        })
+        .withFailureHandler(goToMemberLoginIfExpired)
+        .getTrainerAvailableSlots(SESSION_TOKEN, selectedTrainerId, dateStr);
+    }
+
+    function joinWaitlistUI(slot) {
+      const dateStr = document.getElementById('bookingDate').value;
+      if (!confirm('ช่วงเวลา ' + slot + ' เต็มแล้ว ต้องการเข้าคิวรอไหม? ถ้ามีคนยกเลิก ระบบจะแจ้งคุณทันที')) return;
+      google.script.run
+        .withSuccessHandler(res => {
+          alert(res.message);
+          if (res.success) loadMyWaitlist();
+        })
+        .withFailureHandler(goToMemberLoginIfExpired)
+        .joinWaitlist(SESSION_TOKEN, selectedTrainerId, dateStr, slot);
+    }
+
+    function selectSlot(slot, btnEl) {
+      selectedSlot = slot;
+      document.querySelectorAll('#slotsContainer button').forEach(b => {
+        b.className = 'bg-black border border-gray-800 hover:border-red-500 text-gray-300 text-[11px] py-2 rounded-lg cursor-pointer';
+      });
+      btnEl.className = 'bg-red-600 border border-red-500 text-white text-[11px] py-2 rounded-lg cursor-pointer font-bold';
+      document.getElementById('selectedSlotText').innerText = slot;
+      document.getElementById('btnConfirmBooking').classList.remove('hidden');
+    }
+
+    function confirmBooking() {
+      const dateStr = document.getElementById('bookingDate').value;
+      if (!selectedTrainerId || !dateStr || !selectedSlot) return;
+      const btn = document.getElementById('btnConfirmBooking');
+      btn.disabled = true;
+
+      google.script.run
+        .withSuccessHandler(res => {
+          alert(res.message);
+          btn.disabled = false;
+          if (res.success) {
+            loadTrainerSlots();
+            loadMyBookings();
+          }
+        })
+        .withFailureHandler(err => { goToMemberLoginIfExpired(err); btn.disabled = false; })
+        .bookTrainerSlot(SESSION_TOKEN, selectedTrainerId, dateStr, selectedSlot);
+    }
+
+    function loadMyBookings() {
+      const container = document.getElementById('myBookingsList');
+      google.script.run
+        .withSuccessHandler(list => {
+          if (!list || list.length === 0) {
+            container.innerHTML = '<p class="text-gray-600 text-xs text-center py-4">ไม่มีคิวที่จอง</p>';
+            return;
+          }
+          container.innerHTML = '';
+          list.forEach(b => {
+            let badgeClass = 'bg-green-950 text-green-400 border-green-800';
+            if (b.status === 'Cancelled') badgeClass = 'bg-gray-800 text-gray-400 border-gray-700';
+            else if (b.status === 'Completed') badgeClass = 'bg-blue-950 text-blue-400 border-blue-800';
+
+            const row = document.createElement('div');
+            row.className = 'flex justify-between items-center text-xs border-b border-gray-900 pb-2 last:border-0 last:pb-0';
+            row.innerHTML =
+              '<div>' +
+                '<p class="text-white font-medium">' + b.trainerName + '</p>' +
+                '<p class="text-gray-500 text-[10px] font-mono">' + b.date + ' • ' + b.timeSlot + '</p>' +
+              '</div>' +
+              '<div class="flex items-center gap-2">' +
+                '<span class="text-[9px] px-2 py-0.5 rounded-full border ' + badgeClass + ' font-bold uppercase">' + b.status + '</span>' +
+                (b.status === 'Booked' ? '<button onclick="cancelBooking(\'' + b.bookingId + '\')" class="text-red-500 hover:text-red-400 cursor-pointer"><i class="fa-solid fa-xmark"></i></button>' : '') +
+              '</div>';
+            container.appendChild(row);
+          });
+        })
+        .withFailureHandler(goToMemberLoginIfExpired)
+        .getMyBookings(SESSION_TOKEN);
+    }
+
+    function loadMyWaitlist() {
+      const container = document.getElementById('myWaitlistList');
+      google.script.run
+        .withSuccessHandler(list => {
+          if (!list || list.length === 0) {
+            container.innerHTML = '<p class="text-gray-600 text-xs text-center py-4">ไม่มีคิวที่รออยู่</p>';
+            return;
+          }
+          container.innerHTML = '';
+          list.forEach(w => {
+            let badgeClass = 'bg-yellow-950 text-yellow-400 border-yellow-800';
+            if (w.status === 'Notified') badgeClass = 'bg-green-950 text-green-400 border-green-800';
+
+            const row = document.createElement('div');
+            row.className = 'flex justify-between items-center text-xs border-b border-gray-900 pb-2 last:border-0 last:pb-0';
+            row.innerHTML =
+              '<div>' +
+                '<p class="text-white font-medium">' + w.trainerName + '</p>' +
+                '<p class="text-gray-500 text-[10px] font-mono">' + w.date + ' • ' + w.timeSlot + '</p>' +
+              '</div>' +
+              '<div class="flex items-center gap-2">' +
+                '<span class="text-[9px] px-2 py-0.5 rounded-full border ' + badgeClass + ' font-bold uppercase">' + (w.status === 'Notified' ? 'ว่างแล้ว!' : 'กำลังรอ') + '</span>' +
+                '<button onclick="cancelWaitlistUI(' + w.rowNumber + ')" class="text-red-500 hover:text-red-400 cursor-pointer"><i class="fa-solid fa-xmark"></i></button>' +
+              '</div>';
+            container.appendChild(row);
+          });
+        })
+        .withFailureHandler(goToMemberLoginIfExpired)
+        .getMyWaitlist(SESSION_TOKEN);
+    }
+
+    function cancelWaitlistUI(rowNumber) {
+      if (!confirm('ยืนยันยกเลิกการรอคิวนี้?')) return;
+      google.script.run
+        .withSuccessHandler(res => { alert(res.message); if (res.success) loadMyWaitlist(); })
+        .withFailureHandler(goToMemberLoginIfExpired)
+        .cancelMyWaitlistEntry(SESSION_TOKEN, rowNumber);
+    }
+
+    // ==========================================
+    // 💬 เชื่อมต่อ LINE รับแจ้งเตือน (ใกล้หมดอายุ / วันเกิด / คูปองใหม่)
+    // ==========================================
+
+    function renderMemberLineStatus(linked) {
+      const statusText = document.getElementById('memberLineStatusText');
+      const linkedSection = document.getElementById('memberLineLinkedSection');
+      const notLinkedSection = document.getElementById('memberLineNotLinkedSection');
+      if (linked) {
+        statusText.innerText = '✅ เชื่อมต่อแล้ว';
+        linkedSection.classList.remove('hidden');
+        notLinkedSection.classList.add('hidden');
+        document.getElementById('memberLineLinkInstructions').classList.add('hidden');
+      } else {
+        statusText.innerText = 'ยังไม่ได้เชื่อมต่อ';
+        linkedSection.classList.add('hidden');
+        notLinkedSection.classList.remove('hidden');
+      }
+    }
+
+    function startMemberLineLink() {
+      google.script.run
+        .withSuccessHandler(res => {
+          if (!res.success) { alert(res.message); return; }
+          document.getElementById('memberLineLinkCodeDisplay').innerText = res.code;
+          document.getElementById('memberLineLinkInstructions').classList.remove('hidden');
+
+          google.script.run
+            .withSuccessHandler(settings => {
+              const link = document.getElementById('memberLineAddFriendLink');
+              if (settings.addFriendUrl) {
+                link.href = settings.addFriendUrl;
+                link.innerText = 'แตะเพื่อเพิ่มเพื่อน LINE ร้าน';
+              } else {
+                link.href = '#';
+                link.innerText = 'ยังไม่มีลิงก์เพิ่มเพื่อน - สอบถามแอดมิน';
+              }
+            })
+            .withFailureHandler(goToMemberLoginIfExpired)
+            .getLineAddFriendUrlForMember(SESSION_TOKEN);
+        })
+        .withFailureHandler(goToMemberLoginIfExpired)
+        .generateMyMemberLineLinkCode(SESSION_TOKEN);
+    }
+
+    function unlinkMemberLineUI() {
+      if (!confirm('ยืนยันยกเลิกการเชื่อมต่อ LINE?')) return;
+      google.script.run
+        .withSuccessHandler(res => {
+          alert(res.message);
+          if (res.success) renderMemberLineStatus(false);
+        })
+        .withFailureHandler(goToMemberLoginIfExpired)
+        .unlinkMyMemberLine(SESSION_TOKEN);
+    }
+
+    function cancelBooking(bookingId) {
+      if (!confirm('ยืนยันยกเลิกคิวนี้?')) return;
+      google.script.run
+        .withSuccessHandler(res => { alert(res.message); loadMyBookings(); loadTrainerSlots(); })
+        .withFailureHandler(goToMemberLoginIfExpired)
+        .cancelMyBooking(SESSION_TOKEN, bookingId);
+    }
+
+    function logoutClient() {
+      if (!confirm('ยืนยันออกจากระบบ?')) return;
+      google.script.run.logoutMember(SESSION_TOKEN);
+      localStorage.removeItem('im_member_token');
+      localStorage.removeItem('im_member_biometric');
+      localStorage.removeItem('im_member_biometric_id');
+      window.top.location.href = "<?= getScriptUrl() ?>?page=member";
+    }
+
+    window.onload = () => {
+      loadProfile();
+      loadAvailableTrainers();
+      loadMyBookings();
+      loadMyWaitlist();
+    };
+  </script>
+
+</body>
+</html>

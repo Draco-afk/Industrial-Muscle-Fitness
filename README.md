@@ -41,11 +41,42 @@ Done against the real project:
 Not done yet:
 - **Cloud Functions are not deployed** — they require upgrading the project to the
   Blaze (pay-as-you-go) plan first. Local dev/testing works fine without it via
-  `firebase emulators:start` (see `firebase/README` usage in the migration plan).
+  `firebase emulators:start` (see below).
 - Only the Auth + Members modules are ported (see `docs/firestore-schema.md` for
   what's schema-only vs. implemented). 20 modules remain.
-- No frontend/Hosting yet — the existing HTML pages still call
-  `google.script.run`, not Firebase.
+
+## Frontend (`firebase/hosting/`)
+
+New pages built against the Auth + Members backend (plain ES modules + the
+Firebase SDK from CDN, no build step):
+
+- `login.html` / `member-login.html` — admin and member login, same visual
+  design as the original `Login.html` / `MemberLogin.html`.
+- `admin/members.html` — member list, add/edit/delete, manual check-in.
+- `member/index.html` — member's own profile, payment history, PIN change.
+- `shared/firebase-init.js` — Firebase app/auth/functions init + a
+  `callServer()` helper. Auto-connects to the local emulator suite when
+  served from `localhost`, talks to the real project otherwise — same code
+  both ways, no separate "dev" build.
+
+Not built yet: everything the other 20 backend modules would power
+(trainers, bookings, payments, coupons, LINE, reports, etc.) — the admin
+dashboard only covers what `02_members.js` implements today.
+
+### Running it locally
+
+```bash
+cd firebase
+firebase emulators:start --only firestore,auth,functions,hosting --project industrial-muscle-fitness
+# in another terminal, seed data into the running emulator:
+cd ..
+GCLOUD_PROJECT=industrial-muscle-fitness node scripts/migrate-members-to-firestore.js
+```
+Then open `http://localhost:5000/login.html`. There's no admin account in a
+fresh emulator — create one by hand (Firestore emulator UI at
+`http://localhost:4000/firestore`, `admins` collection, fields `username`,
+`passwordHash` [sha256 hex of the password — see `firebase/functions/src/util/hash.js`],
+`role`, `email`).
 
 Local machine setup notes (for reference): Firestore emulator needed a Java 21
 JDK (Eclipse Temurin, installed via winget) since only Java 8 was present.

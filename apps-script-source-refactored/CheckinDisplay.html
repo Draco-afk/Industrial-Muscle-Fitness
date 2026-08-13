@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>INDUSTRIAL Muscle - Check-in Display</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Urbanist:wght@400;700;900&family=Prompt:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+  <style>
+    * { -webkit-tap-highlight-color: transparent; }
+    body {
+      background-color: #050505;
+      color: #F3F4F6;
+      font-family: 'Prompt', sans-serif;
+      background-image:
+        repeating-linear-gradient(90deg, rgba(255,255,255,0.02) 0px, rgba(255,255,255,0.02) 1px, transparent 1px, transparent 16px),
+        radial-gradient(ellipse at top, rgba(220, 38, 38, 0.08), transparent 55%);
+      background-size: 16px 100%, 100% 100%;
+      overflow: hidden;
+      height: 100vh;
+      width: 100vw;
+    }
+    .glow-idle { box-shadow: 0 0 90px rgba(220, 38, 38, 0.12), inset 0 0 60px rgba(220,38,38,0.03); }
+    .glow-success { box-shadow: 0 0 120px rgba(34, 197, 94, 0.35), inset 0 0 80px rgba(34,197,94,0.06); }
+    .glow-blocked { box-shadow: 0 0 120px rgba(239, 68, 68, 0.35), inset 0 0 80px rgba(239,68,68,0.06); }
+
+    @keyframes pulse-ring {
+      0% { transform: scale(0.9); opacity: 0.6; }
+      70% { transform: scale(1.35); opacity: 0; }
+      100% { transform: scale(1.35); opacity: 0; }
+    }
+    .pulse-ring { animation: pulse-ring 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+
+    @keyframes pop-in {
+      0% { transform: scale(0.85); opacity: 0; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+    .pop-in { animation: pop-in 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+
+    @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+    .fade-in { animation: fade-in 0.4s ease both; }
+  </style>
+</head>
+<body class="flex items-center justify-center p-4 sm:p-8">
+
+  <!-- ===================== หน้าจอรอ (Idle State) ===================== -->
+  <div id="idleScreen" class="w-full max-w-3xl mx-auto text-center fade-in">
+    <div class="mb-10">
+      <h1 class="text-4xl sm:text-6xl font-black text-white tracking-tighter font-['Urbanist'] leading-none">INDUSTRIAL</h1>
+      <p class="text-red-600 font-bold tracking-[0.4em] text-lg sm:text-2xl uppercase mt-1">Muscle</p>
+    </div>
+
+    <div class="relative w-56 h-56 sm:w-72 sm:h-72 mx-auto flex items-center justify-center mb-10">
+      <div class="absolute inset-0 rounded-full border-2 border-red-600/40 pulse-ring"></div>
+      <div class="absolute inset-6 rounded-full border-2 border-red-600/30 pulse-ring" style="animation-delay: 0.6s;"></div>
+      <div class="relative w-40 h-40 sm:w-52 sm:h-52 rounded-full bg-black/60 border border-red-900 flex items-center justify-center glow-idle">
+        <i class="fa-solid fa-fingerprint text-6xl sm:text-8xl text-red-600"></i>
+      </div>
+    </div>
+
+    <p class="text-xl sm:text-2xl font-bold text-white mb-2">กรุณาสแกนลายนิ้วมือเพื่อเข้าใช้บริการ</p>
+    <p class="text-gray-500 text-sm sm:text-base">Please scan your fingerprint to check in</p>
+
+    <div id="clockDisplay" class="mt-14 text-gray-600 font-mono text-sm sm:text-base tracking-widest">--:--:--</div>
+  </div>
+
+  <!-- ===================== หน้าจอผลลัพธ์ (Result State) ===================== -->
+  <div id="resultScreen" class="hidden w-full max-w-2xl mx-auto text-center">
+    <div id="resultCard" class="pop-in rounded-[2.5rem] p-10 sm:p-14 border relative overflow-hidden">
+      <div id="resultIconWrap" class="w-28 h-28 sm:w-36 sm:h-36 mx-auto rounded-full flex items-center justify-center mb-6 border-4">
+        <i id="resultIcon" class="text-6xl sm:text-7xl"></i>
+      </div>
+
+      <p id="resultHeadline" class="text-2xl sm:text-4xl font-black mb-2"></p>
+      <h2 id="resultName" class="text-3xl sm:text-5xl font-black text-white font-['Urbanist'] mb-6"></h2>
+
+      <div id="successDetails" class="hidden space-y-3 text-left bg-black/40 rounded-2xl p-5 sm:p-6 border border-gray-800">
+        <div class="flex justify-between items-center text-sm sm:text-base">
+          <span class="text-gray-500 uppercase tracking-wider text-xs sm:text-sm">แพ็กเกจ</span>
+          <span id="resultPackage" class="text-white font-bold">--</span>
+        </div>
+        <div class="flex justify-between items-center text-sm sm:text-base border-t border-gray-900 pt-3">
+          <span class="text-gray-500 uppercase tracking-wider text-xs sm:text-sm">หมดอายุ</span>
+          <span id="resultExpiry" class="text-white font-mono font-bold">--</span>
+        </div>
+        <div class="flex justify-between items-center text-sm sm:text-base border-t border-gray-900 pt-3">
+          <span class="text-gray-500 uppercase tracking-wider text-xs sm:text-sm">เข้าใช้บริการครั้งที่</span>
+          <span id="resultCheckinCount" class="text-red-500 font-black">--</span>
+        </div>
+      </div>
+
+      <div id="expiryWarningBox" class="hidden mt-4 bg-yellow-950/40 border border-yellow-700 rounded-xl p-4 flex items-center gap-3">
+        <i class="fa-solid fa-triangle-exclamation text-yellow-500 text-xl shrink-0"></i>
+        <p id="expiryWarningText" class="text-yellow-300 text-sm sm:text-base font-bold text-left">--</p>
+      </div>
+
+      <p id="resultReason" class="hidden text-red-400 text-sm sm:text-base bg-red-950/40 border border-red-900 rounded-xl p-4"></p>
+
+      <p id="resultTime" class="text-gray-600 font-mono text-xs sm:text-sm mt-6">--:--:--</p>
+    </div>
+  </div>
+
+  <script>
+    const SESSION_TOKEN = "<?= sessionToken ?>";
+
+    let lastSeenRowId = null;
+    let revertTimer = null;
+
+    function goToMainIfExpired(err) {
+      const msg = (err && err.message) ? err.message : String(err);
+      if (msg.indexOf('Session') !== -1) {
+        window.top.location.href = "<?= getScriptUrl() ?>?page=login";
+      }
+    }
+
+    function tickClock() {
+      const now = new Date();
+      const pad = n => n.toString().padStart(2, '0');
+      const timeStr = pad(now.getHours()) + ':' + pad(now.getMinutes()) + ':' + pad(now.getSeconds());
+      const clockEl = document.getElementById('clockDisplay');
+      if (clockEl) clockEl.innerText = timeStr;
+    }
+
+    function showIdle() {
+      document.getElementById('resultScreen').classList.add('hidden');
+      document.getElementById('idleScreen').classList.remove('hidden');
+    }
+
+    function showResult(data) {
+      clearTimeout(revertTimer);
+
+      const isSuccess = data.status === 'SUCCESS';
+      const card = document.getElementById('resultCard');
+      const iconWrap = document.getElementById('resultIconWrap');
+      const icon = document.getElementById('resultIcon');
+      const headline = document.getElementById('resultHeadline');
+      const nameEl = document.getElementById('resultName');
+      const successDetails = document.getElementById('successDetails');
+      const reasonEl = document.getElementById('resultReason');
+      const expiryWarningBox = document.getElementById('expiryWarningBox');
+      const expiryWarningText = document.getElementById('expiryWarningText');
+
+      card.className = 'pop-in rounded-[2.5rem] p-10 sm:p-14 border relative overflow-hidden ' +
+        (isSuccess ? 'bg-green-950/20 border-green-800 glow-success' : 'bg-red-950/20 border-red-900 glow-blocked');
+
+      iconWrap.className = 'w-28 h-28 sm:w-36 sm:h-36 mx-auto rounded-full flex items-center justify-center mb-6 border-4 ' +
+        (isSuccess ? 'bg-green-950/50 border-green-600' : 'bg-red-950/50 border-red-700');
+
+      icon.className = isSuccess ? 'fa-solid fa-circle-check text-6xl sm:text-7xl text-green-500'
+                                  : 'fa-solid fa-circle-xmark text-6xl sm:text-7xl text-red-500';
+
+      headline.innerText = isSuccess ? 'ยินดีต้อนรับ' : 'ไม่สามารถเข้าใช้บริการได้';
+      headline.className = 'text-2xl sm:text-4xl font-black mb-2 ' + (isSuccess ? 'text-green-400' : 'text-red-400');
+
+      nameEl.innerText = isSuccess ? (data.name || '-') : (data.name || 'ไม่ทราบชื่อ');
+
+      let showExtendedTimer = false;
+
+      if (isSuccess) {
+        successDetails.classList.remove('hidden');
+        reasonEl.classList.add('hidden');
+        document.getElementById('resultPackage').innerText = data.package || '-';
+        document.getElementById('resultExpiry').innerText = data.expiryDate || '-';
+        document.getElementById('resultCheckinCount').innerText = (data.checkInCount || '-') + ' ครั้ง';
+
+        if (data.nearExpiry) {
+          expiryWarningBox.classList.remove('hidden');
+          expiryWarningText.innerText = (data.daysLeft < 0)
+            ? '⚠️ สมาชิกภาพหมดอายุไปแล้ว ' + Math.abs(data.daysLeft) + ' วัน กรุณาแจ้งลูกค้าต่ออายุ'
+            : (data.daysLeft === 0
+                ? '⚠️ สมาชิกภาพหมดอายุวันนี้! กรุณาแจ้งลูกค้าต่ออายุ'
+                : '⚠️ ใกล้หมดอายุ เหลืออีก ' + data.daysLeft + ' วัน กรุณาแจ้งลูกค้าต่ออายุ');
+          showExtendedTimer = true;
+        } else {
+          expiryWarningBox.classList.add('hidden');
+        }
+      } else {
+        successDetails.classList.add('hidden');
+        expiryWarningBox.classList.add('hidden');
+        reasonEl.classList.remove('hidden');
+        reasonEl.innerText = data.details || 'ไม่พบสิทธิ์การเข้าใช้บริการ';
+      }
+
+      document.getElementById('resultTime').innerText = data.timeStr || '';
+
+      document.getElementById('idleScreen').classList.add('hidden');
+      document.getElementById('resultScreen').classList.remove('hidden');
+
+      // กลับไปหน้ารอสแกนอัตโนมัติหลังจากแสดงผล (ถ้ามีแจ้งเตือนใกล้หมดอายุ ให้แสดงนานขึ้นเพื่อให้อ่านทัน)
+      revertTimer = setTimeout(showIdle, showExtendedTimer ? 12000 : 8000);
+    }
+
+    function pollLatestCheckIn() {
+      google.script.run
+        .withSuccessHandler(data => {
+          if (data && data.rowId !== lastSeenRowId) {
+            lastSeenRowId = data.rowId;
+            showResult(data);
+          }
+        })
+        .withFailureHandler(goToMainIfExpired)
+        .getLatestCheckIn(SESSION_TOKEN);
+    }
+
+    // เริ่มการทำงาน: ตั้งเวลา, เช็คสถานะล่าสุดครั้งแรกไว้เป็น baseline (ไม่ให้ scan เก่าโผล่ทันที), แล้ว poll ทุก 2 วิ
+    window.onload = () => {
+      setInterval(tickClock, 1000);
+      tickClock();
+
+      google.script.run
+        .withSuccessHandler(data => {
+          lastSeenRowId = data ? data.rowId : null; // baseline กันไม่ให้ประวัติเก่าเด้งขึ้นตอนเปิดจอครั้งแรก
+          setInterval(pollLatestCheckIn, 2000);
+        })
+        .withFailureHandler(goToMainIfExpired)
+        .getLatestCheckIn(SESSION_TOKEN);
+    };
+  </script>
+</body>
+</html>

@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Urbanist:wght@400;700;900&family=Prompt:wght@300;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <style>
+    body { 
+      background-color: #050505; 
+      color: #F3F4F6; 
+      font-family: 'Prompt', sans-serif;
+      background-image:
+        repeating-linear-gradient(90deg, rgba(255,255,255,0.025) 0px, rgba(255,255,255,0.025) 1px, transparent 1px, transparent 14px),
+        radial-gradient(ellipse at top, rgba(220, 38, 38, 0.10), transparent 55%);
+      background-size: 14px 100%, 100% 100%;
+    }
+    .industrial-card {
+      background: rgba(15, 15, 15, 0.9);
+      backdrop-filter: blur(10px);
+      border: 1px solid #222;
+      box-shadow: 0 0 50px rgba(0,0,0,0.5), inset 0 0 20px rgba(220, 38, 38, 0.05);
+    }
+  </style>
+</head>
+<body class="min-h-screen flex items-center justify-center p-6">
+  
+  <div class="industrial-card rounded-3xl p-10 max-w-md w-full relative overflow-hidden">
+    <div class="absolute top-0 left-0 w-1.5 h-full bg-red-600"></div>
+
+    <div class="text-center mb-10">
+      <h1 class="text-5xl font-black text-white tracking-tighter mb-1 font-['Urbanist']">INDUSTRIAL</h1>
+      <h1 class="text-2xl font-bold text-red-500 tracking-[0.3em] uppercase mb-4 font-['Urbanist'] drop-shadow-[0_0_12px_rgba(220,38,38,0.5)]">Muscle</h1>
+      <div class="h-px bg-gradient-to-r from-transparent via-gray-800 to-transparent w-full my-6"></div>
+      <p class="text-gray-500 text-sm tracking-widest uppercase">Admin Terminal Access</p>
+    </div>
+    
+    <div class="space-y-6">
+      <div>
+        <label class="block text-[10px] uppercase tracking-[0.2em] text-gray-500 mb-2 font-bold ml-1">Admin Identity</label>
+        <div class="flex items-center bg-black/50 border border-gray-800 rounded-xl px-4 py-3 focus-within:border-red-500 transition-all">
+          <i class="fa-solid fa-user-ninja text-gray-600 mr-3 text-sm"></i>
+          <input type="text" id="adminUser" placeholder="Enter Username" class="bg-transparent w-full text-white placeholder-gray-700 outline-none font-medium">
+        </div>
+      </div>
+
+      <div>
+        <label class="block text-[10px] uppercase tracking-[0.2em] text-gray-500 mb-2 font-bold ml-1">Security Key</label>
+        <div class="flex items-center bg-black/50 border border-gray-800 rounded-xl px-4 py-3 focus-within:border-red-500 transition-all">
+          <i class="fa-solid fa-key text-gray-600 mr-3 text-sm"></i>
+          <input type="password" id="adminPass" placeholder="••••••••" class="bg-transparent w-full text-white placeholder-gray-700 outline-none tracking-widest">
+        </div>
+      </div>
+      
+      <button onclick="checkLogin()" id="loginBtn" class="w-full bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-400 text-white font-black py-4 rounded-xl text-sm tracking-[0.2em] uppercase mt-4 cursor-pointer transition-all shadow-lg hover:shadow-red-600/20">
+        Authenticate Access
+      </button>
+
+      <p id="errMsg" class="text-red-500 text-[11px] text-center mt-4 hidden bg-red-500/10 py-2 rounded-lg border border-red-500/20">
+        <i class="fa-solid fa-triangle-exclamation mr-1"></i> <span id="errMsgText">Access Denied: Invalid Credentials</span>
+      </p>
+
+      <p class="text-center text-xs text-gray-500 mt-4">
+        <a href="#" onclick="showForgotPassword(); return false;" class="text-red-500 hover:underline">ลืมรหัสผ่าน?</a>
+      </p>
+
+      <div id="forgotPasswordModal" class="hidden mt-2 p-4 bg-black/50 border border-gray-800 rounded-xl space-y-3">
+        <p class="text-[11px] text-gray-400">กรอก Username หรืออีเมลที่ผูกไว้กับบัญชีแอดมิน ระบบจะส่งลิงก์ตั้งรหัสผ่านใหม่ไปให้ทางอีเมล</p>
+        <input type="text" id="resetUserInput" placeholder="Username หรืออีเมลที่ลงทะเบียนไว้" class="w-full bg-black border border-gray-800 rounded-xl p-3 text-white text-sm outline-none">
+        <button onclick="submitForgotPassword()" id="btnForgotSubmit" class="w-full bg-gray-800 hover:bg-gray-700 text-white font-bold py-3 rounded-xl text-xs uppercase cursor-pointer">
+          ส่งลิงก์รีเซ็ตรหัสผ่าน
+        </button>
+        <p id="forgotMsg" class="text-[11px] text-center hidden"></p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function checkLogin() {
+      const user = document.getElementById('adminUser').value;
+      const pass = document.getElementById('adminPass').value;
+      const btn = document.getElementById('loginBtn');
+      
+      if(!user || !pass) {
+        alert("กรุณากรอกข้อมูลให้ครบถ้วน");
+        return;
+      }
+
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Verifying...';
+      document.getElementById('errMsg').classList.add('hidden');
+      
+      google.script.run
+        .withSuccessHandler(function(res) {
+          if (res.success) {
+            // 🆕 พา token ติดไปกับ URL ตอน redirect ไปหน้า main
+            window.top.location.href = "<?= getScriptUrl() ?>?page=main&token=" + res.token;
+          } else {
+            document.getElementById('errMsgText').innerText = res.message || 'Access Denied: Invalid Credentials';
+            document.getElementById('errMsg').classList.remove('hidden');
+            btn.disabled = false;
+            btn.innerHTML = 'Authenticate Access';
+          }
+        })
+        .withFailureHandler(function(err) {
+          document.getElementById('errMsgText').innerText = err.message || 'เกิดข้อผิดพลาด กรุณาลองใหม่';
+          document.getElementById('errMsg').classList.remove('hidden');
+          btn.disabled = false;
+          btn.innerHTML = 'Authenticate Access';
+        })
+        .loginAdmin(user, pass);
+    }
+
+    function showForgotPassword() {
+      document.getElementById('forgotPasswordModal').classList.toggle('hidden');
+    }
+
+    function submitForgotPassword() {
+      const val = document.getElementById('resetUserInput').value.trim();
+      const msgEl = document.getElementById('forgotMsg');
+      if (!val) { alert('กรุณากรอก Username หรืออีเมล'); return; }
+      const btn = document.getElementById('btnForgotSubmit');
+      btn.disabled = true; btn.innerText = 'กำลังส่ง...';
+      msgEl.classList.add('hidden');
+
+      google.script.run
+        .withSuccessHandler(res => {
+          msgEl.innerText = res.message;
+          msgEl.className = res.success ? 'text-[11px] text-center text-green-400' : 'text-[11px] text-center text-red-400';
+          msgEl.classList.remove('hidden');
+          btn.disabled = false; btn.innerText = 'ส่งลิงก์รีเซ็ตรหัสผ่าน';
+        })
+        .withFailureHandler(err => {
+          msgEl.innerText = err.message || 'เกิดข้อผิดพลาด';
+          msgEl.className = 'text-[11px] text-center text-red-400';
+          msgEl.classList.remove('hidden');
+          btn.disabled = false; btn.innerText = 'ส่งลิงก์รีเซ็ตรหัสผ่าน';
+        })
+        .requestAdminPasswordReset(val);
+    }
+
+    document.getElementById('adminPass').addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') checkLogin();
+    });
+  </script>
+</body>
+</html>

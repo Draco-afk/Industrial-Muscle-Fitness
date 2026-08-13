@@ -1,0 +1,1449 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>INDUSTRIAL Muscle - Management System</title>
+  
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Urbanist:wght@400;700;900&family=Prompt:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  
+  <?!= include('Index_Styles'); ?>
+</head>
+<body class="flex flex-col md:flex-row h-screen md:overflow-hidden">
+
+  <header class="md:hidden w-full bg-black border-b border-gray-800 px-6 py-4 flex justify-between items-center sticky top-0 z-50">
+    <div>
+      <h1 class="text-2xl font-black text-white tracking-tighter font-['Urbanist'] leading-none">INDUSTRIAL</h1>
+      <p class="text-red-500 font-bold tracking-[0.3em] text-[10px] uppercase">Muscle</p>
+    </div>
+    <button id="menuToggleBtn" class="text-gray-400 hover:text-white text-xl p-2 focus:outline-none cursor-pointer">
+      <i class="fa-solid fa-bars" id="menuIcon"></i>
+    </button>
+  </header>
+
+  <aside id="sidebar" class="fixed top-[73px] bottom-0 left-0 z-40 w-72 bg-black border-r border-gray-800 flex flex-col p-6 transform -translate-x-full transition-transform duration-300 ease-in-out md:translate-x-0 md:top-0 md:static md:h-screen">
+    <div class="hidden md:block mb-12">
+      <h1 class="text-3xl font-black text-white tracking-tighter font-['Urbanist'] leading-none">INDUSTRIAL</h1>
+      <p class="text-red-500 font-bold tracking-[0.3em] text-xs uppercase">Muscle</p>
+    </div>
+    
+    <nav class="space-y-3 flex-grow overflow-y-auto custom-scroll pr-1">
+      <button onclick="switchSection('dashboard')" class="sidebar-item active w-full flex items-center p-4 rounded-xl text-gray-400 font-bold uppercase tracking-widest text-xs cursor-pointer">
+        <i class="fa-solid fa-chart-line mr-4 text-lg"></i> Dashboard
+      </button>
+      <button onclick="switchSection('checkin')" class="sidebar-item w-full flex items-center p-4 rounded-xl text-gray-400 font-bold uppercase tracking-widest text-xs cursor-pointer">
+        <i class="fa-solid fa-clipboard-check mr-4 text-lg"></i> เช็คอินลูกค้า
+      </button>
+      <button onclick="switchSection('members')" class="sidebar-item w-full flex items-center p-4 rounded-xl text-gray-400 font-bold uppercase tracking-widest text-xs cursor-pointer">
+        <i class="fa-solid fa-users-gear mr-4 text-lg"></i> Member Mgmt
+      </button>
+      <button onclick="switchSection('trainers')" class="sidebar-item w-full flex items-center p-4 rounded-xl text-gray-400 font-bold uppercase tracking-widest text-xs cursor-pointer">
+        <i class="fa-solid fa-person-running mr-4 text-lg"></i> Trainers
+      </button>
+      <button onclick="switchSection('payments')" class="sidebar-item w-full flex items-center p-4 rounded-xl text-gray-400 font-bold uppercase tracking-widest text-xs cursor-pointer">
+        <i class="fa-solid fa-credit-card mr-4 text-lg"></i> Payment & Renewal
+      </button>
+      <button onclick="switchSection('reports')" class="sidebar-item w-full flex items-center p-4 rounded-xl text-gray-400 font-bold uppercase tracking-widest text-xs cursor-pointer">
+        <i class="fa-solid fa-chart-pie mr-4 text-lg"></i> รายงานสรุป
+      </button>
+      <button onclick="switchSection('settings')" class="sidebar-item w-full flex items-center p-4 rounded-xl text-gray-400 font-bold uppercase tracking-widest text-xs cursor-pointer">
+        <i class="fa-solid fa-gears mr-4 text-lg"></i> Settings
+      </button>
+    </nav>
+    
+    <div class="mt-auto border-t border-gray-800 pt-6">
+      <button onclick="logout()" class="w-full flex items-center p-4 rounded-xl text-red-500 hover:bg-red-500/10 transition-all font-bold uppercase tracking-widest text-xs cursor-pointer">
+        <i class="fa-solid fa-right-from-bracket mr-4 text-lg"></i> Logout System
+      </button>
+    </div>
+  </aside>
+
+  <div id="sidebarOverlay" class="fixed inset-0 bg-black/70 z-30 hidden md:hidden transition-opacity"></div>
+
+  <main class="flex-grow overflow-y-auto p-4 sm:p-6 md:p-10 bg-[#080808] h-[calc(100vh-65px)] md:h-screen w-full box-border">
+
+    <div id="dashboard" class="section-content active">
+      <h2 class="text-3xl md:text-4xl font-black text-white font-['Urbanist'] mb-6 md:mb-10">DASHBOARD</h2>
+      
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 mb-6 md:mb-8">
+        <div class="glass-card p-6 md:p-8 rounded-3xl"><p class="text-gray-500 text-xs uppercase font-bold tracking-widest mb-2">Total Members</p><h3 class="text-4xl md:text-5xl font-black text-white font-['Urbanist']" id="stat-total">--</h3></div>
+        <div class="glass-card p-6 md:p-8 rounded-3xl border-l-4 border-l-red-600"><p class="text-gray-500 text-xs uppercase font-bold tracking-widest mb-2">Active Pass</p><h3 class="text-4xl md:text-5xl font-black text-white font-['Urbanist']" id="stat-active">--</h3></div>
+        <div class="glass-card p-6 md:p-8 rounded-3xl sm:col-span-2 lg:col-span-1"><p class="text-gray-500 text-xs uppercase font-bold tracking-widest mb-2">FINGERPRINT GATE FEED</p><h3 class="text-4xl md:text-5xl font-black text-green-500 font-['Urbanist']">LIVE</h3></div>
+      </div>
+
+      <button onclick="openCheckinDisplay()" class="w-full mb-6 md:mb-8 bg-gradient-to-r from-red-700 to-red-600 hover:from-red-600 hover:to-red-500 text-white font-black py-4 rounded-2xl text-sm tracking-[0.15em] uppercase cursor-pointer flex items-center justify-center gap-3 shadow-lg hover:shadow-red-600/20 transition-all">
+        <i class="fa-solid fa-tv text-lg"></i> เปิดจอต้อนรับลูกค้า (สำหรับจอที่ 2 หน้าประตู)
+      </button>
+
+      <div class="glass-card p-4 md:p-6 rounded-3xl mb-6 md:mb-8 border border-yellow-800/40">
+        <div class="flex items-center justify-between mb-6">
+          <h3 class="text-gray-300 font-bold text-xs md:text-sm uppercase tracking-wider flex items-center">
+            <i class="fa-solid fa-triangle-exclamation mr-2 text-yellow-500"></i>สมาชิกใกล้หมดอายุ
+          </h3>
+          <span id="expiringCountBadge" class="text-[10px] bg-yellow-950 text-yellow-400 border border-yellow-800 px-2.5 py-1 rounded-full font-bold uppercase tracking-widest">0 คน</span>
+        </div>
+        <div id="expiringMembersList" class="space-y-2 max-h-[280px] overflow-y-auto custom-scroll pr-1">
+          <p class="text-gray-600 text-xs text-center py-6">กำลังโหลด...</p>
+        </div>
+      </div>
+
+      <div class="glass-card p-4 md:p-6 rounded-3xl mb-6 md:mb-8 border border-orange-800/40">
+        <div class="flex items-center justify-between mb-6">
+          <h3 class="text-gray-300 font-bold text-xs md:text-sm uppercase tracking-wider flex items-center">
+            <i class="fa-solid fa-box-open mr-2 text-orange-500"></i>สินค้าใกล้หมด / หมดสต็อก
+          </h3>
+          <span id="lowStockCountBadge" class="text-[10px] bg-orange-950 text-orange-400 border border-orange-800 px-2.5 py-1 rounded-full font-bold uppercase tracking-widest">0 รายการ</span>
+        </div>
+        <div id="lowStockProductsList" class="space-y-2 max-h-[280px] overflow-y-auto custom-scroll pr-1">
+          <p class="text-gray-600 text-xs text-center py-6">กำลังโหลด...</p>
+        </div>
+      </div>
+
+      <div class="glass-card p-4 md:p-6 rounded-3xl mb-6 md:mb-8 border border-pink-800/40">
+        <div class="flex items-center justify-between mb-6">
+          <h3 class="text-gray-300 font-bold text-xs md:text-sm uppercase tracking-wider flex items-center">
+            <i class="fa-solid fa-cake-candles mr-2 text-pink-500"></i>สมาชิกวันเกิดเดือนนี้ (โปรลด <span id="birthdayDiscountLabelDashboard">5%</span>)
+          </h3>
+          <span id="birthdayCountBadge" class="text-[10px] bg-pink-950 text-pink-400 border border-pink-800 px-2.5 py-1 rounded-full font-bold uppercase tracking-widest">0 คน</span>
+        </div>
+        <div id="birthdayMembersList" class="space-y-2 max-h-[280px] overflow-y-auto custom-scroll pr-1">
+          <p class="text-gray-600 text-xs text-center py-6">กำลังโหลด...</p>
+        </div>
+      </div>
+
+      <div class="glass-card p-4 md:p-6 rounded-3xl mb-6 md:mb-8 overflow-hidden">
+        <div class="flex justify-between items-center mb-6">
+          <h3 class="text-gray-300 font-bold text-xs md:text-sm uppercase tracking-wider">
+            <i class="fa-solid fa-chart-column mr-2 text-red-500"></i>สรุปรายเดือน (6 เดือนล่าสุด)
+          </h3>
+        </div>
+        <div class="w-full overflow-x-auto">
+          <div class="min-w-[600px] md:min-w-0">
+            <canvas id="monthlyChart" height="90"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <div class="glass-card p-4 md:p-6 rounded-3xl mb-6 md:mb-8">
+        <h3 class="text-gray-300 font-bold text-xs md:text-sm uppercase tracking-wider mb-6">
+          <i class="fa-solid fa-trophy mr-2 text-red-500"></i>Leaderboard สมาชิกขยันเข้ายิม (Top 10)
+        </h3>
+        <div id="leaderboardList" class="space-y-2">
+          <p class="text-gray-600 text-xs text-center py-6">กำลังโหลด...</p>
+        </div>
+      </div>
+
+      <div class="glass-card p-4 md:p-6 rounded-3xl flex flex-col">
+        <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2 mb-6">
+          <h3 class="text-gray-300 font-bold text-xs md:text-sm uppercase tracking-wider flex items-center"><i class="fa-solid fa-bolt mr-2 text-red-500 animate-pulse"></i>Live Gate Check-in Feed</h3>
+          <span class="w-max text-[9px] bg-green-950 text-green-400 border border-green-800 px-2.5 py-1 rounded-full font-bold uppercase tracking-widest">Auto-Refreshing</span>
+        </div>
+        <div class="overflow-x-auto custom-scroll max-h-[350px]">
+          <table class="w-full text-left border-collapse text-xs min-w-[600px]">
+            <thead>
+              <tr class="border-b border-gray-800 text-gray-500 uppercase tracking-wider font-bold">
+                <th class="pb-3 pl-2">เวลาสแกน</th>
+                <th class="pb-3">ชื่อสมาชิก</th>
+                <th class="pb-3">รหัสลายนิ้วมือ</th>
+                <th class="pb-3">สถานะ</th>
+                <th class="pb-3 pr-2">รายละเอียด</th>
+              </tr>
+            </thead>
+            <tbody id="liveFeedTableBody" class="text-gray-300 divide-y divide-gray-900">
+              <tr><td colspan="5" class="text-center py-10 text-gray-600">กำลังรอรับสัญญาณสแกนลายนิ้วมือ...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div id="checkin" class="section-content">
+      <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-4 mb-6 md:mb-10">
+        <h2 class="text-3xl md:text-4xl font-black text-white font-['Urbanist']">เช็คอินลูกค้า</h2>
+        <span class="text-gray-500 text-xs"><i class="fa-solid fa-circle-info mr-1"></i>ใช้เวลาเครื่องสแกนลายนิ้วมือหน้าประตูใช้งานไม่ได้</span>
+      </div>
+
+      <div class="max-w-3xl">
+        <div class="glass-card p-5 md:p-6 rounded-3xl mb-6">
+          <div class="flex items-center bg-black/60 border border-gray-800 rounded-xl px-4 py-3.5 focus-within:border-red-500/50 transition-all">
+            <i class="fa-solid fa-magnifying-glass text-gray-600 mr-3 text-sm"></i>
+            <input type="text" id="checkinSearchBar" oninput="renderCheckinList()" placeholder="พิมพ์ชื่อสมาชิกที่ต้องการเช็คอิน..." class="bg-transparent w-full text-white placeholder-gray-600 outline-none text-sm font-medium" autofocus>
+          </div>
+        </div>
+
+        <div id="checkinListContainer" class="space-y-3"></div>
+      </div>
+    </div>
+
+    <div id="members" class="section-content">
+      <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-4 mb-6 md:mb-10">
+        <h2 class="text-3xl md:text-4xl font-black text-white font-['Urbanist']">MEMBER MANAGEMENT</h2>
+        <div class="flex gap-2 sm:gap-3">
+          <button onclick="exportMembersExcel()" class="flex-1 sm:flex-initial bg-emerald-950/80 hover:bg-emerald-900 text-emerald-400 border border-emerald-800 px-3 sm:px-4 py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-2 cursor-pointer transition-all">
+            <i class="fa-solid fa-file-excel text-sm"></i> Export Excel
+          </button>
+          <button onclick="exportMembersPDF_UI()" class="flex-1 sm:flex-initial bg-red-950/80 hover:bg-red-900 text-red-400 border border-red-800 px-3 sm:px-4 py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-2 cursor-pointer transition-all">
+            <i class="fa-solid fa-file-pdf text-sm"></i> Export PDF
+          </button>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 xl:grid-cols-3 gap-6 md:gap-8 items-start max-w-7xl">
+        <div class="xl:col-span-2 glass-card p-5 md:p-8 rounded-3xl relative">
+          <div id="editModeIndicator" class="hidden bg-red-600/10 border border-red-500/30 rounded-xl p-3 mb-6 flex justify-between items-center text-xs">
+            <span class="text-red-400 font-bold"><i class="fa-solid fa-pen-to-square mr-2"></i>กำลังอยู่ในโหมดแก้ไขข้อมูลและลายนิ้วมือสมาชิก</span>
+            <button onclick="clearEditMode()" class="bg-gray-800 text-white px-3 py-1 rounded-md hover:bg-gray-700 cursor-pointer">ยกเลิกแก้ไข</button>
+          </div>
+          <div id="membershipAddOnBanner" class="hidden bg-green-600/10 border border-green-500/30 rounded-xl p-3 mb-6 flex justify-between items-center text-xs">
+            <span class="text-green-400 font-bold"><i class="fa-solid fa-cart-plus mr-2"></i>กำลังสมัครสมาชิกเพื่อรวมบิลกับรายการรายวัน (ยังไม่เก็บเงินที่นี่)</span>
+            <button onclick="cancelMembershipAddOn()" class="bg-gray-800 text-white px-3 py-1 rounded-md hover:bg-gray-700 cursor-pointer">ยกเลิก</button>
+          </div>
+          <h3 id="formTitle" class="text-sm font-bold text-gray-400 uppercase tracking-wider mb-6">Add New Gym Member</h3>
+          
+          <form id="memberForm" onsubmit="handleFormSubmit(event)">
+            <input type="hidden" id="rowNumber" value="">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+              <div>
+                <label class="block text-[10px] uppercase font-bold text-gray-500 tracking-widest mb-2">Full Name</label>
+                <input type="text" id="fullName" required class="w-full bg-black border border-gray-800 rounded-xl p-3 text-white focus:border-red-500 outline-none text-sm">
+              </div>
+              <div>
+                <label class="block text-[10px] uppercase font-bold text-gray-500 tracking-widest mb-2">Phone Number</label>
+                <input type="tel" id="phone" required class="w-full bg-black border border-gray-800 rounded-xl p-3 text-white focus:border-red-500 outline-none text-sm">
+              </div>
+              <div>
+                <label class="block text-[10px] uppercase font-bold text-gray-500 tracking-widest mb-2">Email Address</label>
+                <input type="email" id="email" required class="w-full bg-black border border-gray-800 rounded-xl p-3 text-white focus:border-red-500 outline-none text-sm">
+              </div>
+              <div>
+                <label class="block text-[10px] uppercase font-bold text-gray-500 tracking-widest mb-2">วันเดือนปีเกิด <span class="text-gray-600 normal-case">(ไม่บังคับ - รับส่วนลด <span id="birthdayDiscountLabelForm">5%</span> ตอนต่ออายุในเดือนเกิด)</span></label>
+                <input type="date" id="memberDob" onchange="calculateExpiryDate()" class="w-full bg-black border border-gray-800 rounded-xl p-3 text-white focus:border-red-500 outline-none text-sm">
+              </div>
+              <div>
+                <label class="block text-[10px] uppercase font-bold text-gray-500 tracking-widest mb-2">Package</label>
+                <select id="package" onchange="calculateExpiryDate()" class="w-full bg-black border border-gray-800 rounded-xl p-3 text-white focus:border-red-500 outline-none text-sm cursor-pointer">
+                  <option value="">กำลังโหลดแพ็กเกจ...</option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-[10px] uppercase font-bold text-gray-500 tracking-widest mb-2">Start Date</label>
+                <input type="date" id="startDate" onchange="calculateExpiryDate()" class="w-full bg-black border border-gray-800 rounded-xl p-3 text-white focus:border-red-500 outline-none text-sm">
+              </div>
+              <div>
+                <label class="block text-[10px] uppercase font-bold text-gray-500 tracking-widest mb-2">Expiry Date (Auto)</label>
+                <input type="date" id="expiryDate" readonly class="w-full bg-gray-900 border border-gray-800 rounded-xl p-3 text-gray-500 cursor-not-allowed text-sm">
+              </div>
+              
+              <div class="sm:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label class="block text-[10px] uppercase font-bold text-gray-500 tracking-widest mb-1 flex items-center gap-1">
+                    Check-in PIN (4 Digits)
+                  </label>
+                  <span class="block text-[9px] text-gray-600 mb-1">รหัสตัวเลข 4 หลักสำหรับการกดเช็คอินผ่านหน้าตู้</span>
+                  <input type="password" id="memberPin" pattern="[0-9]{4}" maxlength="4" inputmode="numeric" required 
+                         class="w-full bg-black border border-gray-800 rounded-xl p-3 text-white focus:border-red-500 outline-none tracking-[0.8em] text-center font-bold text-base" 
+                         placeholder="••••" 
+                         oninput="this.value = this.value.replace(/[^0-9]/g, '');">
+                </div>
+                <div>
+                  <label class="block text-[10px] uppercase font-bold text-gray-500 tracking-widest mb-2">Membership Status</label>
+                  <select id="status" class="w-full bg-black border border-gray-800 rounded-xl p-3 text-white focus:border-red-500 outline-none text-sm cursor-pointer mt-4 sm:mt-0">
+                    <option value="Active">🟢 Active (ใช้งานได้ปกติ)</option>
+                    <option value="Suspended">🟡 Suspended (Freeze บัตรชั่วคราว)</option>
+                    <option value="Inactive">🔴 Inactive (ยกเลิกการใช้งาน)</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+            
+            <div class="bg-black/50 border border-gray-800 rounded-2xl p-4 mb-6 text-center">
+              <p class="text-red-500 font-bold uppercase tracking-widest text-[10px] mb-2"><i class="fa-solid fa-fingerprint mr-1"></i> Fingerprint Enrollment</p>
+              <input type="text" id="fingerprintId" placeholder="สแกนลายนิ้วมือที่เครื่องอ่าน..." required class="w-full bg-transparent text-center text-xl font-mono text-red-500 outline-none">
+              <p class="text-gray-600 text-[10px] mt-2">รหัสลายนิ้วมือ (Fingerprint ID) จากเครื่องสแกนจะถูกกรอกที่นี่โดยอัตโนมัติ</p>
+            </div>
+            
+
+            <div id="memberPaymentSection" class="bg-black/50 border border-red-900/40 rounded-2xl p-4 mb-6">
+              <p class="text-red-500 font-bold uppercase tracking-widest text-[10px] mb-3"><i class="fa-solid fa-money-bill-wave mr-1"></i>ชำระเงินตอนสมัคร</p>
+              <div id="birthdayDiscountBadge" class="hidden bg-yellow-950/40 border border-yellow-700 rounded-xl p-2.5 mb-3 text-center">
+                <p class="text-yellow-300 text-xs font-bold">🎂 เดือนเกิดของลูกค้า! ใช้ส่วนลด <span id="birthdayDiscountLabelBadge1">5%</span> ให้อัตโนมัติแล้ว</p>
+              </div>
+              <div class="flex items-center justify-between gap-3 mb-3">
+                <label class="text-gray-400 text-xs shrink-0">ยอดชำระ (บาท)</label>
+                <input type="number" id="memberChargeAmount" min="0" class="w-32 bg-black border border-gray-800 rounded-lg p-2 text-white text-sm text-right outline-none">
+              </div>
+              <div class="mb-3">
+                <label class="block text-gray-400 text-xs mb-1.5">โค้ดส่วนลด (ถ้ามี)</label>
+                <input type="text" id="memberCouponCode" placeholder="เช่น NEWYEAR2026" class="w-full bg-black border border-gray-800 rounded-lg p-2.5 text-white text-sm outline-none uppercase">
+              </div>
+              <div class="grid grid-cols-2 gap-3 mb-3">
+                <button type="button" onclick="setNewMemberPaymentMethod('cash')" id="btnNewMemberPayCash" class="py-4 rounded-xl text-xs font-bold uppercase cursor-pointer border transition-all flex items-center justify-center gap-1.5">
+                  <i class="fa-solid fa-money-bill-wave"></i> เงินสด
+                </button>
+                <button type="button" onclick="setNewMemberPaymentMethod('transfer')" id="btnNewMemberPayTransfer" class="py-4 rounded-xl text-xs font-bold uppercase cursor-pointer border transition-all flex items-center justify-center gap-1.5">
+                  <i class="fa-solid fa-mobile-screen-button"></i> โอนเงิน
+                </button>
+              </div>
+              <button type="button" onclick="openPaymentQRModal()" class="w-full bg-black border border-gray-800 hover:border-red-500 text-gray-300 font-bold py-2.5 rounded-xl text-xs uppercase cursor-pointer flex items-center justify-center gap-2">
+                <i class="fa-solid fa-qrcode text-red-500"></i> แสดง QR รับเงิน ให้ลูกค้าสแกน
+              </button>
+              <p class="text-gray-600 text-[10px] mt-2">ยอดจะเติมให้อัตโนมัติตามแพ็กเกจที่เลือก แก้ไขได้ถ้ามีส่วนลด — ระบบจะออกใบเสร็จให้ทันทีเมื่อกดลงทะเบียน</p>
+            </div>
+            
+            <button type="submit" id="btnSubmit" class="w-full bg-red-600 hover:bg-red-500 text-white font-black py-4 rounded-xl tracking-[0.2em] uppercase transition-all cursor-pointer text-sm">
+              Register & Link Fingerprint
+            </button>
+            <button type="button" id="btnDeleteMember" onclick="deleteCurrentMember()" class="hidden w-full bg-red-900/40 hover:bg-red-900/70 border border-red-800 text-red-400 font-black py-3 rounded-xl tracking-[0.2em] uppercase transition-all cursor-pointer text-xs mt-3">
+              <i class="fa-solid fa-trash-can mr-2"></i>Delete Member Permanently
+            </button>
+          </form>
+        </div>
+
+        <div class="xl:col-span-1 glass-card p-5 md:p-6 rounded-3xl flex flex-col min-h-[560px]">
+          <div class="mb-4 flex justify-between items-center">
+            <h3 class="text-red-500 font-bold uppercase tracking-widest text-xs"><i class="fa-solid fa-list-ul mr-2"></i>Member Status</h3>
+            <button onclick="loadMemberList()" class="text-gray-500 hover:text-white text-xs cursor-pointer"><i class="fa-solid fa-rotate"></i></button>
+          </div>
+          <div class="mb-4">
+            <div class="flex items-center bg-black/60 border border-gray-800 rounded-xl px-3 py-2.5 focus-within:border-red-500/50 transition-all">
+              <i class="fa-solid fa-magnifying-glass text-gray-600 mr-2.5 text-xs"></i>
+              <input type="text" id="searchBar" oninput="filterMemberList()" placeholder="พิมพ์ชื่อ ค้นหาสมาชิก..." class="bg-transparent w-full text-white placeholder-gray-600 outline-none text-xs font-medium">
+            </div>
+          </div>
+          <div id="memberListContainer" class="space-y-3 pr-1">
+            <p class="text-gray-600 text-xs text-center py-10">กำลังโหลด...</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="trainers" class="section-content">
+      <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-4 mb-6 md:mb-10">
+        <h2 class="text-3xl md:text-4xl font-black text-white font-['Urbanist']">TRAINER MANAGEMENT</h2>
+        <button onclick="copyTrainerAppLink()" class="bg-black border border-gray-800 hover:border-red-500 text-gray-300 text-xs font-bold px-4 py-2.5 rounded-xl cursor-pointer flex items-center gap-2 w-max">
+          <i class="fa-solid fa-link text-red-500"></i> คัดลอกลิงก์แอปเทรนเนอร์
+        </button>
+      </div>
+
+      <div class="grid grid-cols-1 xl:grid-cols-3 gap-6 md:gap-8 items-start max-w-7xl mb-8">
+        <div class="xl:col-span-1 glass-card p-5 md:p-6 rounded-3xl relative">
+          <div id="trainerEditIndicator" class="hidden bg-red-600/10 border border-red-500/30 rounded-xl p-3 mb-4 flex justify-between items-center text-xs">
+            <span class="text-red-400 font-bold"><i class="fa-solid fa-pen-to-square mr-2"></i>โหมดแก้ไข</span>
+            <button onclick="clearTrainerForm()" class="bg-gray-800 text-white px-3 py-1 rounded-md hover:bg-gray-700 cursor-pointer">ยกเลิก</button>
+          </div>
+          <h3 id="trainerFormTitle" class="text-red-500 font-bold text-sm uppercase tracking-wider mb-6"><i class="fa-solid fa-user-plus mr-2"></i>Add New Trainer</h3>
+
+          <form id="trainerForm" onsubmit="handleTrainerSubmit(event)">
+            <input type="hidden" id="trainerRowNumber" value="">
+            <input type="hidden" id="trainerPhotoUrl" value="">
+
+            <div class="mb-6 text-center">
+              <div id="trainerPhotoPreviewWrap" class="w-28 h-28 mx-auto rounded-2xl bg-black border-2 border-dashed border-gray-800 overflow-hidden mb-3 relative">
+                <div class="absolute inset-0 flex items-center justify-center">
+                  <i id="trainerPhotoPlaceholder" class="fa-solid fa-user text-3xl text-gray-700"></i>
+                </div>
+                <img id="trainerPhotoPreview" src="" onerror="this.classList.add('hidden'); document.getElementById('trainerPhotoPlaceholder').classList.remove('hidden');" class="hidden absolute inset-0 w-full h-full object-cover">
+              </div>
+              <label class="inline-block bg-gray-800 hover:bg-gray-700 text-white text-[11px] font-bold px-4 py-2 rounded-lg cursor-pointer">
+                <i class="fa-solid fa-camera mr-1"></i> อัปโหลดรูปโปรไฟล์
+                <input type="file" id="trainerPhotoInput" accept="image/*" onchange="handleTrainerPhotoSelect(event)" class="hidden">
+              </label>
+              <button type="button" onclick="deleteTrainerPhotoAdminUI()" class="inline-block bg-red-950 hover:bg-red-900 text-red-400 border border-red-800 text-[11px] font-bold px-4 py-2 rounded-lg cursor-pointer ml-2">
+                <i class="fa-solid fa-trash-can mr-1"></i> ลบรูป
+              </button>
+              <p id="trainerPhotoUploadStatus" class="text-[10px] text-gray-600 mt-1"></p>
+            </div>
+
+            <div class="space-y-4 mb-6">
+              <input type="text" id="trainerFullName" required placeholder="ชื่อ-นามสกุลเทรนเนอร์" class="w-full bg-black border border-gray-800 rounded-xl p-3 text-white text-sm outline-none">
+              <input type="text" id="trainerSpecialty" placeholder="ความเชี่ยวชาญ เช่น Muay Thai, Weight Loss" class="w-full bg-black border border-gray-800 rounded-xl p-3 text-white text-sm outline-none">
+              <input type="tel" id="trainerPhone" placeholder="เบอร์โทรศัพท์" class="w-full bg-black border border-gray-800 rounded-xl p-3 text-white text-sm outline-none">
+              <input type="email" id="trainerEmail" placeholder="อีเมล (สำหรับรับแจ้งเตือนคิวใหม่ทางอีเมล)" class="w-full bg-black border border-gray-800 rounded-xl p-3 text-white text-sm outline-none">
+              <textarea id="trainerBio" rows="4" placeholder="ประวัติ / ผลงาน / ใบรับรอง ที่จะให้ลูกค้าเห็นในโปรไฟล์" class="w-full bg-black border border-gray-800 rounded-xl p-3 text-white text-sm outline-none resize-none"></textarea>
+
+              <div>
+                <label class="block text-[10px] uppercase font-bold text-gray-500 tracking-widest mb-2">วันทำงาน</label>
+                <div class="grid grid-cols-4 gap-2 text-[10px]">
+                  <label class="flex items-center gap-1 bg-black border border-gray-800 rounded-lg p-2 cursor-pointer"><input type="checkbox" value="Mon" class="trainerDayChk"> จ.</label>
+                  <label class="flex items-center gap-1 bg-black border border-gray-800 rounded-lg p-2 cursor-pointer"><input type="checkbox" value="Tue" class="trainerDayChk"> อ.</label>
+                  <label class="flex items-center gap-1 bg-black border border-gray-800 rounded-lg p-2 cursor-pointer"><input type="checkbox" value="Wed" class="trainerDayChk"> พ.</label>
+                  <label class="flex items-center gap-1 bg-black border border-gray-800 rounded-lg p-2 cursor-pointer"><input type="checkbox" value="Thu" class="trainerDayChk"> พฤ.</label>
+                  <label class="flex items-center gap-1 bg-black border border-gray-800 rounded-lg p-2 cursor-pointer"><input type="checkbox" value="Fri" class="trainerDayChk"> ศ.</label>
+                  <label class="flex items-center gap-1 bg-black border border-gray-800 rounded-lg p-2 cursor-pointer"><input type="checkbox" value="Sat" class="trainerDayChk"> ส.</label>
+                  <label class="flex items-center gap-1 bg-black border border-gray-800 rounded-lg p-2 cursor-pointer"><input type="checkbox" value="Sun" class="trainerDayChk"> อา.</label>
+                </div>
+              </div>
+
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label class="block text-[10px] uppercase font-bold text-gray-500 tracking-widest mb-1">เริ่มงาน</label>
+                  <input type="time" id="trainerStartHour" value="09:00" class="w-full bg-black border border-gray-800 rounded-xl p-3 text-white text-sm outline-none">
+                </div>
+                <div>
+                  <label class="block text-[10px] uppercase font-bold text-gray-500 tracking-widest mb-1">เลิกงาน</label>
+                  <input type="time" id="trainerEndHour" value="18:00" class="w-full bg-black border border-gray-800 rounded-xl p-3 text-white text-sm outline-none">
+                </div>
+              </div>
+
+              <div>
+                <label class="block text-[10px] uppercase font-bold text-gray-500 tracking-widest mb-1">ระยะเวลาต่อคิว (นาที)</label>
+                <select id="trainerSlotMinutes" class="w-full bg-black border border-gray-800 rounded-xl p-3 text-white text-sm outline-none cursor-pointer">
+                  <option value="30">30 นาที</option>
+                  <option value="60" selected>60 นาที</option>
+                  <option value="90">90 นาที</option>
+                </select>
+              </div>
+
+              <div>
+                <label class="block text-[10px] uppercase font-bold text-gray-500 tracking-widest mb-1">สถานะ</label>
+                <select id="trainerStatus" class="w-full bg-black border border-gray-800 rounded-xl p-3 text-white text-sm outline-none cursor-pointer">
+                  <option value="Active">🟢 Active</option>
+                  <option value="Inactive">🔴 Inactive</option>
+                </select>
+              </div>
+            </div>
+
+            <button type="submit" id="btnTrainerSubmit" class="w-full bg-red-600 hover:bg-red-500 text-white font-black py-3.5 rounded-xl text-xs uppercase cursor-pointer">Add Trainer</button>
+            <button type="button" id="btnDeleteTrainer" onclick="deleteCurrentTrainer()" class="hidden w-full bg-red-900/40 hover:bg-red-900/70 border border-red-800 text-red-400 font-black py-3 rounded-xl uppercase text-xs mt-3 cursor-pointer">
+              <i class="fa-solid fa-trash-can mr-2"></i>Delete Trainer
+            </button>
+          </form>
+        </div>
+
+        <div class="xl:col-span-2 glass-card p-4 md:p-6 rounded-3xl overflow-x-auto">
+          <div class="flex justify-between items-center mb-4">
+            <h3 class="text-gray-300 font-bold text-xs uppercase tracking-wider"><i class="fa-solid fa-list-ul mr-2 text-red-500"></i>Trainer List</h3>
+            <button onclick="loadTrainerListAdmin()" class="text-gray-500 hover:text-white text-xs cursor-pointer"><i class="fa-solid fa-rotate"></i></button>
+          </div>
+          <table class="w-full text-left text-xs min-w-[500px]">
+            <thead>
+              <tr class="border-b border-gray-800 text-gray-500 font-bold uppercase">
+                <th class="pb-3 pl-2">ชื่อ</th>
+                <th class="pb-3">ความเชี่ยวชาญ</th>
+                <th class="pb-3">วันทำงาน</th>
+                <th class="pb-3">เวลา</th>
+                <th class="pb-3">สถานะบัญชี</th>
+                <th class="pb-3">สถานะตอนนี้ (กดเพื่อสลับ)</th>
+                <th class="pb-3">LINE</th>
+                <th class="pb-3 text-right pr-2">Action</th>
+              </tr>
+            </thead>
+            <tbody id="trainerListTableBody" class="text-gray-300 divide-y divide-gray-900"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="glass-card p-4 md:p-6 rounded-3xl max-w-7xl mb-8">
+        <h3 class="text-gray-300 font-bold text-xs md:text-sm uppercase tracking-wider mb-4">
+          <i class="fa-solid fa-calendar-days mr-2 text-red-500"></i>ตารางงานเทรนเนอร์รายวัน
+        </h3>
+        <div class="flex flex-col sm:flex-row gap-3 mb-4">
+          <select id="scheduleTrainerSelect" onchange="loadTrainerScheduleAdmin()" class="w-full sm:w-1/2 bg-black border border-gray-800 rounded-xl p-3 text-white text-sm outline-none cursor-pointer">
+            <option value="">-- เลือกเทรนเนอร์ --</option>
+          </select>
+          <input type="date" id="scheduleDate" onchange="loadTrainerScheduleAdmin()" class="w-full sm:w-1/2 bg-black border border-gray-800 rounded-xl p-3 text-white text-sm outline-none">
+        </div>
+
+        <div class="bg-black/40 border border-red-900/40 rounded-2xl p-4 mb-5">
+          <p class="text-red-500 font-bold uppercase tracking-widest text-[10px] mb-3"><i class="fa-solid fa-calendar-plus mr-1"></i>จองคิวให้ลูกค้า (หน้าเคาน์เตอร์/โทรมาจอง)</p>
+          <select id="adminBookMemberSelect" class="w-full bg-black border border-gray-800 rounded-xl p-3 text-white text-sm outline-none cursor-pointer mb-3">
+            <option value="">-- เลือกสมาชิก --</option>
+          </select>
+          <div id="adminBookSlotsContainer" class="grid grid-cols-3 sm:grid-cols-4 gap-2 mb-2"></div>
+          <p id="adminBookSlotsMsg" class="text-gray-600 text-xs text-center py-2">เลือกเทรนเนอร์ วันที่ และสมาชิกด้านบนก่อน</p>
+          <button onclick="confirmAdminBooking()" id="btnAdminConfirmBooking" class="hidden w-full bg-red-600 hover:bg-red-500 text-white font-bold py-3 rounded-xl text-xs uppercase mt-2 cursor-pointer">
+            ยืนยันจองคิว: <span id="adminSelectedSlotText"></span>
+          </button>
+        </div>
+
+        <div class="overflow-x-auto custom-scroll max-h-[300px]">
+          <table class="w-full text-left border-collapse text-xs min-w-[600px]">
+            <thead>
+              <tr class="border-b border-gray-800 text-gray-500 uppercase font-bold tracking-wider">
+                <th class="pb-3 pl-2">เวลา</th>
+                <th class="pb-3">ชื่อสมาชิก</th>
+                <th class="pb-3">เบอร์โทร</th>
+                <th class="pb-3">สถานะ</th>
+                <th class="pb-3 pr-2 text-right">Action</th>
+              </tr>
+            </thead>
+            <tbody id="scheduleTableBody" class="text-gray-300 divide-y divide-gray-900">
+              <tr><td colspan="5" class="text-center py-6 text-gray-600">เลือกเทรนเนอร์และวันที่เพื่อดูตารางงาน</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="glass-card p-4 md:p-6 rounded-3xl max-w-7xl">
+        <div class="flex justify-between items-center mb-4">
+          <h3 class="text-gray-300 font-bold text-xs md:text-sm uppercase tracking-wider">
+            <i class="fa-solid fa-clipboard-list mr-2 text-red-500"></i>ประวัติการจองคิวทั้งหมด (ล่าสุด)
+          </h3>
+          <button onclick="loadAllBookings()" class="text-gray-500 hover:text-white text-xs cursor-pointer"><i class="fa-solid fa-rotate mr-1"></i>รีเฟรช</button>
+        </div>
+        <div class="overflow-x-auto custom-scroll max-h-[300px]">
+          <table class="w-full text-left border-collapse text-xs min-w-[700px]">
+            <thead>
+              <tr class="border-b border-gray-800 text-gray-500 uppercase font-bold tracking-wider">
+                <th class="pb-3 pl-2">วันที่จอง</th>
+                <th class="pb-3">เทรนเนอร์</th>
+                <th class="pb-3">สมาชิก</th>
+                <th class="pb-3">วันที่/เวลาจอง</th>
+                <th class="pb-3 pr-2">สถานะ</th>
+              </tr>
+            </thead>
+            <tbody id="allBookingsTableBody" class="text-gray-300 divide-y divide-gray-900">
+              <tr><td colspan="5" class="text-center py-6 text-gray-600">ยังไม่มีข้อมูล...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div id="payments" class="section-content">
+      <h2 class="text-3xl md:text-4xl font-black text-white font-['Urbanist'] mb-6 md:mb-10">MEMBERSHIP RENEWAL & PAYMENT</h2>
+
+      <!-- ============ ลูกค้ารายวัน / ขายสินค้าหน้ายิม (POS รวมบิลเดียวกัน) ============ -->
+      <div class="glass-card p-5 md:p-6 rounded-3xl max-w-5xl mb-8 border-l-4 border-l-red-600">
+        <h3 class="text-red-500 font-bold text-sm uppercase tracking-wider mb-6">
+          <i class="fa-solid fa-cash-register mr-2"></i>รับชำระเงิน - ลูกค้ารายวัน / ขายสินค้าหน้ายิม
+        </h3>
+
+        <div id="pendingMembershipBanner" class="hidden bg-green-950/40 border border-green-700 rounded-xl p-3 mb-5 flex items-center gap-2">
+          <i class="fa-solid fa-circle-check text-green-500"></i>
+          <p class="text-green-300 text-xs font-bold">เพิ่มแพ็กเกจสมัครสมาชิกลงในบิลนี้แล้ว — ตรวจสอบรายการแล้วกดรับชำระเงินด้านล่าง</p>
+        </div>
+
+        <button type="button" onclick="startMembershipAddOn()" class="w-full mb-5 bg-black border border-dashed border-red-800 hover:border-red-500 text-red-400 font-bold py-3 rounded-xl text-xs uppercase cursor-pointer flex items-center justify-center gap-2">
+          <i class="fa-solid fa-user-plus"></i> สมัครสมาชิกรายเดือนใหม่ (เพิ่มเป็นแพ็กเกจเสริมในบิลนี้)
+        </button>
+
+        <div class="mb-5">
+          <div class="flex items-center justify-between mb-2">
+            <label class="block text-[10px] uppercase font-bold text-gray-500 tracking-widest">ลูกค้า (เพิ่มได้เวลามาหลายคน)</label>
+            <button type="button" onclick="addCustomerRow()" class="text-red-500 hover:text-red-400 text-xs font-bold cursor-pointer flex items-center gap-1">
+              <i class="fa-solid fa-circle-plus"></i> เพิ่มคน
+            </button>
+          </div>
+          <div id="customersList" class="space-y-2"></div>
+        </div>
+
+        <!-- ค่าเข้ายิมวันนี้ (แยกประเภทลูกค้า - เลือกได้พร้อมกันหลายคน เช่น ผู้ใหญ่ 1 + เด็ก 2) -->
+        <div class="bg-black/40 border border-gray-800 rounded-xl p-3 mb-5">
+          <p class="text-white text-sm font-bold mb-3"><i class="fa-solid fa-person-walking mr-2 text-red-500"></i>ค่าเข้ายิมวันนี้ (Day Pass)</p>
+
+          <div class="space-y-2">
+            <div class="flex items-center justify-between gap-3 bg-black border border-gray-800 rounded-lg p-3">
+              <div class="flex-1 min-w-0">
+                <p class="text-white text-xs font-bold">นักเรียน/นักศึกษา</p>
+                <div class="flex items-center gap-1.5 mt-1.5">
+                  <span class="text-gray-500 text-[10px]">ราคา/คน</span>
+                  <input type="number" id="dayPassPriceStudent" min="0" oninput="renderCart()" class="w-16 bg-gray-900 border border-gray-800 rounded p-1 text-white text-xs text-right outline-none">
+                </div>
+              </div>
+              <div class="flex items-center gap-2 shrink-0">
+                <button type="button" onclick="changeDayPassQty('student', -1)" class="w-7 h-7 rounded-md bg-gray-800 hover:bg-gray-700 text-white text-sm cursor-pointer">−</button>
+                <span id="dayPassQtyStudent" class="text-white text-sm font-bold w-5 text-center">0</span>
+                <button type="button" onclick="changeDayPassQty('student', 1)" class="w-7 h-7 rounded-md bg-gray-800 hover:bg-gray-700 text-white text-sm cursor-pointer">+</button>
+              </div>
+            </div>
+
+            <div class="flex items-center justify-between gap-3 bg-black border border-gray-800 rounded-lg p-3">
+              <div class="flex-1 min-w-0">
+                <p class="text-white text-xs font-bold">ผู้ใหญ่</p>
+                <div class="flex items-center gap-1.5 mt-1.5">
+                  <span class="text-gray-500 text-[10px]">ราคา/คน</span>
+                  <input type="number" id="dayPassPriceAdult" min="0" oninput="renderCart()" class="w-16 bg-gray-900 border border-gray-800 rounded p-1 text-white text-xs text-right outline-none">
+                </div>
+              </div>
+              <div class="flex items-center gap-2 shrink-0">
+                <button type="button" onclick="changeDayPassQty('adult', -1)" class="w-7 h-7 rounded-md bg-gray-800 hover:bg-gray-700 text-white text-sm cursor-pointer">−</button>
+                <span id="dayPassQtyAdult" class="text-white text-sm font-bold w-5 text-center">0</span>
+                <button type="button" onclick="changeDayPassQty('adult', 1)" class="w-7 h-7 rounded-md bg-gray-800 hover:bg-gray-700 text-white text-sm cursor-pointer">+</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ส่วนลดพิเศษ (ปรับเองได้ทันที ไม่ต้องมีโค้ดคูปอง) -->
+        <div class="bg-black/40 border border-gray-800 rounded-xl p-3 mb-5">
+          <p class="text-white text-sm font-bold mb-3"><i class="fa-solid fa-tag mr-2 text-red-500"></i>ส่วนลดพิเศษ (ไม่ต้องมีโค้ด) — ใช้ได้กับค่าเข้ายิมเท่านั้น</p>
+          <div class="flex gap-2 mb-2">
+            <select id="manualDiscountType" class="bg-black border border-gray-800 rounded-lg p-2.5 text-white text-xs outline-none cursor-pointer shrink-0">
+              <option value="Percent">%</option>
+              <option value="Fixed">บาท</option>
+            </select>
+            <input type="number" id="manualDiscountValue" min="0" step="0.01" placeholder="0" class="flex-1 bg-black border border-gray-800 rounded-lg p-2.5 text-white text-xs outline-none">
+            <button type="button" onclick="applyManualDiscount()" class="shrink-0 bg-gray-800 hover:bg-gray-700 text-white font-bold px-4 rounded-lg text-xs uppercase cursor-pointer">ใช้</button>
+          </div>
+          <p id="manualDiscountMsg" class="text-xs -mt-1"></p>
+        </div>
+
+        <!-- ค่าเทรนเนอร์ฟรีแลนซ์ (เก็บแทนให้ ไม่นับเป็นรายรับของยิม) -->
+        <div class="bg-black/40 border border-blue-900/50 rounded-xl p-3 mb-5">
+          <p class="text-white text-sm font-bold mb-1"><i class="fa-solid fa-person-running mr-2 text-blue-400"></i>ค่าเทรนเนอร์ (ฟรีแลนซ์)</p>
+          <p class="text-gray-500 text-[10px] mb-3">เก็บเงินแทนให้เทรนเนอร์ในบิลเดียวกัน — ยอดนี้จะไม่ถูกนับเป็นรายรับของยิมในรายงาน แยกออกไปต่างหากเสมอ</p>
+          <div class="flex gap-2">
+            <input type="text" id="trainerFeeName" placeholder="ชื่อเทรนเนอร์" class="flex-1 bg-black border border-gray-800 rounded-lg p-2.5 text-white text-xs outline-none">
+            <input type="number" id="trainerFeeAmount" min="0" step="0.01" placeholder="จำนวนเงิน" class="w-28 bg-black border border-gray-800 rounded-lg p-2.5 text-white text-xs outline-none">
+            <button type="button" onclick="addTrainerFee()" class="shrink-0 bg-blue-950 hover:bg-blue-900 text-blue-400 border border-blue-800 font-bold px-4 rounded-lg text-xs uppercase cursor-pointer">+เพิ่ม</button>
+          </div>
+          <div id="trainerFeeList" class="space-y-2 mt-3"></div>
+        </div>
+
+        <!-- สินค้า -->
+        <div class="mb-2 flex items-center justify-between">
+          <label class="block text-[10px] uppercase font-bold text-gray-500 tracking-widest">เลือกสินค้า (แตะเพื่อเพิ่มลงตะกร้า)</label>
+          <button onclick="switchSection('settings')" class="text-[10px] text-red-500 hover:underline cursor-pointer"><i class="fa-solid fa-gear mr-1"></i>จัดการสินค้า</button>
+        </div>
+        <div id="posProductGrid" class="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-5 max-h-[220px] overflow-y-auto custom-scroll pr-1">
+          <p class="text-gray-600 text-xs text-center py-6 col-span-full">กำลังโหลดสินค้า...</p>
+        </div>
+
+        <!-- ตะกร้า -->
+        <div class="mb-2">
+          <label class="block text-[10px] uppercase font-bold text-gray-500 tracking-widest mb-2">รายการที่จะเรียกเก็บเงิน</label>
+        </div>
+        <div id="posCartList" class="space-y-2 mb-4 max-h-[200px] overflow-y-auto custom-scroll pr-1">
+          <p class="text-gray-600 text-xs text-center py-4">ยังไม่มีรายการ เลือกค่าเข้ายิมหรือสินค้าด้านบน</p>
+        </div>
+
+        <div class="flex gap-2 mb-1">
+          <input type="text" id="posCouponCode" placeholder="โค้ดส่วนลด (ถ้ามี)" class="flex-1 bg-black border border-gray-800 rounded-xl p-3 text-white text-sm outline-none uppercase">
+          <button onclick="applyPosCoupon()" type="button" class="shrink-0 bg-gray-800 hover:bg-gray-700 text-white font-bold px-5 rounded-xl text-xs uppercase cursor-pointer">ใช้คูปอง</button>
+        </div>
+        <p class="text-gray-600 text-[10px] mb-3">* ส่วนลดใช้ได้กับค่าเข้ายิมเท่านั้น ไม่รวมสินค้า/เครื่องดื่ม</p>
+        <p id="posCouponMsg" class="text-xs mb-4 -mt-2"></p>
+
+        <div class="flex justify-between items-center bg-black/50 border border-red-900/50 rounded-xl p-4 mb-4">
+          <span class="text-gray-400 text-sm uppercase font-bold tracking-widest">ยอดรวมทั้งสิ้น</span>
+          <span id="posTotalDisplay" class="text-2xl font-black text-red-500 font-['Urbanist']">0 บาท</span>
+        </div>
+
+        <p class="text-gray-500 text-[10px] uppercase font-bold tracking-widest mb-2">วิธีชำระเงิน</p>
+        <div class="grid grid-cols-2 gap-2 mb-4">
+          <button type="button" onclick="setPosPaymentMethod('cash')" id="btnPosPayCash" class="py-4 rounded-xl text-xs font-bold uppercase cursor-pointer border transition-all flex items-center justify-center gap-1.5">
+            <i class="fa-solid fa-money-bill-wave"></i> เงินสด
+          </button>
+          <button type="button" onclick="setPosPaymentMethod('transfer')" id="btnPosPayTransfer" class="py-4 rounded-xl text-xs font-bold uppercase cursor-pointer border transition-all flex items-center justify-center gap-1.5">
+            <i class="fa-solid fa-mobile-screen-button"></i> โอนเงิน
+          </button>
+        </div>
+
+        <button onclick="openPaymentQRModal()" type="button" class="w-full bg-black border border-gray-800 hover:border-red-500 text-gray-300 font-bold py-3 rounded-xl text-xs uppercase cursor-pointer mb-3 flex items-center justify-center gap-2">
+          <i class="fa-solid fa-qrcode text-red-500"></i> แสดง QR รับเงิน ให้ลูกค้าสแกน
+        </button>
+
+        <button onclick="submitDailyPayment()" id="btnSubmitDaily" class="w-full bg-red-600 hover:bg-red-500 text-white font-black py-4 rounded-xl tracking-[0.2em] uppercase text-sm cursor-pointer">
+          รับชำระเงิน & ออกใบเสร็จ
+        </button>
+      </div>
+
+      <div class="glass-card p-4 md:p-6 rounded-3xl max-w-5xl mb-8">
+        <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-3 mb-4">
+          <h3 class="text-gray-300 font-bold text-xs md:text-sm uppercase tracking-wider">
+            <i class="fa-solid fa-receipt mr-2 text-red-500"></i>ประวัติลูกค้ารายวัน / ขายสินค้า (ล่าสุด)
+          </h3>
+          <div class="flex items-center gap-2">
+            <button onclick="exportDailyPaymentsPDF_UI()" class="bg-red-950 hover:bg-red-900 text-red-400 border border-red-800 px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer">
+              <i class="fa-solid fa-file-pdf"></i> PDF
+            </button>
+            <button onclick="loadDailyPaymentLogs()" class="text-gray-500 hover:text-white text-xs ml-2 cursor-pointer"><i class="fa-solid fa-rotate"></i></button>
+          </div>
+        </div>
+        <div class="overflow-x-auto custom-scroll max-h-[250px]">
+          <table class="w-full text-left border-collapse text-xs min-w-[780px]">
+            <thead>
+              <tr class="border-b border-gray-800 text-gray-500 uppercase font-bold tracking-wider">
+                <th class="pb-3 pl-2">วันเวลา</th>
+                <th class="pb-3">ชื่อลูกค้า</th>
+                <th class="pb-3">รายการ</th>
+                <th class="pb-3">จำนวนเงิน</th>
+                <th class="pb-3">สถานะ</th>
+                <th class="pb-3">ชำระโดย</th>
+                <th class="pb-3 pr-2 text-right">ใบเสร็จ</th>
+              </tr>
+            </thead>
+            <tbody id="dailyPaymentLogsTableBody" class="text-gray-300 divide-y divide-gray-900">
+              <tr><td colspan="7" class="text-center py-6 text-gray-600">ยังไม่มีข้อมูล...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <!-- ============ จบส่วนลูกค้ารายวัน / POS ============ -->
+
+      <div class="max-w-3xl mb-8">
+        <div class="glass-card p-6 md:p-8 rounded-3xl">
+          <h3 class="text-gray-300 font-bold text-sm uppercase tracking-wider mb-6"><i class="fa-solid fa-user-check mr-2"></i>Assign to Member</h3>
+          <div id="renewalBirthdayBadge" class="hidden bg-yellow-950/40 border border-yellow-700 rounded-xl p-2.5 mb-4 text-center">
+            <p class="text-yellow-300 text-xs font-bold">🎂 เดือนเกิดของสมาชิกคนนี้! ระบบจะใช้ส่วนลด <span id="birthdayDiscountLabelBadge2">5%</span> ให้อัตโนมัติตอนต่ออายุ</p>
+          </div>
+          <div class="space-y-4">
+            <select id="paymentMemberSelect" onchange="checkRenewalBirthday()" class="w-full bg-black border border-gray-800 rounded-xl p-4 text-white text-sm cursor-pointer"></select>
+            <select id="paymentPackageSelect" class="w-full bg-black border border-gray-800 rounded-xl p-4 text-white text-sm cursor-pointer">
+              <option value="">กำลังโหลดแพ็กเกจ...</option>
+            </select>
+
+            <div class="bg-black/40 border border-gray-800 rounded-xl p-4">
+              <div class="flex items-center justify-between gap-3 mb-3">
+                <p class="text-gray-400 text-xs"><i class="fa-solid fa-qrcode mr-1.5 text-red-500"></i>แนบสลิปโอนเงิน (ถอดรหัสป้องกันสลิปซ้ำ)</p>
+                <button onclick="openPaymentQRModal()" type="button" class="shrink-0 bg-black border border-gray-800 hover:border-red-500 text-gray-300 font-bold py-1.5 px-3 rounded-lg text-[10px] uppercase cursor-pointer flex items-center gap-1.5">
+                  <i class="fa-solid fa-qrcode text-red-500"></i> แสดง QR รับเงิน
+                </button>
+              </div>
+              <div id="dropZone" ondragover="event.preventDefault()" ondrop="handleSlipDrop(event)" class="relative flex items-center gap-3 border-2 border-dashed border-gray-800 hover:border-red-500/50 rounded-xl bg-black/40 p-3 transition-all cursor-pointer">
+                <i class="fa-solid fa-cloud-arrow-up text-xl text-gray-700" id="uploadIcon"></i>
+                <p class="text-gray-500 text-xs font-bold flex-1" id="dropStatusText">ลากไฟล์รูปสลิปมาวาง หรือแตะเพื่อเลือกไฟล์</p>
+                <input type="file" id="fileInput" onchange="handleFileSelect(event)" class="absolute inset-0 opacity-0 cursor-pointer">
+              </div>
+              <input type="text" id="qrDecodedData" readonly placeholder="รหัสคิวอาร์โค้ดของสลิป..." class="w-full bg-black border border-gray-800 rounded-xl p-3 mt-2 text-xs font-mono text-gray-400 outline-none">
+            </div>
+
+            <input type="text" id="renewalCouponCode" placeholder="โค้ดส่วนลด (ถ้ามี)" class="w-full bg-black border border-gray-800 rounded-xl p-4 text-white text-sm outline-none uppercase">
+            <div class="grid grid-cols-2 gap-3">
+              <button type="button" onclick="setRenewalPaymentMethod('cash')" id="btnRenewalPayCash" class="py-4 rounded-xl text-xs font-bold uppercase cursor-pointer border transition-all flex items-center justify-center gap-1.5">
+                <i class="fa-solid fa-money-bill-wave"></i> เงินสด
+              </button>
+              <button type="button" onclick="setRenewalPaymentMethod('transfer')" id="btnRenewalPayTransfer" class="py-4 rounded-xl text-xs font-bold uppercase cursor-pointer border transition-all flex items-center justify-center gap-1.5">
+                <i class="fa-solid fa-mobile-screen-button"></i> โอนเงิน
+              </button>
+            </div>
+          </div>
+          <button onclick="submitRenewal()" id="btnSubmitPayment" disabled class="w-full bg-gray-800 text-gray-500 font-black py-4 rounded-xl tracking-[0.2em] uppercase text-sm cursor-not-allowed mt-6">
+            ยืนยันการชำระเงิน & ต่ออายุ
+          </button>
+        </div>
+      </div>
+
+      <div class="glass-card p-4 md:p-6 rounded-3xl max-w-5xl">
+        <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-3 mb-4">
+          <h3 class="text-gray-300 font-bold text-xs md:text-sm uppercase tracking-wider">
+            <i class="fa-solid fa-receipt mr-2 text-red-500"></i>Payment Log Viewer
+          </h3>
+          <div class="flex items-center gap-2">
+            <button onclick="exportPaymentsExcel()" class="bg-emerald-950 hover:bg-emerald-900 text-emerald-400 border border-emerald-800 px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer">
+              <i class="fa-solid fa-file-excel"></i> Excel
+            </button>
+            <button onclick="exportPaymentsPDF_UI()" class="bg-red-950 hover:bg-red-900 text-red-400 border border-red-800 px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer">
+              <i class="fa-solid fa-file-pdf"></i> PDF
+            </button>
+            <button onclick="loadPaymentLogs()" class="text-gray-500 hover:text-white text-xs ml-2 cursor-pointer"><i class="fa-solid fa-rotate"></i></button>
+          </div>
+        </div>
+        <div class="overflow-x-auto custom-scroll max-h-[250px]">
+          <table class="w-full text-left border-collapse text-xs min-w-[780px]">
+            <thead>
+              <tr class="border-b border-gray-800 text-gray-500 uppercase font-bold tracking-wider">
+                <th class="pb-3 pl-2">วันเวลาทำรายการ</th>
+                <th class="pb-3">ชื่อสมาชิก</th>
+                <th class="pb-3">แพ็กเกจที่ซื้อ</th>
+                <th class="pb-3">รหัสอ้างอิง QR สลิป</th>
+                <th class="pb-3">วันหมดอายุใหม่</th>
+                <th class="pb-3">สถานะ</th>
+                <th class="pb-3">ชำระโดย</th>
+                <th class="pb-3 pr-2 text-right">ใบเสร็จ</th>
+              </tr>
+            </thead>
+            <tbody id="paymentLogsTableBody" class="text-gray-300 divide-y divide-gray-900">
+              <tr><td colspan="8" class="text-center py-6 text-gray-600">ยังไม่มีข้อมูล...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div id="reports" class="section-content">
+      <h2 class="text-3xl md:text-4xl font-black text-white font-['Urbanist'] mb-6 md:mb-10">รายงานสรุปรายรับ</h2>
+
+      <div class="glass-card p-5 md:p-6 rounded-3xl max-w-6xl mb-6">
+        <div class="flex flex-col sm:flex-row gap-3 mb-4">
+          <div class="flex-1">
+            <label class="block text-[10px] uppercase font-bold text-gray-500 tracking-widest mb-2">วันที่เริ่มต้น</label>
+            <input type="date" id="reportStartDate" class="w-full bg-black border border-gray-800 rounded-xl p-3 text-white text-sm outline-none">
+          </div>
+          <div class="flex-1">
+            <label class="block text-[10px] uppercase font-bold text-gray-500 tracking-widest mb-2">วันที่สิ้นสุด</label>
+            <input type="date" id="reportEndDate" class="w-full bg-black border border-gray-800 rounded-xl p-3 text-white text-sm outline-none">
+          </div>
+        </div>
+        <div class="flex flex-wrap gap-2 mb-4">
+          <button onclick="setReportPreset('today')" class="bg-black border border-gray-800 hover:border-red-500 text-gray-300 text-xs px-4 py-2 rounded-lg cursor-pointer">วันนี้</button>
+          <button onclick="setReportPreset('week')" class="bg-black border border-gray-800 hover:border-red-500 text-gray-300 text-xs px-4 py-2 rounded-lg cursor-pointer">7 วันล่าสุด</button>
+          <button onclick="setReportPreset('month')" class="bg-black border border-gray-800 hover:border-red-500 text-gray-300 text-xs px-4 py-2 rounded-lg cursor-pointer">เดือนนี้</button>
+          <button onclick="loadRevenueReport()" class="bg-red-600 hover:bg-red-500 text-white text-xs font-bold px-5 py-2 rounded-lg cursor-pointer ml-auto">
+            <i class="fa-solid fa-magnifying-glass mr-1"></i>ดูรายงาน
+          </button>
+          <button onclick="exportRevenueReportPDF_UI()" class="bg-red-950 hover:bg-red-900 text-red-400 border border-red-800 text-xs font-bold px-4 py-2 rounded-lg cursor-pointer">
+            <i class="fa-solid fa-file-pdf mr-1"></i>PDF
+          </button>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 mb-6 max-w-6xl">
+        <div class="glass-card p-5 rounded-2xl">
+          <p class="text-gray-500 text-[10px] uppercase font-bold tracking-widest mb-2">สมาชิกรายเดือน</p>
+          <h3 class="text-2xl font-black text-white font-['Urbanist']" id="reportMembershipTotal">0</h3>
+          <p class="text-gray-600 text-[10px] mt-1"><span id="reportMembershipCount">0</span> รายการ</p>
+        </div>
+        <div class="glass-card p-5 rounded-2xl">
+          <p class="text-gray-500 text-[10px] uppercase font-bold tracking-widest mb-2">ค่าเข้ารายวัน</p>
+          <h3 class="text-2xl font-black text-white font-['Urbanist']" id="reportDayPassTotal">0</h3>
+        </div>
+        <div class="glass-card p-5 rounded-2xl">
+          <p class="text-gray-500 text-[10px] uppercase font-bold tracking-widest mb-2">ขายสินค้า</p>
+          <h3 class="text-2xl font-black text-white font-['Urbanist']" id="reportProductsTotal">0</h3>
+        </div>
+        <div class="glass-card p-5 rounded-2xl border-l-4 border-l-red-600">
+          <p class="text-gray-500 text-[10px] uppercase font-bold tracking-widest mb-2">รวมรายรับทั้งหมด</p>
+          <h3 class="text-2xl font-black text-red-500 font-['Urbanist']" id="reportGrandTotal">0</h3>
+          <p class="text-gray-600 text-[10px] mt-1"><span id="reportDailyCount">0</span> บิลรายวัน/สินค้า</p>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6 mb-6 max-w-6xl">
+        <div class="glass-card p-5 rounded-2xl border-l-4 border-l-orange-600">
+          <p class="text-gray-500 text-[10px] uppercase font-bold tracking-widest mb-2">รวมรายจ่าย</p>
+          <h3 class="text-2xl font-black text-orange-500 font-['Urbanist']" id="reportExpenseTotal">0</h3>
+        </div>
+        <div class="glass-card p-5 rounded-2xl border-l-4 border-l-green-600">
+          <p class="text-gray-500 text-[10px] uppercase font-bold tracking-widest mb-2">กำไรสุทธิ (รายรับ − รายจ่าย)</p>
+          <h3 class="text-2xl font-black text-green-500 font-['Urbanist']" id="reportNetProfit">0</h3>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6 mb-6 max-w-6xl">
+        <div class="glass-card p-5 rounded-2xl border-l-4 border-l-red-600">
+          <p class="text-gray-500 text-[10px] uppercase font-bold tracking-widest mb-2"><i class="fa-solid fa-money-bill-wave mr-1"></i>เงินสด</p>
+          <h3 class="text-2xl font-black text-white font-['Urbanist']" id="reportCashTotal">0</h3>
+        </div>
+        <div class="glass-card p-5 rounded-2xl border-l-4 border-l-blue-600">
+          <p class="text-gray-500 text-[10px] uppercase font-bold tracking-widest mb-2"><i class="fa-solid fa-mobile-screen-button mr-1"></i>เงินโอน</p>
+          <h3 class="text-2xl font-black text-white font-['Urbanist']" id="reportTransferTotal">0</h3>
+        </div>
+      </div>
+
+      <div class="glass-card p-4 md:p-6 rounded-3xl mb-6 max-w-6xl overflow-hidden">
+        <h3 class="text-gray-300 font-bold text-xs md:text-sm uppercase tracking-wider mb-6">
+          <i class="fa-solid fa-chart-column mr-2 text-red-500"></i>รายรับรายวันแยกช่องทาง
+        </h3>
+        <div class="w-full overflow-x-auto">
+          <div class="min-w-[600px] md:min-w-0">
+            <canvas id="revenueChart" height="90"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 max-w-6xl mb-6">
+        <div class="lg:col-span-2 glass-card p-4 md:p-6 rounded-3xl overflow-x-auto">
+          <h3 class="text-gray-300 font-bold text-xs uppercase tracking-wider mb-4"><i class="fa-solid fa-table-list mr-2 text-red-500"></i>สรุปรายวัน</h3>
+          <div class="overflow-x-auto custom-scroll max-h-[320px]">
+            <table class="w-full text-left text-xs min-w-[720px]">
+              <thead>
+                <tr class="border-b border-gray-800 text-gray-500 font-bold uppercase">
+                  <th class="pb-3 pl-2">วันที่</th>
+                  <th class="pb-3 text-right">สมาชิก</th>
+                  <th class="pb-3 text-right">รายวัน</th>
+                  <th class="pb-3 text-right">สินค้า</th>
+                  <th class="pb-3 text-right">เงินสด</th>
+                  <th class="pb-3 text-right">เงินโอน</th>
+                  <th class="pb-3 text-right">รวม</th>
+                  <th class="pb-3 pr-2 text-right">แก้ไข</th>
+                </tr>
+              </thead>
+              <tbody id="reportBreakdownTableBody" class="text-gray-300 divide-y divide-gray-900">
+                <tr><td colspan="8" class="text-center py-6 text-gray-600">เลือกช่วงวันที่แล้วกด "ดูรายงาน"</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="lg:col-span-1 glass-card p-4 md:p-6 rounded-3xl overflow-x-auto">
+          <h3 class="text-gray-300 font-bold text-xs uppercase tracking-wider mb-4"><i class="fa-solid fa-ranking-star mr-2 text-red-500"></i>สินค้าขายดี</h3>
+          <div id="topProductsList" class="space-y-2 max-h-[320px] overflow-y-auto custom-scroll pr-1">
+            <p class="text-gray-600 text-xs text-center py-6">ยังไม่มีข้อมูล</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="glass-card p-4 md:p-6 rounded-3xl max-w-7xl mt-6 border border-orange-900/40">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="text-orange-400 font-bold text-xs uppercase tracking-wider"><i class="fa-solid fa-cart-shopping mr-2"></i>บันทึกรายจ่าย</h3>
+        </div>
+        <p class="text-gray-500 text-xs mb-4">กรอกรายการที่ซื้อในแต่ละวัน จะถูกหักออกจากรายรับอัตโนมัติในสรุปยอดด้านบน</p>
+        <div class="grid grid-cols-1 sm:grid-cols-4 gap-3 mb-4">
+          <input type="date" id="expenseDate" class="bg-black border border-gray-800 rounded-xl p-3 text-white text-sm outline-none">
+          <input type="text" id="expenseDescription" placeholder="ซื้ออะไร เช่น น้ำยาถูพื้น" class="sm:col-span-2 bg-black border border-gray-800 rounded-xl p-3 text-white text-sm outline-none">
+          <input type="number" id="expenseAmount" min="0" step="0.01" placeholder="จำนวนเงิน" class="bg-black border border-gray-800 rounded-xl p-3 text-white text-sm outline-none">
+        </div>
+        <button onclick="addExpenseUI()" class="w-full sm:w-auto bg-orange-950 hover:bg-orange-900 text-orange-400 border border-orange-800 font-bold py-3 px-6 rounded-xl text-xs uppercase cursor-pointer mb-5">
+          <i class="fa-solid fa-plus mr-1"></i>บันทึกรายจ่าย
+        </button>
+        <div id="expenseListTable" class="space-y-2">
+          <p class="text-gray-600 text-xs text-center py-4">ยังไม่มีข้อมูลในช่วงที่เลือก</p>
+        </div>
+      </div>
+
+      <div class="glass-card p-4 md:p-6 rounded-3xl max-w-7xl mt-6 border border-blue-900/40">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="text-blue-400 font-bold text-xs uppercase tracking-wider"><i class="fa-solid fa-person-running mr-2"></i>ค่าเทรนเนอร์ที่เก็บแทนให้ (ไม่นับเป็นรายรับยิม)</h3>
+          <span id="trainerFeeTotalBadge" class="text-[10px] bg-blue-950 text-blue-400 border border-blue-800 px-2.5 py-1 rounded-full font-bold uppercase tracking-widest">0 บาท</span>
+        </div>
+        <div id="trainerFeeReportList" class="space-y-2">
+          <p class="text-gray-600 text-xs text-center py-4">ยังไม่มีข้อมูลในช่วงที่เลือก</p>
+        </div>
+      </div>
+    </div>
+
+    <div id="settings" class="section-content">
+      <h2 class="text-3xl md:text-4xl font-black text-white font-['Urbanist'] mb-6 md:mb-10">SYSTEM SETTINGS</h2>
+      
+      <div class="grid grid-cols-1 xl:grid-cols-3 gap-6 md:gap-8 items-start max-w-7xl">
+        <div class="xl:col-span-1 glass-card p-5 md:p-6 rounded-3xl min-h-[auto] xl:min-h-[420px]">
+          <h3 class="text-red-500 font-bold text-sm uppercase tracking-wider mb-6"><i class="fa-solid fa-user-plus mr-2"></i>Create New Admin</h3>
+          <form id="adminForm" onsubmit="handleAdminSubmit(event)">
+            <div class="space-y-4 mb-6">
+              <input type="text" id="adminUser" required placeholder="ชื่อผู้ใช้" class="w-full bg-black border border-gray-800 rounded-xl p-3 text-white text-sm outline-none">
+              <input type="password" id="adminPassword" required placeholder="รหัสผ่าน" class="w-full bg-black border border-gray-800 rounded-xl p-3 text-white text-sm outline-none">
+              <input type="email" id="adminEmail" required placeholder="อีเมล (สำหรับกู้คืนรหัสผ่าน)" class="w-full bg-black border border-gray-800 rounded-xl p-3 text-white text-sm outline-none">
+              <select id="adminRole" class="w-full bg-black border border-gray-800 rounded-xl p-3 text-white text-sm cursor-pointer">
+                <option value="Admin Staff">Admin Staff</option>
+                <option value="Manager">Manager</option>
+              </select>
+            </div>
+            <button type="submit" id="btnAdminSubmit" class="w-full bg-red-600 hover:bg-red-500 text-white font-bold py-3.5 rounded-xl text-xs uppercase cursor-pointer">Create Account</button>
+          </form>
+        </div>
+        
+        <div class="xl:col-span-2 glass-card p-4 md:p-6 rounded-3xl min-h-[250px] overflow-x-auto">
+          <table class="w-full text-left text-xs min-w-[400px]">
+            <thead>
+              <tr class="border-b border-gray-800 text-gray-500 font-bold uppercase">
+                <th class="pb-3 pl-2">Username</th>
+                <th class="pb-3">Role</th>
+                <th class="pb-3">Email</th>
+                <th class="pb-3 text-right pr-2">Action</th>
+              </tr>
+            </thead>
+            <tbody id="adminListTableBody" class="text-gray-300 divide-y divide-gray-900"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="glass-card p-4 md:p-6 rounded-3xl max-w-7xl mt-8">
+        <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-3 mb-4">
+          <h3 class="text-red-500 font-bold text-xs md:text-sm uppercase tracking-wider">
+            <i class="fa-solid fa-qrcode mr-2"></i>QR รับเงิน (PromptPay) — ใช้แสดงตอนรับชำระเงินทุกช่องทาง
+          </h3>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+          <div class="text-center">
+            <div id="settingQRPreviewWrap" class="w-40 h-40 mx-auto bg-white rounded-2xl border-2 border-dashed border-gray-800 overflow-hidden mb-3 relative flex items-center justify-center">
+              <i id="settingQRPlaceholder" class="fa-solid fa-qrcode text-4xl text-gray-300"></i>
+              <img id="settingQRPreview" src="" onerror="this.classList.add('hidden'); document.getElementById('settingQRPlaceholder').classList.remove('hidden');" class="hidden absolute inset-0 w-full h-full object-contain p-2">
+            </div>
+            <label class="inline-block bg-gray-800 hover:bg-gray-700 text-white text-[11px] font-bold px-4 py-2 rounded-lg cursor-pointer">
+              <i class="fa-solid fa-upload mr-1"></i> อัปโหลดรูป QR
+              <input type="file" id="settingQRPhotoInput" accept="image/*" onchange="handlePaymentQRPhotoSelect(event)" class="hidden">
+            </label>
+            <p id="settingQRUploadStatus" class="text-[10px] text-gray-600 mt-2"></p>
+          </div>
+          <div>
+            <label class="block text-[10px] uppercase font-bold text-gray-500 tracking-widest mb-2">คำอธิบาย (แสดงใต้ QR ตอนเปิดให้ลูกค้าดู)</label>
+            <textarea id="settingQRCaption" rows="4" placeholder="เช่น ชื่อบัญชี: นาย ยศกร กล้าหาญ&#10;ธนาคาร: กสิกรไทย" class="w-full bg-black border border-gray-800 rounded-xl p-3 text-white text-sm outline-none resize-none mb-3"></textarea>
+            <button onclick="savePaymentQRCaption()" id="btnSaveQRCaption" class="w-full sm:w-auto bg-red-600 hover:bg-red-500 text-white font-bold py-3 px-6 rounded-xl text-xs uppercase cursor-pointer">
+              <i class="fa-solid fa-floppy-disk mr-1"></i>บันทึกคำอธิบาย
+            </button>
+          </div>
+        </div>
+      </div>
+
+
+      <div class="glass-card p-4 md:p-6 rounded-3xl max-w-7xl mt-8">
+        <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-3 mb-4">
+          <h3 class="text-red-500 font-bold text-xs md:text-sm uppercase tracking-wider">
+            <i class="fa-solid fa-user-clock mr-2"></i>ปิดสถานะสมาชิกอัตโนมัติเมื่อหมดอายุ
+          </h3>
+          <span id="autoExpireStatusBadge" class="text-[10px] bg-gray-800 text-gray-400 border border-gray-700 px-2.5 py-1 rounded-full font-bold uppercase tracking-widest">กำลังโหลด...</span>
+        </div>
+        <p class="text-gray-500 text-xs mb-4">เมื่อเปิดใช้งาน ระบบจะเปลี่ยนสถานะสมาชิกที่หมดอายุเกินจำนวนวันที่กำหนดเป็น "Inactive" ให้อัตโนมัติทุกวันช่วงตี 2 โดยไม่ต้องรอแอดมินกดแก้ไข</p>
+        <div class="flex flex-col sm:flex-row items-start sm:items-end gap-4">
+          <div class="w-full sm:w-52">
+            <label class="block text-[10px] uppercase font-bold text-gray-500 tracking-widest mb-2">ผ่อนผัน (วัน) หลังหมดอายุ</label>
+            <input type="number" id="autoExpireGraceDays" min="0" value="3" class="w-full bg-black border border-gray-800 rounded-xl p-3 text-white text-sm outline-none">
+          </div>
+          <button onclick="toggleAutoExpire(true)" id="btnEnableAutoExpire" class="bg-red-600 hover:bg-red-500 text-white font-bold py-3 px-5 rounded-xl text-xs uppercase cursor-pointer">
+            <i class="fa-solid fa-power-off mr-1"></i>เปิดใช้งาน
+          </button>
+          <button onclick="toggleAutoExpire(false)" id="btnDisableAutoExpire" class="bg-gray-800 hover:bg-gray-700 text-white font-bold py-3 px-5 rounded-xl text-xs uppercase cursor-pointer">
+            ปิดใช้งาน
+          </button>
+        </div>
+      </div>
+
+      <div class="glass-card p-4 md:p-6 rounded-3xl max-w-7xl mt-8">
+        <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-3 mb-4">
+          <h3 class="text-red-500 font-bold text-xs md:text-sm uppercase tracking-wider">
+            <i class="fa-solid fa-tags mr-2"></i>ราคาค่าเข้ายิมรายวัน (Day Pass) แยกประเภทลูกค้า
+          </h3>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+          <div>
+            <label class="block text-[10px] uppercase font-bold text-gray-500 tracking-widest mb-2">นักเรียน/นักศึกษา (บาท)</label>
+            <input type="number" id="settingDailyPriceStudent" min="0" class="w-full bg-black border border-gray-800 rounded-xl p-3 text-white text-sm outline-none">
+          </div>
+          <div>
+            <label class="block text-[10px] uppercase font-bold text-gray-500 tracking-widest mb-2">ผู้ใหญ่ (บาท)</label>
+            <input type="number" id="settingDailyPriceAdult" min="0" class="w-full bg-black border border-gray-800 rounded-xl p-3 text-white text-sm outline-none">
+          </div>
+        </div>
+        <button onclick="saveDailyPassPrices()" id="btnSaveDailyPrices" class="w-full sm:w-auto bg-red-600 hover:bg-red-500 text-white font-bold py-3 px-6 rounded-xl text-xs uppercase cursor-pointer">
+          <i class="fa-solid fa-floppy-disk mr-1"></i>บันทึกราคา
+        </button>
+      </div>
+
+      <div class="glass-card p-4 md:p-6 rounded-3xl max-w-7xl mt-8">
+        <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-3 mb-4">
+          <h3 class="text-red-500 font-bold text-xs md:text-sm uppercase tracking-wider">
+            <i class="fa-solid fa-ticket mr-2"></i>จัดการคูปอง/โค้ดส่วนลด
+          </h3>
+        </div>
+        <div class="grid grid-cols-1 lg:grid-cols-4 gap-4 mb-4">
+          <input type="hidden" id="couponRowNumber" value="">
+          <input type="text" id="couponCode" placeholder="โค้ด เช่น NEWYEAR2026" class="w-full bg-black border border-gray-800 rounded-xl p-3 text-white text-sm outline-none uppercase">
+          <select id="couponDiscountType" class="w-full bg-black border border-gray-800 rounded-xl p-3 text-white text-sm outline-none cursor-pointer">
+            <option value="Percent">ลดเป็น % </option>
+            <option value="Fixed">ลดเป็นบาท (จำนวนคงที่)</option>
+          </select>
+          <input type="number" id="couponDiscountValue" placeholder="มูลค่าส่วนลด" min="0" class="w-full bg-black border border-gray-800 rounded-xl p-3 text-white text-sm outline-none">
+          <select id="couponApplicableTo" class="w-full bg-black border border-gray-800 rounded-xl p-3 text-white text-sm outline-none cursor-pointer">
+            <option value="All">ใช้ได้ทุกประเภท</option>
+            <option value="Membership">สมัคร/ต่ออายุสมาชิกเท่านั้น</option>
+            <option value="Daily">ลูกค้ารายวัน/ขายสินค้าเท่านั้น</option>
+          </select>
+        </div>
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
+          <div>
+            <label class="block text-[10px] uppercase font-bold text-gray-500 tracking-widest mb-1">จำกัดจำนวนสิทธิ์ (เว้นว่าง = ไม่จำกัด)</label>
+            <input type="number" id="couponUsageLimit" min="1" class="w-full bg-black border border-gray-800 rounded-xl p-3 text-white text-sm outline-none">
+          </div>
+          <div>
+            <label class="block text-[10px] uppercase font-bold text-gray-500 tracking-widest mb-1">วันหมดอายุ (เว้นว่าง = ไม่หมดอายุ)</label>
+            <input type="date" id="couponExpiryDate" class="w-full bg-black border border-gray-800 rounded-xl p-3 text-white text-sm outline-none">
+          </div>
+          <div>
+            <label class="block text-[10px] uppercase font-bold text-gray-500 tracking-widest mb-1">ยอดซื้อขั้นต่ำ (บาท)</label>
+            <input type="number" id="couponMinPurchase" min="0" placeholder="0" class="w-full bg-black border border-gray-800 rounded-xl p-3 text-white text-sm outline-none">
+          </div>
+        </div>
+        <input type="text" id="couponDescription" placeholder="หมายเหตุ (ไม่บังคับ) เช่น โปรปีใหม่ 2026" class="w-full bg-black border border-gray-800 rounded-xl p-3 text-white text-sm outline-none mb-4">
+        <label class="flex items-center gap-2 cursor-pointer mb-4">
+          <input type="checkbox" id="couponBroadcastLine" class="w-4 h-4 accent-red-600 cursor-pointer">
+          <span class="text-gray-400 text-xs"><i class="fa-brands fa-line mr-1 text-green-500"></i>แจ้งเตือนคูปองนี้ทาง LINE ให้สมาชิกที่เชื่อมต่อไว้ทันทีที่สร้าง (เฉพาะตอนสร้างใหม่เท่านั้น)</span>
+        </label>
+        <div class="flex gap-2 mb-6">
+          <button onclick="handleCouponSubmit()" id="btnCouponSubmit" class="flex-1 bg-red-600 hover:bg-red-500 text-white font-bold py-3 rounded-xl text-xs uppercase cursor-pointer">
+            <i class="fa-solid fa-plus mr-1"></i>สร้างคูปอง
+          </button>
+          <button onclick="clearCouponForm()" id="btnCouponCancel" class="hidden bg-gray-800 hover:bg-gray-700 text-white font-bold py-3 px-5 rounded-xl text-xs uppercase cursor-pointer">ยกเลิก</button>
+        </div>
+        <div class="overflow-x-auto custom-scroll max-h-[300px]">
+          <table class="w-full text-left border-collapse text-xs min-w-[700px]">
+            <thead>
+              <tr class="border-b border-gray-800 text-gray-500 uppercase font-bold tracking-wider">
+                <th class="pb-3 pl-2">โค้ด</th>
+                <th class="pb-3">ส่วนลด</th>
+                <th class="pb-3">ใช้แล้ว/สิทธิ์</th>
+                <th class="pb-3">หมดอายุ</th>
+                <th class="pb-3">ใช้ได้กับ</th>
+                <th class="pb-3">สถานะ</th>
+                <th class="pb-3 pr-2 text-right">Action</th>
+              </tr>
+            </thead>
+            <tbody id="couponListTableBody" class="text-gray-300 divide-y divide-gray-900">
+              <tr><td colspan="7" class="text-center py-6 text-gray-600">ยังไม่มีคูปองในระบบ...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="glass-card p-4 md:p-6 rounded-3xl max-w-7xl mt-8">
+        <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-3 mb-4">
+          <h3 class="text-red-500 font-bold text-xs md:text-sm uppercase tracking-wider">
+            <i class="fa-solid fa-id-card mr-2"></i>จัดการแพ็กเกจสมาชิกรายเดือน
+          </h3>
+        </div>
+        <div class="grid grid-cols-1 lg:grid-cols-4 gap-4 mb-4">
+          <input type="hidden" id="packageRowNumber" value="">
+          <input type="text" id="packageName" placeholder="ชื่อแพ็กเกจ เช่น Standard Monthly" class="w-full bg-black border border-gray-800 rounded-xl p-3 text-white text-sm outline-none">
+          <input type="number" id="packagePrice" placeholder="ราคา (บาท)" min="0" class="w-full bg-black border border-gray-800 rounded-xl p-3 text-white text-sm outline-none">
+          <input type="number" id="packageDuration" placeholder="ระยะเวลา (เดือน)" min="1" class="w-full bg-black border border-gray-800 rounded-xl p-3 text-white text-sm outline-none">
+          <select id="packageStatus" class="w-full bg-black border border-gray-800 rounded-xl p-3 text-white text-sm cursor-pointer outline-none">
+            <option value="Active">🟢 Active</option>
+            <option value="Inactive">🔴 Inactive</option>
+          </select>
+        </div>
+        <div class="flex gap-2 mb-6">
+          <button onclick="handlePackageSubmit()" id="btnPackageSubmit" class="flex-1 bg-red-600 hover:bg-red-500 text-white font-bold py-3 rounded-xl text-xs uppercase cursor-pointer">
+            <i class="fa-solid fa-plus mr-1"></i>เพิ่มแพ็กเกจ
+          </button>
+          <button onclick="clearPackageForm()" id="btnPackageCancel" class="hidden bg-gray-800 hover:bg-gray-700 text-white font-bold py-3 px-5 rounded-xl text-xs uppercase cursor-pointer">ยกเลิก</button>
+        </div>
+        <div class="overflow-x-auto custom-scroll max-h-[280px]">
+          <table class="w-full text-left border-collapse text-xs min-w-[500px]">
+            <thead>
+              <tr class="border-b border-gray-800 text-gray-500 uppercase font-bold tracking-wider">
+                <th class="pb-3 pl-2">ชื่อแพ็กเกจ</th>
+                <th class="pb-3">ราคา</th>
+                <th class="pb-3">ระยะเวลา</th>
+                <th class="pb-3">สถานะ</th>
+                <th class="pb-3 pr-2 text-right">Action</th>
+              </tr>
+            </thead>
+            <tbody id="packageListTableBody" class="text-gray-300 divide-y divide-gray-900">
+              <tr><td colspan="5" class="text-center py-6 text-gray-600">กำลังโหลด...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="glass-card p-4 md:p-6 rounded-3xl max-w-7xl mt-8">
+        <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-3 mb-4">
+          <h3 class="text-red-500 font-bold text-xs md:text-sm uppercase tracking-wider">
+            <i class="fa-solid fa-bag-shopping mr-2"></i>จัดการสินค้าหน้ายิม (น้ำ / เวย์ / ขนม)
+          </h3>
+        </div>
+        <div class="grid grid-cols-1 lg:grid-cols-5 gap-4 mb-4">
+          <input type="hidden" id="productRowNumber" value="">
+          <input type="text" id="productName" placeholder="ชื่อสินค้า เช่น น้ำเปล่า, เวย์โปรตีน" class="w-full bg-black border border-gray-800 rounded-xl p-3 text-white text-sm outline-none lg:col-span-2">
+          <input type="text" id="productCategory" placeholder="หมวดหมู่ (ไม่บังคับ)" class="w-full bg-black border border-gray-800 rounded-xl p-3 text-white text-sm outline-none">
+          <input type="number" id="productPrice" placeholder="ราคา (บาท)" min="0" class="w-full bg-black border border-gray-800 rounded-xl p-3 text-white text-sm outline-none">
+          <input type="number" id="productStock" placeholder="สต็อก (เว้นว่าง = ไม่ติดตาม)" min="0" class="w-full bg-black border border-gray-800 rounded-xl p-3 text-white text-sm outline-none">
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+          <div>
+            <label class="block text-[10px] uppercase font-bold text-gray-500 tracking-widest mb-1">แจ้งเตือนเมื่อเหลือน้อยกว่า (ชิ้น)</label>
+            <input type="number" id="productLowStockThreshold" placeholder="5" min="0" value="5" class="w-full bg-black border border-gray-800 rounded-xl p-3 text-white text-sm outline-none">
+          </div>
+        </div>
+        <div class="flex gap-2 mb-6">
+          <button onclick="handleProductSubmit()" id="btnProductSubmit" class="flex-1 bg-red-600 hover:bg-red-500 text-white font-bold py-3 rounded-xl text-xs uppercase cursor-pointer">
+            <i class="fa-solid fa-plus mr-1"></i>เพิ่มสินค้า
+          </button>
+          <button onclick="clearProductForm()" id="btnProductCancel" class="hidden bg-gray-800 hover:bg-gray-700 text-white font-bold py-3 px-5 rounded-xl text-xs uppercase cursor-pointer">ยกเลิก</button>
+        </div>
+        <div class="overflow-x-auto custom-scroll max-h-[280px]">
+          <table class="w-full text-left border-collapse text-xs min-w-[600px]">
+            <thead>
+              <tr class="border-b border-gray-800 text-gray-500 uppercase font-bold tracking-wider">
+                <th class="pb-3 pl-2">ชื่อสินค้า</th>
+                <th class="pb-3">หมวดหมู่</th>
+                <th class="pb-3">ราคา</th>
+                <th class="pb-3">สต็อก</th>
+                <th class="pb-3">สถานะ</th>
+                <th class="pb-3 pr-2 text-right">Action</th>
+              </tr>
+            </thead>
+            <tbody id="productListTableBody" class="text-gray-300 divide-y divide-gray-900">
+              <tr><td colspan="6" class="text-center py-6 text-gray-600">ยังไม่มีสินค้าในระบบ...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="glass-card p-4 md:p-6 rounded-3xl max-w-7xl mt-8">
+        <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-3 mb-4">
+          <h3 class="text-red-500 font-bold text-xs md:text-sm uppercase tracking-wider">
+            <i class="fa-brands fa-line mr-2"></i>ตั้งค่า LINE Official Account (แจ้งเตือนคิวใหม่เข้าเทรนเนอร์ + แจ้งเตือนสมาชิก)
+          </h3>
+          <span id="lineStatusBadge" class="text-[10px] bg-gray-800 text-gray-400 border border-gray-700 px-2.5 py-1 rounded-full font-bold uppercase tracking-widest">กำลังโหลด...</span>
+        </div>
+
+        <div class="bg-black/40 border border-gray-800 rounded-xl p-4 mb-4 text-xs text-gray-400 leading-relaxed">
+          <p class="text-white font-bold mb-2"><i class="fa-solid fa-circle-info mr-1 text-red-500"></i>ขั้นตอนตั้งค่าครั้งแรก (ทำครั้งเดียว)</p>
+          <ol class="list-decimal list-inside space-y-1">
+            <li>สร้าง LINE Official Account ฟรีที่ <a href="https://www.linebiz.com/th/entry/" target="_blank" class="text-red-400 underline">linebiz.com/th/entry</a></li>
+            <li>เข้า <a href="https://developers.line.biz/console/" target="_blank" class="text-red-400 underline">LINE Developers Console</a> → เลือก Provider → เปิดใช้ Messaging API สำหรับ OA ของคุณ</li>
+            <li>ในหน้า Messaging API settings คัดลอก <b>Channel access token</b> มาวางด้านล่าง</li>
+            <li>คัดลอก <b>Webhook URL</b> ด้านล่างไปวางในช่อง Webhook URL ของ LINE Developers Console แล้วเปิด "Use webhook"</li>
+            <li>คัดลอกลิงก์เพิ่มเพื่อน OA ของคุณ (หน้า Messaging API settings เช่นกัน) มาวางด้านล่าง</li>
+          </ol>
+        </div>
+
+        <div class="mb-4">
+          <label class="block text-[10px] uppercase font-bold text-gray-500 tracking-widest mb-2">Webhook URL (คัดลอกไปวางใน LINE Developers Console)</label>
+          <div class="flex gap-2">
+            <input type="text" id="lineWebhookUrlDisplay" readonly class="w-full bg-black border border-gray-800 rounded-xl p-3 text-gray-400 text-xs outline-none font-mono">
+            <button onclick="copyLineWebhookUrl()" class="shrink-0 bg-gray-800 hover:bg-gray-700 text-white px-4 rounded-xl text-xs cursor-pointer">คัดลอก</button>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+          <div>
+            <label class="block text-[10px] uppercase font-bold text-gray-500 tracking-widest mb-2">Channel Access Token</label>
+            <input type="password" id="lineChannelAccessToken" placeholder="วาง Channel access token ที่นี่" class="w-full bg-black border border-gray-800 rounded-xl p-3 text-white text-sm outline-none">
+          </div>
+          <div>
+            <label class="block text-[10px] uppercase font-bold text-gray-500 tracking-widest mb-2">ลิงก์เพิ่มเพื่อน LINE OA</label>
+            <input type="text" id="lineAddFriendUrl" placeholder="https://line.me/R/ti/p/@xxxxx" class="w-full bg-black border border-gray-800 rounded-xl p-3 text-white text-sm outline-none">
+          </div>
+        </div>
+        <button onclick="saveLineSettings()" id="btnSaveLineSettings" class="w-full sm:w-auto bg-red-600 hover:bg-red-500 text-white font-bold py-3 px-6 rounded-xl text-xs uppercase cursor-pointer">
+          <i class="fa-solid fa-floppy-disk mr-1"></i>บันทึกการตั้งค่า LINE
+        </button>
+
+        <div class="flex flex-col sm:flex-row items-start sm:items-center gap-4 pt-5 mt-5 border-t border-gray-900">
+          <div>
+            <p class="text-white text-xs font-bold">แจ้งเตือนสมาชิกทาง LINE อัตโนมัติ</p>
+            <p class="text-gray-500 text-[11px]">ส่งแจ้งเตือนใกล้หมดอายุและโปรวันเกิดให้สมาชิกที่เชื่อมต่อ LINE ไว้ ทุกวันช่วง 9 โมงเช้า</p>
+          </div>
+          <div class="flex gap-2 sm:ml-auto">
+            <span id="memberLineNotifyBadge" class="text-[10px] bg-gray-800 text-gray-400 border border-gray-700 px-2.5 py-1 rounded-full font-bold uppercase tracking-widest self-center mr-1">กำลังโหลด...</span>
+            <button onclick="toggleMemberLineNotifyUI(true)" id="btnEnableMemberLineNotify" class="bg-red-600 hover:bg-red-500 text-white font-bold py-2.5 px-4 rounded-xl text-xs uppercase cursor-pointer">เปิดใช้งาน</button>
+            <button onclick="toggleMemberLineNotifyUI(false)" id="btnDisableMemberLineNotify" class="bg-gray-800 hover:bg-gray-700 text-white font-bold py-2.5 px-4 rounded-xl text-xs uppercase cursor-pointer">ปิดใช้งาน</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="glass-card p-4 md:p-6 rounded-3xl max-w-7xl mt-8">
+        <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-3 mb-4">
+          <h3 class="text-red-500 font-bold text-xs md:text-sm uppercase tracking-wider">
+            <i class="fa-solid fa-cake-candles mr-2"></i>ตั้งค่าส่วนลดวันเกิดสมาชิก
+          </h3>
+        </div>
+        <p class="text-gray-500 text-xs mb-4">ส่วนลดที่สมาชิกจะได้รับอัตโนมัติตอนต่ออายุในเดือนเกิดของตัวเอง เลือกได้ว่าจะลดเป็น % หรือลดเป็นจำนวนเงินคงที่</p>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+          <div>
+            <label class="block text-[10px] uppercase font-bold text-gray-500 tracking-widest mb-2">รูปแบบส่วนลด</label>
+            <select id="birthdayDiscountType" class="w-full bg-black border border-gray-800 rounded-xl p-3 text-white text-sm outline-none cursor-pointer">
+              <option value="Percent">ลดเป็น %</option>
+              <option value="Fixed">ลดเป็นจำนวนเงินคงที่ (บาท)</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-[10px] uppercase font-bold text-gray-500 tracking-widest mb-2">มูลค่าส่วนลด</label>
+            <input type="number" id="birthdayDiscountValue" min="0" step="0.01" value="5" class="w-full bg-black border border-gray-800 rounded-xl p-3 text-white text-sm outline-none">
+          </div>
+        </div>
+        <button onclick="saveBirthdayDiscountSettings()" id="btnSaveBirthdayDiscount" class="w-full sm:w-auto bg-red-600 hover:bg-red-500 text-white font-bold py-3 px-6 rounded-xl text-xs uppercase cursor-pointer">
+          <i class="fa-solid fa-floppy-disk mr-1"></i>บันทึกการตั้งค่า
+        </button>
+      </div>
+
+      <div class="glass-card p-4 md:p-6 rounded-3xl max-w-7xl mt-8">
+        <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-3 mb-4">
+          <h3 class="text-red-500 font-bold text-xs md:text-sm uppercase tracking-wider">
+            <i class="fa-solid fa-heart-crack mr-2"></i>ดึงสมาชิกที่หายไปกลับมา (Win-back Campaign)
+          </h3>
+          <span id="winbackStatusBadge" class="text-[10px] bg-gray-800 text-gray-400 border border-gray-700 px-2.5 py-1 rounded-full font-bold uppercase tracking-widest">กำลังโหลด...</span>
+        </div>
+        <p class="text-gray-500 text-xs mb-4">ถ้าสมาชิกหมดอายุนานเกินเกณฑ์ที่ตั้งไว้ ระบบจะสร้างคูปองส่วนลดเฉพาะคน แล้วส่งข้อความชวนกลับมาทาง LINE/อีเมลให้อัตโนมัติ (ส่งครั้งเดียวต่อคน ไม่สแปมซ้ำ)</p>
+
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+          <div>
+            <label class="block text-[10px] uppercase font-bold text-gray-500 tracking-widest mb-2">หมดอายุเกิน (วัน)</label>
+            <input type="number" id="winbackInactiveDays" min="1" value="30" class="w-full bg-black border border-gray-800 rounded-xl p-3 text-white text-sm outline-none">
+          </div>
+          <div>
+            <label class="block text-[10px] uppercase font-bold text-gray-500 tracking-widest mb-2">ส่วนลด (%)</label>
+            <input type="number" id="winbackDiscountPercent" min="1" max="100" value="20" class="w-full bg-black border border-gray-800 rounded-xl p-3 text-white text-sm outline-none">
+          </div>
+          <div>
+            <label class="block text-[10px] uppercase font-bold text-gray-500 tracking-widest mb-2">คูปองใช้ได้กี่วัน</label>
+            <input type="number" id="winbackValidDays" min="1" value="14" class="w-full bg-black border border-gray-800 rounded-xl p-3 text-white text-sm outline-none">
+          </div>
+        </div>
+        <button onclick="saveWinBackSettings()" id="btnSaveWinBack" class="w-full sm:w-auto bg-gray-800 hover:bg-gray-700 text-white font-bold py-3 px-6 rounded-xl text-xs uppercase cursor-pointer mb-5">
+          <i class="fa-solid fa-floppy-disk mr-1"></i>บันทึกการตั้งค่า
+        </button>
+
+        <div class="flex flex-col sm:flex-row items-start sm:items-center gap-4 pt-5 border-t border-gray-900">
+          <div>
+            <p class="text-white text-xs font-bold">เปิดใช้งานระบบ Win-back Campaign</p>
+            <p class="text-gray-500 text-[11px]">ทำงานอัตโนมัติทุกวันช่วง 10 โมงเช้า</p>
+          </div>
+          <div class="flex gap-2 sm:ml-auto">
+            <button onclick="toggleWinBackUI(true)" id="btnEnableWinBack" class="bg-red-600 hover:bg-red-500 text-white font-bold py-2.5 px-4 rounded-xl text-xs uppercase cursor-pointer">เปิดใช้งาน</button>
+            <button onclick="toggleWinBackUI(false)" id="btnDisableWinBack" class="bg-gray-800 hover:bg-gray-700 text-white font-bold py-2.5 px-4 rounded-xl text-xs uppercase cursor-pointer">ปิดใช้งาน</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="glass-card p-4 md:p-6 rounded-3xl max-w-7xl mt-8">
+        <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-3 mb-4">
+          <h3 class="text-red-500 font-bold text-xs md:text-sm uppercase tracking-wider">
+            <i class="fa-solid fa-database mr-2"></i>สำรองข้อมูลระบบทั้งหมด
+          </h3>
+          <span id="backupStatusBadge" class="text-[10px] bg-gray-800 text-gray-400 border border-gray-700 px-2.5 py-1 rounded-full font-bold uppercase tracking-widest">กำลังโหลด...</span>
+        </div>
+        <p class="text-gray-500 text-xs mb-4">สร้างสำเนาไฟล์ Google Sheet ทั้งไฟล์ (ทุกชีท ทุกข้อมูล) เก็บไว้ใน Google Drive เดียวกัน เผื่อกรณีต้องกู้คืนหรือย้ายระบบ</p>
+        <div class="flex flex-col sm:flex-row items-start sm:items-center gap-3 mb-4">
+          <button onclick="createBackupNow()" id="btnCreateBackup" class="bg-red-600 hover:bg-red-500 text-white font-bold py-3 px-6 rounded-xl text-xs uppercase cursor-pointer">
+            <i class="fa-solid fa-cloud-arrow-up mr-1"></i>สำรองข้อมูลตอนนี้
+          </button>
+          <p id="lastBackupText" class="text-gray-500 text-xs">ยังไม่เคยสำรองข้อมูล</p>
+        </div>
+        <div class="flex flex-col sm:flex-row items-start sm:items-center gap-4 pt-4 border-t border-gray-900">
+          <div>
+            <p class="text-white text-xs font-bold">สำรองข้อมูลอัตโนมัติทุกสัปดาห์</p>
+            <p class="text-gray-500 text-[11px]">ระบบจะสร้างไฟล์สำรองให้เองทุกวันอาทิตย์ช่วงตี 3</p>
+          </div>
+          <div class="flex gap-2 sm:ml-auto">
+            <button onclick="toggleWeeklyBackupUI(true)" id="btnEnableWeeklyBackup" class="bg-red-600 hover:bg-red-500 text-white font-bold py-2.5 px-4 rounded-xl text-xs uppercase cursor-pointer">เปิดใช้งาน</button>
+            <button onclick="toggleWeeklyBackupUI(false)" id="btnDisableWeeklyBackup" class="bg-gray-800 hover:bg-gray-700 text-white font-bold py-2.5 px-4 rounded-xl text-xs uppercase cursor-pointer">ปิดใช้งาน</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="glass-card p-4 md:p-6 rounded-3xl max-w-7xl mt-8 border-2 border-red-900">
+        <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-3 mb-4">
+          <h3 class="text-red-500 font-bold text-xs md:text-sm uppercase tracking-wider">
+            <i class="fa-solid fa-triangle-exclamation mr-2"></i>Danger Zone — ล้างข้อมูลการซื้อขาย
+          </h3>
+        </div>
+        <div class="bg-red-950/30 border border-red-900 rounded-xl p-4 mb-4 text-xs text-red-300 leading-relaxed">
+          <p class="font-bold mb-1"><i class="fa-solid fa-circle-exclamation mr-1"></i>คำเตือน — เป็นการลบถาวร กู้คืนไม่ได้</p>
+          <p>ปุ่มนี้จะ<b>ลบประวัติการชำระเงินของสมาชิก (ต่ออายุ) และประวัติลูกค้ารายวัน/ขายสินค้าทั้งหมด</b> รวมถึงข้อมูลสลิปเงิน/QR ที่เคยบันทึกไว้ — เมื่อกดยืนยันแล้ว<b>จะไม่สามารถกู้ข้อมูลสลิปเงินกลับมาได้อีก</b> (ยกเว้นไปเปิดจากไฟล์สำรองที่ระบบสร้างให้อัตโนมัติก่อนลบเท่านั้น)</p>
+        </div>
+        <button onclick="openClearTransactionModal()" class="w-full sm:w-auto bg-red-700 hover:bg-red-600 text-white font-bold py-3 px-6 rounded-xl text-xs uppercase cursor-pointer">
+          <i class="fa-solid fa-trash-can mr-1"></i>ล้างข้อมูลการซื้อขายทั้งหมด
+        </button>
+      </div>
+
+      <div class="glass-card p-4 md:p-6 rounded-3xl max-w-7xl mt-8">
+        <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-3 mb-4">
+          <h3 class="text-gray-300 font-bold text-xs md:text-sm uppercase tracking-wider">
+            <i class="fa-solid fa-clipboard-list mr-2 text-red-500"></i>Audit Log (บันทึกการกระทำของแอดมิน)
+          </h3>
+          <button onclick="loadAuditLog()" class="w-max text-gray-500 hover:text-white text-xs cursor-pointer"><i class="fa-solid fa-rotate mr-1"></i>รีเฟรช</button>
+        </div>
+        <div class="overflow-x-auto custom-scroll max-h-[300px]">
+          <table class="w-full text-left border-collapse text-xs min-w-[700px]">
+            <thead>
+              <tr class="border-b border-gray-800 text-gray-500 uppercase font-bold tracking-wider">
+                <th class="pb-3 pl-2">เวลา</th>
+                <th class="pb-3">แอดมิน</th>
+                <th class="pb-3">การกระทำ</th>
+                <th class="pb-3">เป้าหมาย</th>
+                <th class="pb-3 pr-2">รายละเอียด</th>
+              </tr>
+            </thead>
+            <tbody id="auditLogTableBody" class="text-gray-300 divide-y divide-gray-900">
+              <tr><td colspan="5" class="text-center py-6 text-gray-600">ยังไม่มีบันทึก...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- ============ Modal แสดง QR รับเงิน (PromptPay) ============ -->
+  <div id="paymentQRModal" class="hidden fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="glass-card w-full max-w-sm rounded-3xl p-6 relative text-center">
+      <button onclick="closePaymentQRModal()" class="absolute top-4 right-4 text-gray-500 hover:text-white cursor-pointer"><i class="fa-solid fa-xmark text-lg"></i></button>
+      <h3 class="text-white font-bold text-sm uppercase tracking-wider mb-4"><i class="fa-solid fa-qrcode mr-2 text-red-500"></i>สแกน QR เพื่อชำระเงิน</h3>
+      <div id="paymentQRImageWrap" class="bg-white rounded-2xl p-4 mb-4 flex items-center justify-center min-h-[240px]">
+        <img id="paymentQRImage" src="" class="hidden w-full rounded-lg">
+        <p id="paymentQRNoImageMsg" class="text-gray-400 text-xs">ยังไม่ได้อัปโหลด QR รับเงิน<br>ไปที่ Settings เพื่ออัปโหลด</p>
+      </div>
+      <p id="paymentQRCaptionDisplay" class="text-gray-300 text-xs leading-relaxed whitespace-pre-line"></p>
+    </div>
+  </div>
+
+  <!-- ============ Modal ยืนยันล้างข้อมูลการซื้อขาย (พิมพ์ยืนยันก่อนถึงจะกดได้) ============ -->
+  <!-- ============ Modal ลงทะเบียนลายนิ้วมือ (รอโปรแกรมตัวกลางที่หน้าประตูรับงาน) ============ -->
+  <div id="enrollFingerprintModal" class="hidden fixed inset-0 z-50 bg-black/90 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="glass-card w-full max-w-sm rounded-3xl p-6 relative text-center">
+      <button onclick="closeEnrollFingerprintModal()" class="absolute top-4 right-4 text-gray-500 hover:text-white cursor-pointer"><i class="fa-solid fa-xmark text-lg"></i></button>
+
+      <div id="enrollWaitingState">
+        <div class="w-16 h-16 mx-auto rounded-full bg-red-950 border-2 border-red-800 flex items-center justify-center text-3xl text-red-500 mb-4 animate-pulse">
+          <i class="fa-solid fa-fingerprint"></i>
+        </div>
+        <h3 class="text-white font-bold text-base mb-1">รอสแกนลายนิ้วมือ...</h3>
+        <p id="enrollMemberNameText" class="text-gray-400 text-sm mb-4">-</p>
+        <p class="text-gray-500 text-xs leading-relaxed">ให้สมาชิกไปที่เครื่องสแกนลายนิ้วมือหน้าประตู แล้ววางนิ้วตามจำนวนครั้งที่เครื่องแจ้ง<br><br>หน้านี้จะอัปเดตให้อัตโนมัติเมื่อสแกนเสร็จ ไม่ต้องกดอะไรเพิ่ม</p>
+      </div>
+
+      <div id="enrollSuccessState" class="hidden">
+        <div class="w-16 h-16 mx-auto rounded-full bg-green-950 border-2 border-green-800 flex items-center justify-center text-3xl text-green-500 mb-4">
+          <i class="fa-solid fa-check"></i>
+        </div>
+        <h3 class="text-white font-bold text-base mb-1">ลงทะเบียนสำเร็จ!</h3>
+        <p id="enrollSuccessText" class="text-gray-400 text-sm">-</p>
+      </div>
+
+      <div id="enrollFailedState" class="hidden">
+        <div class="w-16 h-16 mx-auto rounded-full bg-red-950 border-2 border-red-800 flex items-center justify-center text-3xl text-red-500 mb-4">
+          <i class="fa-solid fa-triangle-exclamation"></i>
+        </div>
+        <h3 class="text-white font-bold text-base mb-1">ลงทะเบียนไม่สำเร็จ</h3>
+        <p id="enrollFailedText" class="text-gray-400 text-sm">-</p>
+      </div>
+
+      <button onclick="cancelEnrollFingerprint()" id="btnCancelEnroll" class="w-full bg-gray-800 hover:bg-gray-700 text-white font-bold py-3 rounded-xl text-xs uppercase cursor-pointer mt-5">
+        ยกเลิก
+      </button>
+    </div>
+  </div>
+
+  <div id="clearTransactionModal" class="hidden fixed inset-0 z-50 bg-black/90 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="glass-card w-full max-w-md rounded-3xl p-6 relative border-2 border-red-800">
+      <button onclick="closeClearTransactionModal()" class="absolute top-4 right-4 text-gray-500 hover:text-white cursor-pointer"><i class="fa-solid fa-xmark text-lg"></i></button>
+
+      <div class="text-center mb-5">
+        <div class="w-14 h-14 mx-auto rounded-full bg-red-950 border-2 border-red-800 flex items-center justify-center text-2xl text-red-500 mb-3">
+          <i class="fa-solid fa-triangle-exclamation"></i>
+        </div>
+        <h3 class="text-white font-bold text-base">ยืนยันล้างข้อมูลการซื้อขายทั้งหมด</h3>
+      </div>
+
+      <div class="bg-red-950/30 border border-red-900 rounded-xl p-4 mb-4 text-xs text-red-300 leading-relaxed">
+        <p>• ลบประวัติชำระเงินสมาชิก (ต่ออายุ) ทั้งหมด</p>
+        <p>• ลบประวัติลูกค้ารายวัน/ขายสินค้าทั้งหมด</p>
+        <p>• ลบข้อมูลสลิปเงิน/QR ที่เคยบันทึกไว้ทั้งหมด</p>
+        <p class="font-bold mt-2">⚠️ กู้คืนข้อมูลสลิปเงินกลับมาไม่ได้อีก ไม่ว่ากรณีใดก็ตาม</p>
+      </div>
+      <p class="text-gray-500 text-[11px] mb-4">ระบบจะสร้างไฟล์สำรองข้อมูลทั้งไฟล์ให้อัตโนมัติก่อนลบทุกครั้ง แต่ต้องเข้าไปกู้เองจาก Google Drive ถ้าจำเป็น ไม่ใช่กู้คืนอัตโนมัติ</p>
+
+      <label class="block text-[10px] uppercase font-bold text-gray-500 tracking-widest mb-2">พิมพ์ "ลบข้อมูลถาวร" เพื่อยืนยัน</label>
+      <input type="text" id="clearTransactionConfirmInput" placeholder="ลบข้อมูลถาวร" oninput="validateClearTransactionInput()" class="w-full bg-black border border-red-900 rounded-xl p-3 text-white text-sm outline-none mb-4 text-center">
+
+      <button onclick="submitClearTransactionData()" id="btnConfirmClearTransaction" disabled class="w-full bg-gray-800 text-gray-600 font-black py-4 rounded-xl tracking-wider uppercase text-sm cursor-not-allowed transition-all">
+        ยืนยันลบถาวร
+      </button>
+    </div>
+  </div>
+
+  <!-- ============ Modal ประวัติสมาชิกรายคนแบบละเอียด ============ -->
+  <div id="memberHistoryModal" class="hidden fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="glass-card w-full max-w-2xl rounded-3xl p-6 relative max-h-[85vh] overflow-y-auto custom-scroll">
+      <button onclick="closeMemberHistory()" class="absolute top-4 right-4 text-gray-500 hover:text-white cursor-pointer"><i class="fa-solid fa-xmark text-lg"></i></button>
+
+      <div class="mb-5">
+        <h3 id="historyMemberName" class="text-xl font-bold text-white">--</h3>
+        <p id="historyMemberMeta" class="text-gray-500 text-xs mt-1">--</p>
+      </div>
+
+      <div class="flex gap-2 mb-4 border-b border-gray-800 pb-2">
+        <button onclick="switchHistoryTab('payments')" id="historyTabBtn-payments" class="historyTabBtn text-xs font-bold px-3 py-2 rounded-lg cursor-pointer">การชำระเงิน</button>
+        <button onclick="switchHistoryTab('checkins')" id="historyTabBtn-checkins" class="historyTabBtn text-xs font-bold px-3 py-2 rounded-lg cursor-pointer">การเข้ายิม</button>
+        <button onclick="switchHistoryTab('bookings')" id="historyTabBtn-bookings" class="historyTabBtn text-xs font-bold px-3 py-2 rounded-lg cursor-pointer">คิวเทรนเนอร์</button>
+      </div>
+
+      <div id="historyTab-payments" class="historyTabContent space-y-2 max-h-[400px] overflow-y-auto custom-scroll pr-1"></div>
+      <div id="historyTab-checkins" class="historyTabContent hidden space-y-2 max-h-[400px] overflow-y-auto custom-scroll pr-1"></div>
+      <div id="historyTab-bookings" class="historyTabContent hidden space-y-2 max-h-[400px] overflow-y-auto custom-scroll pr-1"></div>
+    </div>
+  </div>
+
+  <?!= include('Index_Script'); ?>
+</body>
+</html>

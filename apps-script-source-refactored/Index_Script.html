@@ -1,0 +1,3174 @@
+<script>
+    const SESSION_TOKEN = "<?= sessionToken ?>";
+    const SCRIPT_URL = "<?= getScriptUrl() ?>";
+
+    function openCheckinDisplay() {
+      window.open(SCRIPT_URL + "?page=checkin-display&token=" + SESSION_TOKEN, "_blank");
+    }
+
+    let localMembersArray = [];
+    let localPackagesArray = [];
+    let birthdayDiscountSettings = { type: 'Percent', value: 5 };
+
+    function loadBirthdayDiscountSettings() {
+      google.script.run
+        .withSuccessHandler(settings => {
+          birthdayDiscountSettings = settings;
+          const label = settings.type === 'Fixed' ? settings.value.toLocaleString('th-TH') + ' บาท' : settings.value + '%';
+          ['birthdayDiscountLabelDashboard', 'birthdayDiscountLabelForm', 'birthdayDiscountLabelBadge1', 'birthdayDiscountLabelBadge2'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.innerText = label;
+          });
+          const settingsType = document.getElementById('birthdayDiscountType');
+          const settingsValue = document.getElementById('birthdayDiscountValue');
+          if (settingsType) settingsType.value = settings.type;
+          if (settingsValue) settingsValue.value = settings.value;
+        })
+        .withFailureHandler(() => {})
+        .getBirthdayDiscountSettings(SESSION_TOKEN);
+    }
+
+    function saveBirthdayDiscountSettings() {
+      const type = document.getElementById('birthdayDiscountType').value;
+      const value = document.getElementById('birthdayDiscountValue').value;
+      const btn = document.getElementById('btnSaveBirthdayDiscount');
+      btn.disabled = true;
+
+      google.script.run
+        .withSuccessHandler(res => {
+          alert(res.message);
+          btn.disabled = false;
+          if (res.success) loadBirthdayDiscountSettings();
+        })
+        .withFailureHandler(err => { goToLoginIfExpired(err); btn.disabled = false; })
+        .updateBirthdayDiscountSettings(type, value, SESSION_TOKEN);
+    }
+
+    let localPaymentLogsArray = [];
+    let localTrainersArray = [];
+    let currentFilteredList = [];
+    let currentPage = 1;
+    const PAGE_SIZE = 10;
+    let monthlyChartInstance = null;
+
+    const menuToggleBtn = document.getElementById('menuToggleBtn');
+    const sidebar = document.getElementById('sidebar');
+    const sidebarOverlay = document.getElementById('sidebarOverlay');
+    const menuIcon = document.getElementById('menuIcon');
+
+    function toggleMobileSidebar() {
+      const isOpen = sidebar.classList.contains('translate-x-0');
+      if (isOpen) { closeMobileSidebar(); } else { openMobileSidebar(); }
+    }
+
+    function openMobileSidebar() {
+      sidebar.classList.remove('-translate-x-full');
+      sidebar.classList.add('translate-x-0');
+      sidebarOverlay.classList.remove('hidden');
+      menuIcon.classList.remove('fa-bars');
+      menuIcon.classList.add('fa-xmark');
+    }
+
+    function closeMobileSidebar() {
+      sidebar.classList.remove('translate-x-0');
+      sidebar.classList.add('-translate-x-full');
+      sidebarOverlay.classList.add('hidden');
+      menuIcon.classList.remove('fa-xmark');
+      menuIcon.classList.add('fa-bars');
+    }
+
+    menuToggleBtn.addEventListener('click', toggleMobileSidebar);
+    sidebarOverlay.addEventListener('click', closeMobileSidebar);
+
+    function goToLoginIfExpired(err) {
+      const msg = (err && err.message) ? err.message : String(err);
+      if (msg.indexOf('Session') !== -1) {
+        alert('Session หมดอายุ กรุณา Login ใหม่');
+        window.top.location.href = "<?= getScriptUrl() ?>?page=login";
+        return true;
+      }
+      return false;
+    }
+
+    function switchSection(sectionId) {
+      document.querySelectorAll('.section-content').forEach(s => s.classList.remove('active'));
+      
+      document.querySelectorAll('.sidebar-item').forEach(i => {
+        if(i.getAttribute('onclick').includes(sectionId)) {
+          i.classList.add('active');
+        } else {
+          i.classList.remove('active');
+        }
+      });
+      
+      const targetSec = document.getElementById(sectionId);
+      if (targetSec) targetSec.classList.add('active');
+      
+      if(sectionId === 'dashboard') { loadStats(); loadMonthlyStats(); loadLeaderboard(); loadExpiringMembers(); loadLowStockProducts(); loadBirthdayMembers(); }
+      if(sectionId === 'checkin') { loadMemberList(); document.getElementById('checkinSearchBar').value = ''; }
+      if(sectionId === 'members') { loadMemberList(); loadPackageList(); }
+      if(sectionId === 'trainers') { loadTrainerListAdmin(); loadAllBookings(); loadMemberList(); }
+      if(sectionId === 'payments') { updatePaymentDropdown(); loadPaymentLogs(); loadDailyPaymentLogs(); loadProductList(); loadDailyPassPrices(); loadPackageList(); }
+      if(sectionId === 'reports') { setReportPreset('week'); }
+      if(sectionId === 'settings') { loadAdminList(); loadAuditLog(); loadProductList(); loadDailyPassPrices(); loadAutoExpireSettings(); loadPackageList(); loadBackupSettings(); loadLineSettings(); loadCouponList(); loadWinBackSettings(); loadBirthdayDiscountSettings(); loadPaymentQRInfo(); }
+      
+      closeMobileSidebar();
+    }
+
+    function calculateExpiryDate() {
+      const start = document.getElementById('startDate').value;
+      const pkg = document.getElementById('package').value;
+      if (!start) return;
+      let date = new Date(start);
+      const pkgInfo = (localPackagesArray || []).find(p => p.name === pkg);
+      const durationMonths = pkgInfo ? pkgInfo.durationMonths : 1;
+      date.setMonth(date.getMonth() + durationMonths);
+      document.getElementById('expiryDate').value = date.toISOString().split('T')[0];
+
+      const amountInput = document.getElementById('memberChargeAmount');
+      const badge = document.getElementById('birthdayDiscountBadge');
+      if (amountInput && !document.getElementById('rowNumber').value) {
+        let price = pkgInfo ? pkgInfo.price : 0;
+        const dobVal = document.getElementById('memberDob').value;
+        const isBirthday = dobVal && new Date(dobVal).getMonth() === new Date().getMonth();
+        if (isBirthday) {
+          price = birthdayDiscountSettings.type === 'Fixed'
+            ? Math.max(0, price - birthdayDiscountSettings.value)
+            : Math.round(price * (1 - birthdayDiscountSettings.value / 100) * 100) / 100;
+          badge.classList.remove('hidden');
+        } else {
+          badge.classList.add('hidden');
+        }
+        amountInput.value = price;
+      }
+    }
+
+    function exportMembersExcel() {
+      if(!localMembersArray || localMembersArray.length === 0) { alert("ไม่มีข้อมูลสมาชิก"); return; }
+      const exportData = localMembersArray.map((m, idx) => ({
+        "ลำดับ": idx + 1,
+        "ชื่อ-นามสกุล": m.fullName,
+        "เบอร์โทรศัพท์": m.phone,
+        "อีเมล": m.email,
+        "แพ็กเกจ": m.package,
+        "วันที่เริ่ม": m.startDate,
+        "วันหมดอายุ": m.expiryDate,
+        "รหัสลายนิ้วมือ": m.fingerprintId,
+        "สถานะ": m.status,
+        "จำนวนครั้งที่เข้า": m.checkInCount,
+      }));
+      const worksheet = XLSX.utils.json_to_sheet(exportData);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Members");
+      XLSX.writeFile(workbook, `IM_Members_${new Date().toISOString().split('T')[0]}.xlsx`);
+    }
+
+    function exportMembersPDF_UI() {
+      google.script.run
+        .withSuccessHandler(res => {
+          if(res.success) downloadBase64File(res.filename, res.base64, 'application/pdf');
+          else alert("เกิดข้อผิดพลาด: " + res.message);
+        })
+        .withFailureHandler(goToLoginIfExpired)
+        .exportMembersPDF(SESSION_TOKEN);
+    }
+
+    function exportPaymentsExcel() {
+      if(!localPaymentLogsArray || localPaymentLogsArray.length === 0) { alert("ไม่มีข้อมูลประวัติการชำระเงิน"); return; }
+      const exportData = localPaymentLogsArray.map((p, idx) => ({
+        "ลำดับ": idx + 1,
+        "วันเวลาทำรายการ": p.timestamp,
+        "ชื่อสมาชิก": p.memberName,
+        "แพ็กเกจ": p.package,
+        "รหัสอ้างอิง QR สลิป": p.qrData,
+        "วันหมดอายุใหม่": p.newExpiry,
+        "เลขที่ใบเสร็จ": p.receiptNo,
+        "ยอดเงิน (บาท)": p.amount
+      }));
+      const worksheet = XLSX.utils.json_to_sheet(exportData);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Payments");
+      XLSX.writeFile(workbook, `IM_Payments_${new Date().toISOString().split('T')[0]}.xlsx`);
+    }
+
+    function exportPaymentsPDF_UI() {
+      google.script.run
+        .withSuccessHandler(res => {
+          if(res.success) downloadBase64File(res.filename, res.base64, 'application/pdf');
+          else alert("เกิดข้อผิดพลาด: " + res.message);
+        })
+        .withFailureHandler(goToLoginIfExpired)
+        .exportPaymentsPDF(SESSION_TOKEN);
+    }
+
+    function exportDailyPaymentsPDF_UI() {
+      google.script.run
+        .withSuccessHandler(res => {
+          if(res.success) downloadBase64File(res.filename, res.base64, 'application/pdf');
+          else alert("เกิดข้อผิดพลาด: " + res.message);
+        })
+        .withFailureHandler(goToLoginIfExpired)
+        .exportDailyPaymentsPDF(SESSION_TOKEN);
+    }
+
+    function downloadBase64File(filename, base64Data, mimeType) {
+      const byteChars = atob(base64Data);
+      const byteNumbers = new Array(byteChars.length);
+      for (let i = 0; i < byteChars.length; i++) byteNumbers[i] = byteChars.charCodeAt(i);
+      const byteArray = new Uint8Array(byteNumbers);
+      const blob = new Blob([byteArray], { type: mimeType });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = filename;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+    // 🧾 พิมพ์ใบเสร็จรับเงิน (Tax Receipt) จากเลขที่ใบเสร็จ - สมาชิกรายเดือน
+    function printReceipt(receiptNo) {
+      google.script.run
+        .withSuccessHandler(res => {
+          if(res.success) openThermalReceiptWindow(res.html, res.pdfBase64, res.filename);
+          else alert("เกิดข้อผิดพลาด: " + res.message);
+        })
+        .withFailureHandler(goToLoginIfExpired)
+        .generateReceiptPDF(receiptNo, SESSION_TOKEN);
+    }
+
+    // 🖨️ เปิดหน้าต่างใหม่แสดงใบเสร็จสไตล์เครื่องพิมพ์ความร้อน 80mm แล้วสั่งพิมพ์อัตโนมัติ
+    // พร้อมปุ่มดาวน์โหลดไฟล์ PDF แยกไว้ให้ด้วย เผื่ออยากเก็บไฟล์/ส่งต่อโดยไม่ต้องพิมพ์จริง
+    function openThermalReceiptWindow(html, pdfBase64, filename) {
+      const w = window.open('', '_blank', 'width=400,height=650');
+      if (!w) { alert('เบราว์เซอร์บล็อกป๊อปอัพ กรุณาอนุญาตป๊อปอัพสำหรับเว็บนี้แล้วลองใหม่'); return; }
+      w.document.open();
+      w.document.write(html);
+      w.document.close();
+
+      if (pdfBase64) {
+        w.addEventListener('load', () => {
+          const bar = w.document.querySelector('.printbar');
+          if (!bar) return;
+          const link = w.document.createElement('a');
+          link.href = 'data:application/pdf;base64,' + pdfBase64;
+          link.download = filename || 'receipt.pdf';
+          link.style.cssText = 'display:inline-block;background:#374151;color:#fff;padding:10px 20px;border-radius:8px;font-size:13px;text-decoration:none;margin-left:8px;font-family:inherit;';
+          link.innerText = '⬇️ ดาวน์โหลด PDF';
+          bar.appendChild(link);
+        });
+      }
+    }
+
+    function voidMembershipPaymentUI(receiptNo) {
+      const reason = prompt('ระบุเหตุผลการยกเลิก/คืนเงินใบเสร็จ ' + receiptNo + ' (ไม่บังคับ):');
+      if (reason === null) return; // กดยกเลิก prompt
+      if (!confirm('ยืนยันยกเลิก/คืนเงินใบเสร็จ ' + receiptNo + '?\n\nหมายเหตุ: ระบบจะไม่ปรับวันหมดอายุของสมาชิกอัตโนมัติ กรุณาปรับด้วยตนเองในหน้าแก้ไขสมาชิกถ้าจำเป็น')) return;
+
+      google.script.run
+        .withSuccessHandler(res => {
+          alert(res.message);
+          if (res.success) loadPaymentLogs();
+        })
+        .withFailureHandler(goToLoginIfExpired)
+        .voidMembershipPayment(SESSION_TOKEN, receiptNo, reason);
+    }
+
+    // 🧾 พิมพ์ใบเสร็จรับเงิน - ลูกค้ารายวัน (Walk-in / Day Pass)
+    function printDailyReceipt(receiptNo) {
+      google.script.run
+        .withSuccessHandler(res => {
+          if(res.success) openThermalReceiptWindow(res.html, res.pdfBase64, res.filename);
+          else alert("เกิดข้อผิดพลาด: " + res.message);
+        })
+        .withFailureHandler(goToLoginIfExpired)
+        .generateDailyReceiptPDF(receiptNo, SESSION_TOKEN);
+    }
+
+    function voidDailyPaymentUI(receiptNo) {
+      const reason = prompt('ระบุเหตุผลการยกเลิก/คืนเงินใบเสร็จ ' + receiptNo + ' (ไม่บังคับ):');
+      if (reason === null) return; // กดยกเลิก prompt
+      if (!confirm('ยืนยันยกเลิก/คืนเงินใบเสร็จ ' + receiptNo + '?')) return;
+
+      google.script.run
+        .withSuccessHandler(res => {
+          alert(res.message);
+          if (res.success) loadDailyPaymentLogs();
+        })
+        .withFailureHandler(goToLoginIfExpired)
+        .voidDailyPayment(SESSION_TOKEN, receiptNo, reason);
+    }
+
+    // ==========================================
+    // 🎫🛒 POS: ลูกค้ารายวัน / ขายสินค้าหน้ายิม (รวมบิลเดียวกันได้)
+    // ==========================================
+    let localProductsArray = [];
+    let posCart = []; // [{ name, price, qty }]
+    let posPaymentMethod = 'cash';
+
+    function setPosPaymentMethod(method) {
+      posPaymentMethod = method;
+      const btnCash = document.getElementById('btnPosPayCash');
+      const btnTransfer = document.getElementById('btnPosPayTransfer');
+      const activeClass = 'py-4 rounded-xl text-xs font-bold uppercase cursor-pointer border transition-all flex items-center justify-center gap-1.5 bg-red-600 border-red-500 text-white';
+      const inactiveClass = 'py-4 rounded-xl text-xs font-bold uppercase cursor-pointer border transition-all flex items-center justify-center gap-1.5 bg-black border-gray-800 text-gray-400 hover:border-gray-600';
+      btnCash.className = (method === 'cash') ? activeClass : inactiveClass;
+      btnTransfer.className = (method === 'transfer') ? activeClass : inactiveClass;
+    }
+
+    // ==========================================
+    // 🎟️ คูปอง/โค้ดส่วนลด (Settings)
+    // ==========================================
+    let localCouponsArray = [];
+
+    function loadCouponList() {
+      google.script.run
+        .withSuccessHandler(list => {
+          localCouponsArray = list || [];
+          renderCouponTable();
+        })
+        .withFailureHandler(goToLoginIfExpired)
+        .getCouponList(SESSION_TOKEN);
+    }
+
+    function renderCouponTable() {
+      const tbody = document.getElementById('couponListTableBody');
+      if (!tbody) return;
+      if (localCouponsArray.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center py-6 text-gray-600">ยังไม่มีคูปองในระบบ...</td></tr>';
+        return;
+      }
+      tbody.innerHTML = '';
+      const scopeLabel = { All: 'ทุกประเภท', Membership: 'สมาชิกเท่านั้น', Daily: 'รายวัน/สินค้าเท่านั้น' };
+      localCouponsArray.forEach(c => {
+        const discountText = c.discountType === 'Fixed' ? Number(c.discountValue).toLocaleString('th-TH') + ' บาท' : c.discountValue + '%';
+        const usageText = c.usedCount + ' / ' + (c.usageLimit === null ? '∞' : c.usageLimit);
+        const statusBadge = (c.status || 'Active') === 'Active'
+          ? '<span class="text-[10px] bg-green-950 text-green-400 border border-green-800 px-2 py-0.5 rounded-full font-bold">Active</span>'
+          : '<span class="text-[10px] bg-gray-800 text-gray-400 border border-gray-700 px-2 py-0.5 rounded-full font-bold">Inactive</span>';
+        const tr = document.createElement('tr');
+        tr.className = 'hover:bg-white/[0.02]';
+        tr.innerHTML =
+          '<td class="py-3 pl-2 text-white font-bold font-mono">' + c.code + '</td>' +
+          '<td class="py-3 text-red-400 font-mono">' + discountText + '</td>' +
+          '<td class="py-3 text-gray-400">' + usageText + '</td>' +
+          '<td class="py-3 text-gray-400 font-mono">' + (c.expiryDate || 'ไม่หมดอายุ') + '</td>' +
+          '<td class="py-3 text-gray-400">' + (scopeLabel[c.applicableTo] || c.applicableTo) + '</td>' +
+          '<td class="py-3">' + statusBadge + '</td>' +
+          '<td class="py-3 text-right pr-2">' +
+            '<button onclick="startEditCoupon(' + c.rowNumber + ')" class="text-gray-500 hover:text-red-400 cursor-pointer mr-3"><i class="fa-solid fa-pen"></i></button>' +
+            '<button onclick="deleteCoupon(' + c.rowNumber + ')" class="text-gray-500 hover:text-red-500 cursor-pointer"><i class="fa-solid fa-trash-can"></i></button>' +
+          '</td>';
+        tbody.appendChild(tr);
+      });
+    }
+
+    function handleCouponSubmit() {
+      const rowNum = document.getElementById('couponRowNumber').value;
+      const data = {
+        rowNumber: rowNum,
+        code: document.getElementById('couponCode').value.trim().toUpperCase(),
+        discountType: document.getElementById('couponDiscountType').value,
+        discountValue: document.getElementById('couponDiscountValue').value,
+        usageLimit: document.getElementById('couponUsageLimit').value,
+        expiryDate: document.getElementById('couponExpiryDate').value,
+        minPurchaseAmount: document.getElementById('couponMinPurchase').value,
+        applicableTo: document.getElementById('couponApplicableTo').value,
+        description: document.getElementById('couponDescription').value.trim(),
+        status: 'Active',
+        broadcastLine: document.getElementById('couponBroadcastLine').checked
+      };
+      if (!data.code) { alert('กรุณากรอกโค้ดคูปอง'); return; }
+
+      const fn = rowNum ? 'updateCouponData' : 'addCouponData';
+      google.script.run
+        .withSuccessHandler(res => {
+          alert(res.message);
+          if (res.success) { clearCouponForm(); loadCouponList(); }
+        })
+        .withFailureHandler(goToLoginIfExpired)
+        [fn](data, SESSION_TOKEN);
+    }
+
+    function startEditCoupon(rowNumber) {
+      const c = localCouponsArray.find(x => x.rowNumber === rowNumber);
+      if (!c) return;
+      document.getElementById('couponRowNumber').value = c.rowNumber;
+      document.getElementById('couponCode').value = c.code;
+      document.getElementById('couponDiscountType').value = c.discountType;
+      document.getElementById('couponDiscountValue').value = c.discountValue;
+      document.getElementById('couponUsageLimit').value = c.usageLimit === null ? '' : c.usageLimit;
+      document.getElementById('couponExpiryDate').value = c.expiryDate || '';
+      document.getElementById('couponMinPurchase').value = c.minPurchaseAmount || '';
+      document.getElementById('couponApplicableTo').value = c.applicableTo;
+      document.getElementById('couponDescription').value = c.description || '';
+      document.getElementById('btnCouponSubmit').innerHTML = '<i class="fa-solid fa-check mr-1"></i>บันทึกการแก้ไข';
+      document.getElementById('btnCouponCancel').classList.remove('hidden');
+    }
+
+    function clearCouponForm() {
+      document.getElementById('couponRowNumber').value = '';
+      document.getElementById('couponCode').value = '';
+      document.getElementById('couponDiscountType').value = 'Percent';
+      document.getElementById('couponDiscountValue').value = '';
+      document.getElementById('couponUsageLimit').value = '';
+      document.getElementById('couponExpiryDate').value = '';
+      document.getElementById('couponMinPurchase').value = '';
+      document.getElementById('couponApplicableTo').value = 'All';
+      document.getElementById('couponDescription').value = '';
+      document.getElementById('couponBroadcastLine').checked = false;
+      document.getElementById('btnCouponSubmit').innerHTML = '<i class="fa-solid fa-plus mr-1"></i>สร้างคูปอง';
+      document.getElementById('btnCouponCancel').classList.add('hidden');
+    }
+
+    function deleteCoupon(rowNumber) {
+      const c = localCouponsArray.find(x => x.rowNumber === rowNumber);
+      if (!c) return;
+      if (!confirm('ยืนยันลบคูปอง "' + c.code + '" ออกจากระบบ?')) return;
+      google.script.run
+        .withSuccessHandler(res => { alert(res.message); loadCouponList(); })
+        .withFailureHandler(goToLoginIfExpired)
+        .deleteCouponData(rowNumber, SESSION_TOKEN);
+    }
+
+    // ==========================================
+    // 💳 แพ็กเกจสมาชิกรายเดือน (Settings + ใช้เติม dropdown ในฟอร์มสมาชิก/ต่ออายุ)
+    // ==========================================
+    function loadPackageList() {
+      google.script.run
+        .withSuccessHandler(list => {
+          localPackagesArray = list || [];
+          populatePackageSelects();
+          renderPackageTable();
+        })
+        .withFailureHandler(goToLoginIfExpired)
+        .getPackageList(SESSION_TOKEN);
+    }
+
+    function populatePackageSelects() {
+      const activePackages = localPackagesArray.filter(p => (p.status || 'Active') === 'Active');
+      ['package', 'paymentPackageSelect'].forEach(id => {
+        const sel = document.getElementById(id);
+        if (!sel) return;
+        const currentVal = sel.value;
+        if (activePackages.length === 0) {
+          sel.innerHTML = '<option value="">-- ยังไม่มีแพ็กเกจ กรุณาเพิ่มในหน้า Settings --</option>';
+          return;
+        }
+        sel.innerHTML = '';
+        activePackages.forEach(p => {
+          const opt = document.createElement('option');
+          opt.value = p.name;
+          opt.innerText = p.name + ' (' + p.durationMonths + ' เดือน - ' + Number(p.price).toLocaleString('th-TH') + ' บาท)';
+          sel.appendChild(opt);
+        });
+        if (currentVal && activePackages.some(p => p.name === currentVal)) sel.value = currentVal;
+      });
+      calculateExpiryDate();
+    }
+
+    function renderPackageTable() {
+      const tbody = document.getElementById('packageListTableBody');
+      if (!tbody) return;
+      if (localPackagesArray.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" class="text-center py-6 text-gray-600">ยังไม่มีแพ็กเกจในระบบ...</td></tr>';
+        return;
+      }
+      tbody.innerHTML = '';
+      localPackagesArray.forEach(p => {
+        const statusBadge = (p.status || 'Active') === 'Active'
+          ? '<span class="text-[10px] bg-green-950 text-green-400 border border-green-800 px-2 py-0.5 rounded-full font-bold">Active</span>'
+          : '<span class="text-[10px] bg-gray-800 text-gray-400 border border-gray-700 px-2 py-0.5 rounded-full font-bold">Inactive</span>';
+        const tr = document.createElement('tr');
+        tr.className = 'hover:bg-white/[0.02]';
+        tr.innerHTML =
+          '<td class="py-3 pl-2 text-white font-bold">' + p.name + '</td>' +
+          '<td class="py-3 text-red-400 font-mono">' + Number(p.price).toLocaleString('th-TH') + ' บาท</td>' +
+          '<td class="py-3 text-gray-400">' + p.durationMonths + ' เดือน</td>' +
+          '<td class="py-3">' + statusBadge + '</td>' +
+          '<td class="py-3 text-right pr-2">' +
+            '<button onclick="startEditPackage(' + p.rowNumber + ')" class="text-gray-500 hover:text-red-400 cursor-pointer mr-3"><i class="fa-solid fa-pen"></i></button>' +
+            '<button onclick="deletePackage(' + p.rowNumber + ')" class="text-gray-500 hover:text-red-500 cursor-pointer"><i class="fa-solid fa-trash-can"></i></button>' +
+          '</td>';
+        tbody.appendChild(tr);
+      });
+    }
+
+    function handlePackageSubmit() {
+      const rowNum = document.getElementById('packageRowNumber').value;
+      const data = {
+        rowNumber: rowNum,
+        name: document.getElementById('packageName').value.trim(),
+        price: document.getElementById('packagePrice').value,
+        durationMonths: document.getElementById('packageDuration').value,
+        status: document.getElementById('packageStatus').value
+      };
+      if (!data.name) { alert('กรุณากรอกชื่อแพ็กเกจ'); return; }
+
+      const fn = rowNum ? 'updatePackageData' : 'addPackageData';
+      google.script.run
+        .withSuccessHandler(res => {
+          alert(res.message);
+          if (res.success) { clearPackageForm(); loadPackageList(); }
+        })
+        .withFailureHandler(goToLoginIfExpired)
+        [fn](data, SESSION_TOKEN);
+    }
+
+    function startEditPackage(rowNumber) {
+      const p = localPackagesArray.find(x => x.rowNumber === rowNumber);
+      if (!p) return;
+      document.getElementById('packageRowNumber').value = p.rowNumber;
+      document.getElementById('packageName').value = p.name;
+      document.getElementById('packagePrice').value = p.price;
+      document.getElementById('packageDuration').value = p.durationMonths;
+      document.getElementById('packageStatus').value = p.status || 'Active';
+      document.getElementById('btnPackageSubmit').innerHTML = '<i class="fa-solid fa-check mr-1"></i>บันทึกการแก้ไข';
+      document.getElementById('btnPackageCancel').classList.remove('hidden');
+    }
+
+    function clearPackageForm() {
+      document.getElementById('packageRowNumber').value = '';
+      document.getElementById('packageName').value = '';
+      document.getElementById('packagePrice').value = '';
+      document.getElementById('packageDuration').value = '';
+      document.getElementById('packageStatus').value = 'Active';
+      document.getElementById('btnPackageSubmit').innerHTML = '<i class="fa-solid fa-plus mr-1"></i>เพิ่มแพ็กเกจ';
+      document.getElementById('btnPackageCancel').classList.add('hidden');
+    }
+
+    function deletePackage(rowNumber) {
+      const p = localPackagesArray.find(x => x.rowNumber === rowNumber);
+      if (!p) return;
+      if (!confirm('ยืนยันลบแพ็กเกจ "' + p.name + '" ออกจากระบบ?')) return;
+      google.script.run
+        .withSuccessHandler(res => { alert(res.message); loadPackageList(); })
+        .withFailureHandler(goToLoginIfExpired)
+        .deletePackageData(rowNumber, SESSION_TOKEN);
+    }
+
+    function loadProductList() {
+      google.script.run
+        .withSuccessHandler(list => {
+          localProductsArray = list || [];
+          renderProductGrid();
+          renderProductTable();
+        })
+        .withFailureHandler(goToLoginIfExpired)
+        .getProductList(SESSION_TOKEN);
+    }
+
+    function renderProductGrid() {
+      const grid = document.getElementById('posProductGrid');
+      if (!grid) return;
+      const activeProducts = localProductsArray.filter(p => (p.status || 'Active') === 'Active');
+      if (activeProducts.length === 0) {
+        grid.innerHTML = '<p class="text-gray-600 text-xs text-center py-6 col-span-full">ยังไม่มีสินค้า — กด "จัดการสินค้า" เพื่อเพิ่ม</p>';
+        return;
+      }
+      grid.innerHTML = '';
+      activeProducts.forEach(p => {
+        const tracksStock = p.stock !== null && typeof p.stock !== 'undefined';
+        const outOfStock = tracksStock && p.stock <= 0;
+        const lowStock = tracksStock && p.stock > 0 && p.stock <= (p.lowStockThreshold || 5);
+        const stockBadge = tracksStock
+          ? `<p class="text-[10px] mt-1 font-bold ${outOfStock ? 'text-red-500' : (lowStock ? 'text-yellow-500' : 'text-gray-500')}">${outOfStock ? 'สินค้าหมด' : 'คงเหลือ ' + p.stock + ' ชิ้น'}</p>`
+          : '';
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.disabled = outOfStock;
+        btn.className = outOfStock
+          ? 'bg-black border border-gray-900 rounded-xl p-3 text-left cursor-not-allowed opacity-40'
+          : 'bg-black border border-gray-800 hover:border-red-500 rounded-xl p-3 text-left cursor-pointer transition-all';
+        btn.innerHTML = `<p class="text-white text-xs font-bold truncate">${p.name}</p><p class="text-red-500 text-xs font-mono mt-1">${Number(p.price).toLocaleString('th-TH')} บาท</p>${stockBadge}`;
+        if (!outOfStock) btn.onclick = () => addToCart(p);
+        grid.appendChild(btn);
+      });
+    }
+
+    function addToCart(product) {
+      const tracksStock = product.stock !== null && typeof product.stock !== 'undefined';
+      const existing = posCart.find(it => it.name === product.name && it.price === Number(product.price));
+      const currentQtyInCart = existing ? existing.qty : 0;
+      if (tracksStock && currentQtyInCart + 1 > product.stock) {
+        alert('สินค้า "' + product.name + '" เหลือไม่พอ (คงเหลือ ' + product.stock + ' ชิ้น)');
+        return;
+      }
+      if (existing) existing.qty += 1;
+      else posCart.push({ name: product.name, price: Number(product.price), qty: 1 });
+      renderCart();
+    }
+
+    function changeCartQty(index, delta) {
+      posCart[index].qty += delta;
+      if (posCart[index].qty <= 0) posCart.splice(index, 1);
+      renderCart();
+    }
+
+    function saveDailyPassPrices() {
+      const student = document.getElementById('settingDailyPriceStudent').value;
+      const adult = document.getElementById('settingDailyPriceAdult').value;
+      const btn = document.getElementById('btnSaveDailyPrices');
+      btn.disabled = true;
+
+      google.script.run
+        .withSuccessHandler(res => {
+          alert(res.message);
+          btn.disabled = false;
+          if (res.success) loadDailyPassPrices();
+        })
+        .withFailureHandler(err => { goToLoginIfExpired(err); btn.disabled = false; })
+        .updateDailyPassPrices({ student: student, adult: adult }, SESSION_TOKEN);
+    }
+
+    let dailyPassPrices = { student: 0, adult: 0 };
+
+    // ==========================================
+    // 💳 QR รับเงิน (PromptPay) - Modal ใช้ร่วมกันทุกช่องทางการชำระเงิน
+    // ==========================================
+    let paymentQRInfo = { url: '', caption: '' };
+
+    function loadPaymentQRInfo() {
+      google.script.run
+        .withSuccessHandler(info => {
+          paymentQRInfo = info || { url: '', caption: '' };
+          const settingPreview = document.getElementById('settingQRPreview');
+          const settingPlaceholder = document.getElementById('settingQRPlaceholder');
+          const captionInput = document.getElementById('settingQRCaption');
+          if (settingPreview && settingPlaceholder) {
+            if (paymentQRInfo.url) {
+              settingPreview.src = paymentQRInfo.url;
+              settingPreview.classList.remove('hidden');
+              settingPlaceholder.classList.add('hidden');
+            } else {
+              settingPreview.classList.add('hidden');
+              settingPlaceholder.classList.remove('hidden');
+            }
+          }
+          if (captionInput) captionInput.value = paymentQRInfo.caption || '';
+        })
+        .withFailureHandler(goToLoginIfExpired)
+        .getPaymentQRInfo(SESSION_TOKEN);
+    }
+
+    function handlePaymentQRPhotoSelect(e) {
+      const file = e.target.files[0];
+      if (!file || !file.type.startsWith('image/')) return;
+      const statusEl = document.getElementById('settingQRUploadStatus');
+      statusEl.innerText = 'กำลังอัปโหลด...';
+
+      const reader = new FileReader();
+      reader.onload = function(evt) {
+        const base64Data = evt.target.result;
+        const preview = document.getElementById('settingQRPreview');
+        preview.src = base64Data;
+        preview.classList.remove('hidden');
+        document.getElementById('settingQRPlaceholder').classList.add('hidden');
+
+        google.script.run
+          .withSuccessHandler(res => {
+            if (res.success) {
+              statusEl.innerText = '✅ อัปโหลดสำเร็จ';
+              loadPaymentQRInfo();
+            } else {
+              statusEl.innerText = '❌ อัปโหลดไม่สำเร็จ: ' + res.message;
+            }
+          })
+          .withFailureHandler(err => { goToLoginIfExpired(err); statusEl.innerText = '❌ เกิดข้อผิดพลาด'; })
+          .uploadPaymentQR(base64Data, file.type, file.name, SESSION_TOKEN);
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function savePaymentQRCaption() {
+      const caption = document.getElementById('settingQRCaption').value;
+      const btn = document.getElementById('btnSaveQRCaption');
+      btn.disabled = true;
+
+      google.script.run
+        .withSuccessHandler(res => {
+          alert(res.message);
+          btn.disabled = false;
+          if (res.success) loadPaymentQRInfo();
+        })
+        .withFailureHandler(err => { goToLoginIfExpired(err); btn.disabled = false; })
+        .updatePaymentQRCaption(caption, SESSION_TOKEN);
+    }
+
+    function openPaymentQRModal() {
+      const img = document.getElementById('paymentQRImage');
+      const noImageMsg = document.getElementById('paymentQRNoImageMsg');
+      const captionEl = document.getElementById('paymentQRCaptionDisplay');
+
+      if (paymentQRInfo.url) {
+        img.src = paymentQRInfo.url;
+        img.classList.remove('hidden');
+        noImageMsg.classList.add('hidden');
+      } else {
+        img.classList.add('hidden');
+        noImageMsg.classList.remove('hidden');
+      }
+      captionEl.innerText = paymentQRInfo.caption || '';
+
+      document.getElementById('paymentQRModal').classList.remove('hidden');
+    }
+
+    function closePaymentQRModal() {
+      document.getElementById('paymentQRModal').classList.add('hidden');
+    }
+
+    // ==========================================
+    // 📊 รายงานสรุปรายรับแยกช่องทาง
+    // ==========================================
+    let revenueChartInstance = null;
+
+    function formatYMD_(d) {
+      const pad = n => n.toString().padStart(2, '0');
+      return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+    }
+
+    function setReportPreset(type) {
+      const today = new Date();
+      let start = new Date(today);
+      let end = new Date(today);
+
+      if (type === 'today') {
+        // start = end = today
+      } else if (type === 'week') {
+        start.setDate(start.getDate() - 6);
+      } else if (type === 'month') {
+        start = new Date(today.getFullYear(), today.getMonth(), 1);
+      }
+
+      document.getElementById('reportStartDate').value = formatYMD_(start);
+      document.getElementById('reportEndDate').value = formatYMD_(end);
+      loadRevenueReport();
+    }
+
+    function loadRevenueReport() {
+      const startDate = document.getElementById('reportStartDate').value;
+      const endDate = document.getElementById('reportEndDate').value;
+      if (!startDate || !endDate) { alert('กรุณาเลือกช่วงวันที่'); return; }
+
+      google.script.run
+        .withSuccessHandler(report => {
+          if (!report || !report.totals) {
+            console.error('รูปแบบข้อมูลรายงานไม่ถูกต้อง:', report);
+            alert('เกิดข้อผิดพลาด: ไม่สามารถโหลดข้อมูลรายงานได้ กรุณาลองใหม่');
+            return;
+          }
+
+          document.getElementById('reportMembershipTotal').innerText = Number(report.totals.membership || 0).toLocaleString('th-TH');
+          document.getElementById('reportMembershipCount').innerText = report.totals.membershipCount || 0;
+          document.getElementById('reportDayPassTotal').innerText = Number(report.totals.dayPass || 0).toLocaleString('th-TH');
+          document.getElementById('reportProductsTotal').innerText = Number(report.totals.products || 0).toLocaleString('th-TH');
+          document.getElementById('reportGrandTotal').innerText = Number(report.totals.grandTotal || 0).toLocaleString('th-TH');
+          document.getElementById('reportDailyCount').innerText = report.totals.dailyCount || 0;
+          document.getElementById('reportExpenseTotal').innerText = Number(report.totals.expenses || 0).toLocaleString('th-TH');
+          document.getElementById('reportNetProfit').innerText = Number(report.totals.netProfit || 0).toLocaleString('th-TH');
+          document.getElementById('reportCashTotal').innerText = Number(report.totals.cash || 0).toLocaleString('th-TH');
+          document.getElementById('reportTransferTotal').innerText = Number(report.totals.transfer || 0).toLocaleString('th-TH');
+
+          const breakdown = report.breakdown || [];
+          const topProducts = report.topProducts || [];
+
+          // แยก try/catch แต่ละส่วน กันไม่ให้ส่วนหนึ่งพังแล้วทำให้ส่วนอื่นไม่แสดงผลตามไปด้วย
+          try { renderRevenueChart(breakdown); } catch (err) { console.error('renderRevenueChart error:', err); }
+          try { renderRevenueBreakdownTable(breakdown); } catch (err) { console.error('renderRevenueBreakdownTable error:', err); }
+          try { renderTopProducts(topProducts); } catch (err) { console.error('renderTopProducts error:', err); }
+          try { renderTrainerFeeReport(report.trainerFees); } catch (err) { console.error('renderTrainerFeeReport error:', err); }
+          try { loadExpenseList(); } catch (err) { console.error('loadExpenseList error:', err); }
+        })
+        .withFailureHandler(err => { goToLoginIfExpired(err); console.error('getRevenueReport failed:', err); })
+        .getRevenueReport(SESSION_TOKEN, startDate, endDate);
+    }
+
+    function renderTrainerFeeReport(trainerFeesData) {
+      const badge = document.getElementById('trainerFeeTotalBadge');
+      const listEl = document.getElementById('trainerFeeReportList');
+      const data = trainerFeesData || { total: 0, breakdown: [] };
+
+      badge.innerText = Number(data.total || 0).toLocaleString('th-TH') + ' บาท';
+
+      if (!data.breakdown || data.breakdown.length === 0) {
+        listEl.innerHTML = '<p class="text-gray-600 text-xs text-center py-4">ยังไม่มีข้อมูลในช่วงที่เลือก</p>';
+        return;
+      }
+
+      listEl.innerHTML = data.breakdown.map(t => `
+        <div class="flex justify-between items-center bg-black/40 border border-gray-900 rounded-xl p-3">
+          <span class="text-white text-xs font-bold"><i class="fa-solid fa-person-running mr-2 text-blue-400"></i>${t.name}</span>
+          <span class="text-blue-400 font-mono font-bold text-xs">${Number(t.amount).toLocaleString('th-TH')} บาท</span>
+        </div>
+      `).join('');
+    }
+
+    // ==========================================
+    // 💸 บันทึกรายจ่าย (กรอกเอง หักลบกับรายรับอัตโนมัติ)
+    // ==========================================
+    function addExpenseUI() {
+      const dateVal = document.getElementById('expenseDate').value;
+      const description = document.getElementById('expenseDescription').value.trim();
+      const amount = document.getElementById('expenseAmount').value;
+
+      if (!dateVal) { alert('กรุณาเลือกวันที่'); return; }
+      if (!description) { alert('กรุณากรอกรายการที่ซื้อ'); return; }
+
+      google.script.run
+        .withSuccessHandler(res => {
+          alert(res.message);
+          if (res.success) {
+            document.getElementById('expenseDescription').value = '';
+            document.getElementById('expenseAmount').value = '';
+            loadExpenseList();
+            loadRevenueReport();
+          }
+        })
+        .withFailureHandler(goToLoginIfExpired)
+        .addExpense(dateVal, description, amount, SESSION_TOKEN);
+    }
+
+    function loadExpenseList() {
+      const startDate = document.getElementById('reportStartDate').value;
+      const endDate = document.getElementById('reportEndDate').value;
+      const container = document.getElementById('expenseListTable');
+      if (!startDate || !endDate) return;
+
+      google.script.run
+        .withSuccessHandler(list => {
+          if (!list || list.length === 0) {
+            container.innerHTML = '<p class="text-gray-600 text-xs text-center py-4">ยังไม่มีข้อมูลในช่วงที่เลือก</p>';
+            return;
+          }
+          container.innerHTML = list.map(e => `
+            <div class="flex justify-between items-center bg-black/40 border border-gray-900 rounded-xl p-3">
+              <div class="min-w-0">
+                <p class="text-white text-xs font-bold truncate">${e.description}</p>
+                <p class="text-gray-500 text-[10px] font-mono">${e.date} • บันทึกโดย ${e.addedBy}</p>
+              </div>
+              <div class="flex items-center gap-3 shrink-0 ml-2">
+                <span class="text-orange-400 font-mono font-bold text-xs">${Number(e.amount).toLocaleString('th-TH')} บาท</span>
+                <button onclick="deleteExpenseUI(${e.rowNumber})" class="text-gray-600 hover:text-red-400 cursor-pointer"><i class="fa-solid fa-trash-can"></i></button>
+              </div>
+            </div>
+          `).join('');
+        })
+        .withFailureHandler(goToLoginIfExpired)
+        .getExpenseList(SESSION_TOKEN, startDate, endDate);
+    }
+
+    function deleteExpenseUI(rowNumber) {
+      if (!confirm('ยืนยันลบรายการรายจ่ายนี้?')) return;
+      google.script.run
+        .withSuccessHandler(res => {
+          alert(res.message);
+          if (res.success) { loadExpenseList(); loadRevenueReport(); }
+        })
+        .withFailureHandler(goToLoginIfExpired)
+        .deleteExpense(rowNumber, SESSION_TOKEN);
+    }
+
+    function renderRevenueChart(breakdown) {
+      const canvasEl = document.getElementById('revenueChart');
+      if (!canvasEl) return;
+
+      const labels = breakdown.map(d => (d.date || '').slice(5)); // MM-DD
+      const membership = breakdown.map(d => d.membership || 0);
+      const dayPass = breakdown.map(d => d.dayPass || 0);
+      const products = breakdown.map(d => d.products || 0);
+
+      const ctx = canvasEl.getContext('2d');
+      if (revenueChartInstance) { revenueChartInstance.destroy(); revenueChartInstance = null; }
+
+      revenueChartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: labels,
+          datasets: [
+            { label: 'สมาชิกรายเดือน', data: membership, backgroundColor: 'rgba(220, 38, 38, 0.7)', stack: 'rev' },
+            { label: 'ค่าเข้ารายวัน', data: dayPass, backgroundColor: 'rgba(234, 179, 8, 0.7)', stack: 'rev' },
+            { label: 'ขายสินค้า', data: products, backgroundColor: 'rgba(34, 197, 94, 0.7)', stack: 'rev' }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: true,
+          plugins: { legend: { labels: { color: '#9CA3AF', font: { family: 'Prompt' } } } },
+          scales: {
+            x: { stacked: true, ticks: { color: '#6B7280' }, grid: { color: '#1a1a1a' } },
+            y: { stacked: true, ticks: { color: '#6B7280' }, grid: { color: '#1a1a1a' } }
+          }
+        }
+      });
+    }
+
+    function renderRevenueBreakdownTable(breakdown) {
+      const tbody = document.getElementById('reportBreakdownTableBody');
+      if (!breakdown || breakdown.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" class="text-center py-6 text-gray-600">ไม่มีข้อมูลในช่วงที่เลือก</td></tr>';
+        return;
+      }
+      tbody.innerHTML = '';
+      breakdown.forEach(d => {
+        const mem = d.membership || 0, dp = d.dayPass || 0, prod = d.products || 0;
+        const cash = d.cash || 0, transfer = d.transfer || 0;
+        const dayTotal = mem + dp + prod;
+        const safeDate = d.date || '';
+        const tr = document.createElement('tr');
+        tr.className = 'hover:bg-white/[0.02]';
+        tr.id = 'reportRow_' + safeDate;
+        const overriddenMark = d.cashTransferOverridden ? ' <i class="fa-solid fa-pen text-yellow-500 text-[9px]" title="แก้ไขด้วยตนเอง"></i>' : '';
+        tr.innerHTML =
+          '<td class="py-3 pl-2 font-mono text-gray-400">' + (safeDate || '-') + overriddenMark + '</td>' +
+          '<td class="py-3 text-right text-gray-300" id="memDisplay_' + safeDate + '">' + Number(mem).toLocaleString('th-TH') + '</td>' +
+          '<td class="py-3 text-right text-gray-300" id="dpDisplay_' + safeDate + '">' + Number(dp).toLocaleString('th-TH') + '</td>' +
+          '<td class="py-3 text-right text-gray-300" id="prodDisplay_' + safeDate + '">' + Number(prod).toLocaleString('th-TH') + '</td>' +
+          '<td class="py-3 text-right text-gray-400" id="cashDisplay_' + safeDate + '">' + Number(cash).toLocaleString('th-TH') + '</td>' +
+          '<td class="py-3 text-right text-blue-400" id="transferDisplay_' + safeDate + '">' + Number(transfer).toLocaleString('th-TH') + '</td>' +
+          '<td class="py-3 text-right text-red-400 font-bold" id="totalDisplay_' + safeDate + '">' + Number(dayTotal).toLocaleString('th-TH') + '</td>' +
+          '<td class="py-3 pr-2 text-right" id="editAction_' + safeDate + '"><button onclick="startEditRevenueRow(\'' + safeDate + '\', ' + mem + ', ' + dp + ', ' + prod + ', ' + cash + ', ' + transfer + ')" class="text-gray-500 hover:text-yellow-400 cursor-pointer" title="แก้ไขยอดของวันนี้"><i class="fa-solid fa-pen"></i></button></td>';
+        tbody.appendChild(tr);
+      });
+    }
+
+    function startEditRevenueRow(dateStr, curMem, curDp, curProd, curCash, curTransfer) {
+      const memCell = document.getElementById('memDisplay_' + dateStr);
+      const dpCell = document.getElementById('dpDisplay_' + dateStr);
+      const prodCell = document.getElementById('prodDisplay_' + dateStr);
+      const cashCell = document.getElementById('cashDisplay_' + dateStr);
+      const transferCell = document.getElementById('transferDisplay_' + dateStr);
+      const actionCell = document.getElementById('editAction_' + dateStr);
+      if (!memCell || !cashCell || !transferCell || !actionCell) return;
+
+      const inputCls = "w-20 bg-black border border-gray-700 rounded p-1.5 text-white text-xs text-right outline-none";
+      memCell.innerHTML = '<input type="number" min="0" step="0.01" id="memInput_' + dateStr + '" value="' + curMem + '" class="' + inputCls + '" oninput="updateEditTotalPreview(\'' + dateStr + '\')">';
+      dpCell.innerHTML = '<input type="number" min="0" step="0.01" id="dpInput_' + dateStr + '" value="' + curDp + '" class="' + inputCls + '" oninput="updateEditTotalPreview(\'' + dateStr + '\')">';
+      prodCell.innerHTML = '<input type="number" min="0" step="0.01" id="prodInput_' + dateStr + '" value="' + curProd + '" class="' + inputCls + '" oninput="updateEditTotalPreview(\'' + dateStr + '\')">';
+      cashCell.innerHTML = '<input type="number" min="0" step="0.01" id="cashInput_' + dateStr + '" value="' + curCash + '" class="' + inputCls + '">';
+      transferCell.innerHTML = '<input type="number" min="0" step="0.01" id="transferInput_' + dateStr + '" value="' + curTransfer + '" class="' + inputCls + '">';
+      actionCell.innerHTML =
+        '<button onclick="saveRevenueRowEdit(\'' + dateStr + '\')" class="text-green-500 hover:text-green-400 cursor-pointer mr-2" title="บันทึก"><i class="fa-solid fa-check"></i></button>' +
+        '<button onclick="resetRevenueRowUI(\'' + dateStr + '\')" class="text-orange-500 hover:text-orange-400 cursor-pointer mr-2" title="รีเซ็ตกลับเป็นค่าคำนวณอัตโนมัติ"><i class="fa-solid fa-rotate-left"></i></button>' +
+        '<button onclick="loadRevenueReport()" class="text-gray-500 hover:text-red-400 cursor-pointer" title="ยกเลิก"><i class="fa-solid fa-xmark"></i></button>';
+    }
+
+    // อัปเดตช่อง "รวม" ให้เห็นทันทีขณะพิมพ์ (แค่พรีวิว ยังไม่บันทึกจนกว่าจะกดติ๊กถูก)
+    function updateEditTotalPreview(dateStr) {
+      const mem = parseFloat(document.getElementById('memInput_' + dateStr)?.value) || 0;
+      const dp = parseFloat(document.getElementById('dpInput_' + dateStr)?.value) || 0;
+      const prod = parseFloat(document.getElementById('prodInput_' + dateStr)?.value) || 0;
+      const totalCell = document.getElementById('totalDisplay_' + dateStr);
+      if (totalCell) totalCell.innerText = (mem + dp + prod).toLocaleString('th-TH');
+    }
+
+    function saveRevenueRowEdit(dateStr) {
+      const memVal = document.getElementById('memInput_' + dateStr)?.value;
+      const dpVal = document.getElementById('dpInput_' + dateStr)?.value;
+      const prodVal = document.getElementById('prodInput_' + dateStr)?.value;
+      const cashVal = document.getElementById('cashInput_' + dateStr)?.value;
+      const transferVal = document.getElementById('transferInput_' + dateStr)?.value;
+      if ([memVal, dpVal, prodVal, cashVal, transferVal].some(v => v === undefined)) return;
+
+      google.script.run
+        .withSuccessHandler(res => {
+          if (!res.success) { alert(res.message); return; }
+          loadRevenueReport();
+        })
+        .withFailureHandler(goToLoginIfExpired)
+        .setDailyRevenueOverride(dateStr, memVal, dpVal, prodVal, cashVal, transferVal, SESSION_TOKEN);
+    }
+
+    function resetRevenueRowUI(dateStr) {
+      if (!confirm('ยืนยันรีเซ็ตยอดวันที่ ' + dateStr + ' กลับเป็นค่าที่คำนวณอัตโนมัติจากรายการจริง?')) return;
+      google.script.run
+        .withSuccessHandler(res => {
+          alert(res.message);
+          loadRevenueReport();
+        })
+        .withFailureHandler(goToLoginIfExpired)
+        .clearDailyRevenueOverride(dateStr, SESSION_TOKEN);
+    }
+
+    function renderTopProducts(topProducts) {
+      const container = document.getElementById('topProductsList');
+      if (!topProducts || topProducts.length === 0) {
+        container.innerHTML = '<p class="text-gray-600 text-xs text-center py-6">ยังไม่มีข้อมูลการขายสินค้า</p>';
+        return;
+      }
+      container.innerHTML = '';
+      topProducts.slice(0, 10).forEach((p, idx) => {
+        const row = document.createElement('div');
+        row.className = 'flex items-center justify-between p-2.5 rounded-xl bg-black/40 border border-gray-900';
+        row.innerHTML = `
+          <div class="min-w-0">
+            <p class="text-white text-xs font-bold truncate">#${idx + 1} ${p.name}</p>
+            <p class="text-gray-500 text-[10px]">ขายแล้ว ${p.qty} ชิ้น</p>
+          </div>
+          <span class="text-green-400 font-mono font-bold text-xs shrink-0 ml-2">${Number(p.revenue).toLocaleString('th-TH')} บ.</span>
+        `;
+        container.appendChild(row);
+      });
+    }
+
+    function exportRevenueReportPDF_UI() {
+      const startDate = document.getElementById('reportStartDate').value;
+      const endDate = document.getElementById('reportEndDate').value;
+      if (!startDate || !endDate) { alert('กรุณาเลือกช่วงวันที่'); return; }
+
+      google.script.run
+        .withSuccessHandler(res => {
+          if (res.success) downloadBase64File(res.filename, res.base64, 'application/pdf');
+          else alert('เกิดข้อผิดพลาด: ' + res.message);
+        })
+        .withFailureHandler(goToLoginIfExpired)
+        .exportRevenueReportPDF(SESSION_TOKEN, startDate, endDate);
+    }
+
+    // ==========================================
+    // ⏱️ ปิดสถานะสมาชิกอัตโนมัติเมื่อหมดอายุ
+    // ==========================================
+    function loadAutoExpireSettings() {
+      google.script.run
+        .withSuccessHandler(settings => {
+          document.getElementById('autoExpireGraceDays').value = settings.graceDays;
+          const badge = document.getElementById('autoExpireStatusBadge');
+          const btnEnable = document.getElementById('btnEnableAutoExpire');
+          const btnDisable = document.getElementById('btnDisableAutoExpire');
+          if (settings.enabled) {
+            badge.innerText = 'เปิดใช้งานอยู่';
+            badge.className = 'text-[10px] bg-green-950 text-green-400 border border-green-800 px-2.5 py-1 rounded-full font-bold uppercase tracking-widest';
+            btnEnable.classList.add('hidden');
+            btnDisable.classList.remove('hidden');
+          } else {
+            badge.innerText = 'ปิดใช้งานอยู่';
+            badge.className = 'text-[10px] bg-gray-800 text-gray-400 border border-gray-700 px-2.5 py-1 rounded-full font-bold uppercase tracking-widest';
+            btnEnable.classList.remove('hidden');
+            btnDisable.classList.add('hidden');
+          }
+        })
+        .withFailureHandler(goToLoginIfExpired)
+        .getAutoExpireSettings(SESSION_TOKEN);
+    }
+
+    function toggleAutoExpire(enable) {
+      const graceDays = document.getElementById('autoExpireGraceDays').value;
+      if (enable && !confirm('ยืนยันเปิดใช้งาน? ระบบจะปิดสถานะสมาชิกที่หมดอายุเกิน ' + graceDays + ' วัน เป็น Inactive ให้อัตโนมัติทุกวัน')) return;
+
+      google.script.run
+        .withSuccessHandler(res => {
+          alert(res.message);
+          if (res.success) loadAutoExpireSettings();
+        })
+        .withFailureHandler(goToLoginIfExpired)
+        .toggleAutoExpireTrigger(enable, graceDays, SESSION_TOKEN);
+    }
+
+    // ==========================================
+    // 💬 ตั้งค่า LINE Official Account
+    // ==========================================
+    function loadLineSettings() {
+      google.script.run
+        .withSuccessHandler(settings => {
+          document.getElementById('lineWebhookUrlDisplay').value = settings.webhookUrl;
+          document.getElementById('lineAddFriendUrl').value = settings.addFriendUrl;
+          const badge = document.getElementById('lineStatusBadge');
+          if (settings.hasToken) {
+            badge.innerText = 'เชื่อมต่อแล้ว';
+            badge.className = 'text-[10px] bg-green-950 text-green-400 border border-green-800 px-2.5 py-1 rounded-full font-bold uppercase tracking-widest';
+          } else {
+            badge.innerText = 'ยังไม่ได้ตั้งค่า';
+            badge.className = 'text-[10px] bg-gray-800 text-gray-400 border border-gray-700 px-2.5 py-1 rounded-full font-bold uppercase tracking-widest';
+          }
+        })
+        .withFailureHandler(goToLoginIfExpired)
+        .getLineSettings(SESSION_TOKEN);
+      loadMemberLineNotifySettings();
+    }
+
+    function loadMemberLineNotifySettings() {
+      google.script.run
+        .withSuccessHandler(settings => {
+          const badge = document.getElementById('memberLineNotifyBadge');
+          const btnEnable = document.getElementById('btnEnableMemberLineNotify');
+          const btnDisable = document.getElementById('btnDisableMemberLineNotify');
+          if (settings.enabled) {
+            badge.innerText = 'เปิดอยู่';
+            badge.className = 'text-[10px] bg-green-950 text-green-400 border border-green-800 px-2.5 py-1 rounded-full font-bold uppercase tracking-widest self-center mr-1';
+            btnEnable.classList.add('hidden');
+            btnDisable.classList.remove('hidden');
+          } else {
+            badge.innerText = 'ปิดอยู่';
+            badge.className = 'text-[10px] bg-gray-800 text-gray-400 border border-gray-700 px-2.5 py-1 rounded-full font-bold uppercase tracking-widest self-center mr-1';
+            btnEnable.classList.remove('hidden');
+            btnDisable.classList.add('hidden');
+          }
+        })
+        .withFailureHandler(goToLoginIfExpired)
+        .getMemberLineNotifySettings(SESSION_TOKEN);
+    }
+
+    function toggleMemberLineNotifyUI(enable) {
+      if (enable && !confirm('ยืนยันเปิดใช้งานแจ้งเตือนสมาชิกทาง LINE อัตโนมัติ?')) return;
+      google.script.run
+        .withSuccessHandler(res => {
+          alert(res.message);
+          if (res.success) loadMemberLineNotifySettings();
+        })
+        .withFailureHandler(goToLoginIfExpired)
+        .toggleMemberLineNotifications(enable, SESSION_TOKEN);
+    }
+
+    // ==========================================
+    // 🥺 ดึงสมาชิกที่หายไปกลับมา (Win-back Campaign)
+    // ==========================================
+    function loadWinBackSettings() {
+      google.script.run
+        .withSuccessHandler(settings => {
+          document.getElementById('winbackInactiveDays').value = settings.inactiveDays;
+          document.getElementById('winbackDiscountPercent').value = settings.discountPercent;
+          document.getElementById('winbackValidDays').value = settings.validDays;
+
+          const badge = document.getElementById('winbackStatusBadge');
+          const btnEnable = document.getElementById('btnEnableWinBack');
+          const btnDisable = document.getElementById('btnDisableWinBack');
+          if (settings.enabled) {
+            badge.innerText = 'เปิดอยู่';
+            badge.className = 'text-[10px] bg-green-950 text-green-400 border border-green-800 px-2.5 py-1 rounded-full font-bold uppercase tracking-widest';
+            btnEnable.classList.add('hidden');
+            btnDisable.classList.remove('hidden');
+          } else {
+            badge.innerText = 'ปิดอยู่';
+            badge.className = 'text-[10px] bg-gray-800 text-gray-400 border border-gray-700 px-2.5 py-1 rounded-full font-bold uppercase tracking-widest';
+            btnEnable.classList.remove('hidden');
+            btnDisable.classList.add('hidden');
+          }
+        })
+        .withFailureHandler(goToLoginIfExpired)
+        .getWinBackSettings(SESSION_TOKEN);
+    }
+
+    function saveWinBackSettings() {
+      const inactiveDays = document.getElementById('winbackInactiveDays').value;
+      const discountPercent = document.getElementById('winbackDiscountPercent').value;
+      const validDays = document.getElementById('winbackValidDays').value;
+      const btn = document.getElementById('btnSaveWinBack');
+      btn.disabled = true;
+
+      google.script.run
+        .withSuccessHandler(res => { alert(res.message); btn.disabled = false; })
+        .withFailureHandler(err => { goToLoginIfExpired(err); btn.disabled = false; })
+        .updateWinBackSettings(inactiveDays, discountPercent, validDays, SESSION_TOKEN);
+    }
+
+    function toggleWinBackUI(enable) {
+      if (enable && !confirm('ยืนยันเปิดใช้งานระบบ Win-back Campaign?\n\nระบบจะสร้างคูปองและส่งข้อความชวนกลับมาให้สมาชิกที่หมดอายุนานเกินเกณฑ์ที่ตั้งไว้โดยอัตโนมัติทุกวัน')) return;
+      google.script.run
+        .withSuccessHandler(res => {
+          alert(res.message);
+          if (res.success) loadWinBackSettings();
+        })
+        .withFailureHandler(goToLoginIfExpired)
+        .toggleWinBackCampaign(enable, SESSION_TOKEN);
+    }
+
+    function copyLineWebhookUrl() {
+      const url = document.getElementById('lineWebhookUrlDisplay').value;
+      navigator.clipboard.writeText(url).then(() => {
+        alert('คัดลอก Webhook URL แล้ว! ไปวางในช่อง Webhook URL ที่ LINE Developers Console');
+      }).catch(() => {
+        prompt('คัดลอกลิงก์นี้:', url);
+      });
+    }
+
+    function saveLineSettings() {
+      const tokenVal = document.getElementById('lineChannelAccessToken').value.trim();
+      const addFriendUrl = document.getElementById('lineAddFriendUrl').value.trim();
+      const btn = document.getElementById('btnSaveLineSettings');
+      btn.disabled = true;
+
+      google.script.run
+        .withSuccessHandler(res => {
+          alert(res.message);
+          btn.disabled = false;
+          if (res.success) {
+            document.getElementById('lineChannelAccessToken').value = '';
+            loadLineSettings();
+          }
+        })
+        .withFailureHandler(err => { goToLoginIfExpired(err); btn.disabled = false; })
+        .updateLineSettings(tokenVal, addFriendUrl, SESSION_TOKEN);
+    }
+
+    // ==========================================
+    // 💾 สำรองข้อมูลระบบทั้งหมด
+    // ==========================================
+    function loadBackupSettings() {
+      google.script.run
+        .withSuccessHandler(settings => {
+          const badge = document.getElementById('backupStatusBadge');
+          const btnEnable = document.getElementById('btnEnableWeeklyBackup');
+          const btnDisable = document.getElementById('btnDisableWeeklyBackup');
+          const lastBackupText = document.getElementById('lastBackupText');
+
+          if (settings.enabled) {
+            badge.innerText = 'สำรองอัตโนมัติ: เปิดอยู่';
+            badge.className = 'text-[10px] bg-green-950 text-green-400 border border-green-800 px-2.5 py-1 rounded-full font-bold uppercase tracking-widest';
+            btnEnable.classList.add('hidden');
+            btnDisable.classList.remove('hidden');
+          } else {
+            badge.innerText = 'สำรองอัตโนมัติ: ปิดอยู่';
+            badge.className = 'text-[10px] bg-gray-800 text-gray-400 border border-gray-700 px-2.5 py-1 rounded-full font-bold uppercase tracking-widest';
+            btnEnable.classList.remove('hidden');
+            btnDisable.classList.add('hidden');
+          }
+          lastBackupText.innerText = settings.lastBackupAt ? ('สำรองล่าสุด: ' + settings.lastBackupAt) : 'ยังไม่เคยสำรองข้อมูล';
+        })
+        .withFailureHandler(goToLoginIfExpired)
+        .getBackupSettings(SESSION_TOKEN);
+    }
+
+    function createBackupNow() {
+      const btn = document.getElementById('btnCreateBackup');
+      btn.disabled = true; btn.innerText = 'กำลังสำรองข้อมูล...';
+
+      google.script.run
+        .withSuccessHandler(res => {
+          btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-cloud-arrow-up mr-1"></i>สำรองข้อมูลตอนนี้';
+          if (res.success) {
+            loadBackupSettings();
+            if (confirm(res.message + '\n\nต้องการเปิดไฟล์สำรองที่เพิ่งสร้างเลยหรือไม่?')) {
+              window.open(res.fileUrl, '_blank');
+            }
+          } else {
+            alert(res.message);
+          }
+        })
+        .withFailureHandler(err => { goToLoginIfExpired(err); btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-cloud-arrow-up mr-1"></i>สำรองข้อมูลตอนนี้'; })
+        .createFullBackup(SESSION_TOKEN);
+    }
+
+    // ==========================================
+    // ⚠️ ล้างข้อมูลการซื้อขายทั้งหมด (Danger Zone)
+    // ==========================================
+    function openClearTransactionModal() {
+      document.getElementById('clearTransactionConfirmInput').value = '';
+      validateClearTransactionInput();
+      document.getElementById('clearTransactionModal').classList.remove('hidden');
+    }
+
+    function closeClearTransactionModal() {
+      document.getElementById('clearTransactionModal').classList.add('hidden');
+    }
+
+    function validateClearTransactionInput() {
+      const val = document.getElementById('clearTransactionConfirmInput').value.trim();
+      const btn = document.getElementById('btnConfirmClearTransaction');
+      if (val === 'ลบข้อมูลถาวร') {
+        btn.disabled = false;
+        btn.className = 'w-full bg-red-700 hover:bg-red-600 text-white font-black py-4 rounded-xl tracking-wider uppercase text-sm cursor-pointer transition-all';
+      } else {
+        btn.disabled = true;
+        btn.className = 'w-full bg-gray-800 text-gray-600 font-black py-4 rounded-xl tracking-wider uppercase text-sm cursor-not-allowed transition-all';
+      }
+    }
+
+    function submitClearTransactionData() {
+      const confirmPhrase = document.getElementById('clearTransactionConfirmInput').value.trim();
+      if (confirmPhrase !== 'ลบข้อมูลถาวร') return;
+      if (!confirm('ยืนยันครั้งสุดท้าย: ต้องการลบข้อมูลการซื้อขายทั้งหมดถาวรใช่หรือไม่?')) return;
+
+      const btn = document.getElementById('btnConfirmClearTransaction');
+      btn.disabled = true; btn.innerText = 'กำลังลบข้อมูล...';
+
+      google.script.run
+        .withSuccessHandler(res => {
+          alert(res.message);
+          btn.disabled = false; btn.innerText = 'ยืนยันลบถาวร';
+          if (res.success) {
+            closeClearTransactionModal();
+            loadPaymentLogs();
+            loadDailyPaymentLogs();
+            loadBackupSettings();
+          } else {
+            validateClearTransactionInput();
+          }
+        })
+        .withFailureHandler(err => { goToLoginIfExpired(err); btn.disabled = false; btn.innerText = 'ยืนยันลบถาวร'; })
+        .clearTransactionData(confirmPhrase, SESSION_TOKEN);
+    }
+
+    function toggleWeeklyBackupUI(enable) {
+      if (enable && !confirm('ยืนยันเปิดใช้งานสำรองข้อมูลอัตโนมัติทุกสัปดาห์?')) return;
+      google.script.run
+        .withSuccessHandler(res => {
+          alert(res.message);
+          if (res.success) loadBackupSettings();
+        })
+        .withFailureHandler(goToLoginIfExpired)
+        .toggleWeeklyBackup(enable, SESSION_TOKEN);
+    }
+
+    function loadDailyPassPrices() {
+      google.script.run
+        .withSuccessHandler(prices => {
+          dailyPassPrices = prices || { student: 0, adult: 0 };
+          const settingsStudentInput = document.getElementById('settingDailyPriceStudent');
+          const settingsAdultInput = document.getElementById('settingDailyPriceAdult');
+          if (settingsStudentInput) settingsStudentInput.value = dailyPassPrices.student;
+          if (settingsAdultInput) settingsAdultInput.value = dailyPassPrices.adult;
+
+          const posStudentInput = document.getElementById('dayPassPriceStudent');
+          const posAdultInput = document.getElementById('dayPassPriceAdult');
+          if (posStudentInput) posStudentInput.value = dailyPassPrices.student;
+          if (posAdultInput) posAdultInput.value = dailyPassPrices.adult;
+        })
+        .withFailureHandler(goToLoginIfExpired)
+        .getDailyPassPrices(SESSION_TOKEN);
+    }
+
+    let dayPassQty = { student: 0, adult: 0 };
+
+    function changeDayPassQty(type, delta) {
+      dayPassQty[type] = Math.max(0, dayPassQty[type] + delta);
+      const labelId = type === 'student' ? 'dayPassQtyStudent' : 'dayPassQtyAdult';
+      document.getElementById(labelId).innerText = dayPassQty[type];
+      renderCart();
+    }
+
+    function removeCartItem(index) {
+      posCart.splice(index, 1);
+      renderCart();
+    }
+
+    let appliedPosCoupon = null; // { code, rowNumber, discountAmount }
+
+    function getPosSubtotal() {
+      const studentPrice = parseFloat(document.getElementById('dayPassPriceStudent').value) || 0;
+      const adultPrice = parseFloat(document.getElementById('dayPassPriceAdult').value) || 0;
+      let subtotal = (dayPassQty.student * studentPrice) + (dayPassQty.adult * adultPrice);
+      posCart.forEach(it => { subtotal += it.price * it.qty; });
+      return subtotal;
+    }
+
+    // ยอดค่าเข้ายิมอย่างเดียว (ไม่รวมสินค้า/เครื่องดื่ม) - ใช้เป็นฐานคำนวณส่วนลดเท่านั้น
+    function getDayPassSubtotal() {
+      const studentPrice = parseFloat(document.getElementById('dayPassPriceStudent').value) || 0;
+      const adultPrice = parseFloat(document.getElementById('dayPassPriceAdult').value) || 0;
+      return (dayPassQty.student * studentPrice) + (dayPassQty.adult * adultPrice);
+    }
+
+    function applyPosCoupon() {
+      const code = document.getElementById('posCouponCode').value.trim().toUpperCase();
+      const msg = document.getElementById('posCouponMsg');
+      if (!code) { msg.innerText = ''; appliedPosCoupon = null; renderCart(); return; }
+      const subtotal = getDayPassSubtotal();
+      if (subtotal <= 0) { msg.innerText = 'ส่วนลดใช้ได้กับค่าเข้ายิมเท่านั้น กรุณาเลือกค่าเข้ายิมก่อนใช้คูปอง'; msg.className = 'text-xs mb-4 -mt-2 text-yellow-400'; return; }
+
+      google.script.run
+        .withSuccessHandler(res => {
+          if (res.valid) {
+            appliedPosCoupon = { code: res.code, rowNumber: res.rowNumber, discountAmount: res.discountAmount };
+            msg.innerText = res.message;
+            msg.className = 'text-xs mb-4 -mt-2 text-green-400';
+          } else {
+            appliedPosCoupon = null;
+            msg.innerText = res.message;
+            msg.className = 'text-xs mb-4 -mt-2 text-red-400';
+          }
+          renderCart();
+        })
+        .withFailureHandler(goToLoginIfExpired)
+        .previewCouponDiscount(code, subtotal, 'daily', SESSION_TOKEN);
+    }
+
+    function resetPosCoupon() {
+      appliedPosCoupon = null;
+      document.getElementById('posCouponCode').value = '';
+      document.getElementById('posCouponMsg').innerText = '';
+    }
+
+    let manualDiscount = null; // { type: 'Percent'|'Fixed', value, discountAmount }
+
+    function applyManualDiscount() {
+      const type = document.getElementById('manualDiscountType').value;
+      const value = parseFloat(document.getElementById('manualDiscountValue').value);
+      const msg = document.getElementById('manualDiscountMsg');
+
+      if (!value || value <= 0) {
+        manualDiscount = null;
+        msg.innerText = '';
+        renderCart();
+        return;
+      }
+
+      const subtotal = getDayPassSubtotal();
+      if (subtotal <= 0) { msg.innerText = 'ส่วนลดใช้ได้กับค่าเข้ายิมเท่านั้น กรุณาเลือกค่าเข้ายิมก่อนใส่ส่วนลด'; msg.className = 'text-xs -mt-1 text-yellow-400'; return; }
+
+      let discountAmount = type === 'Fixed' ? value : Math.round(subtotal * (value / 100) * 100) / 100;
+      if (discountAmount > subtotal) discountAmount = subtotal;
+
+      manualDiscount = { type, value, discountAmount };
+      msg.innerText = '✅ ใช้ส่วนลดพิเศษแล้ว: -' + discountAmount.toLocaleString('th-TH') + ' บาท';
+      msg.className = 'text-xs -mt-1 text-green-400';
+      renderCart();
+    }
+
+    function resetManualDiscount() {
+      manualDiscount = null;
+      document.getElementById('manualDiscountValue').value = '';
+      document.getElementById('manualDiscountMsg').innerText = '';
+    }
+
+    // ค่าเทรนเนอร์ฟรีแลนซ์ - เก็บแทนให้ในบิลเดียวกัน ไม่นับเป็นรายรับของยิม
+    let trainerFees = []; // [{ name, amount }, ...]
+
+    function addTrainerFee() {
+      const nameInput = document.getElementById('trainerFeeName');
+      const amountInput = document.getElementById('trainerFeeAmount');
+      const name = nameInput.value.trim();
+      const amount = parseFloat(amountInput.value);
+
+      if (!name) { alert('กรุณากรอกชื่อเทรนเนอร์'); return; }
+      if (!amount || amount <= 0) { alert('กรุณากรอกจำนวนเงินให้ถูกต้อง'); return; }
+
+      trainerFees.push({ name, amount });
+      nameInput.value = '';
+      amountInput.value = '';
+      renderTrainerFeeList();
+      renderCart();
+    }
+
+    function removeTrainerFee(index) {
+      trainerFees.splice(index, 1);
+      renderTrainerFeeList();
+      renderCart();
+    }
+
+    function renderTrainerFeeList() {
+      const el = document.getElementById('trainerFeeList');
+      if (trainerFees.length === 0) { el.innerHTML = ''; return; }
+      el.innerHTML = trainerFees.map((tf, idx) => `
+        <div class="flex justify-between items-center bg-blue-950/20 border border-blue-900 rounded-lg p-2">
+          <span class="text-blue-300 text-xs font-bold">${tf.name}</span>
+          <div class="flex items-center gap-2">
+            <span class="text-blue-400 font-mono text-xs">${tf.amount.toLocaleString('th-TH')} บาท</span>
+            <button onclick="removeTrainerFee(${idx})" class="text-gray-600 hover:text-red-400 cursor-pointer"><i class="fa-solid fa-xmark"></i></button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function resetTrainerFees() {
+      trainerFees = [];
+      renderTrainerFeeList();
+    }
+
+    function renderCart() {
+      const listEl = document.getElementById('posCartList');
+      const totalEl = document.getElementById('posTotalDisplay');
+      const studentPrice = parseFloat(document.getElementById('dayPassPriceStudent').value) || 0;
+      const adultPrice = parseFloat(document.getElementById('dayPassPriceAdult').value) || 0;
+
+      let html = '';
+      let total = 0;
+      let hasAnyItem = posCart.length > 0 || trainerFees.length > 0;
+
+      if (dayPassQty.student > 0) {
+        const lineTotal = studentPrice * dayPassQty.student;
+        total += lineTotal;
+        hasAnyItem = true;
+        html += `
+          <div class="flex justify-between items-center bg-black/40 border border-gray-800 rounded-xl p-3">
+            <span class="text-white text-xs font-bold"><i class="fa-solid fa-person-walking mr-2 text-red-500"></i>ค่าเข้ายิมวันนี้ (นักเรียน/นักศึกษา) x${dayPassQty.student}</span>
+            <span class="text-red-400 font-mono font-bold text-xs">${lineTotal.toLocaleString('th-TH')} บาท</span>
+          </div>`;
+      }
+
+      if (dayPassQty.adult > 0) {
+        const lineTotal = adultPrice * dayPassQty.adult;
+        total += lineTotal;
+        hasAnyItem = true;
+        html += `
+          <div class="flex justify-between items-center bg-black/40 border border-gray-800 rounded-xl p-3">
+            <span class="text-white text-xs font-bold"><i class="fa-solid fa-person-walking mr-2 text-red-500"></i>ค่าเข้ายิมวันนี้ (ผู้ใหญ่) x${dayPassQty.adult}</span>
+            <span class="text-red-400 font-mono font-bold text-xs">${lineTotal.toLocaleString('th-TH')} บาท</span>
+          </div>`;
+      }
+
+      posCart.forEach((it, idx) => {
+        const lineTotal = it.price * it.qty;
+        total += lineTotal;
+        html += `
+          <div class="flex justify-between items-center bg-black/40 border border-gray-800 rounded-xl p-3">
+            <div class="flex-1 min-w-0">
+              <p class="text-white text-xs font-bold truncate">${it.name}</p>
+              <p class="text-gray-500 text-[10px] font-mono">${it.price.toLocaleString('th-TH')} บาท/ชิ้น</p>
+            </div>
+            <div class="flex items-center gap-2 mx-3">
+              <button onclick="changeCartQty(${idx}, -1)" class="w-6 h-6 rounded-md bg-gray-800 hover:bg-gray-700 text-white text-xs cursor-pointer">−</button>
+              <span class="text-white text-xs font-bold w-5 text-center">${it.qty}</span>
+              <button onclick="changeCartQty(${idx}, 1)" class="w-6 h-6 rounded-md bg-gray-800 hover:bg-gray-700 text-white text-xs cursor-pointer">+</button>
+            </div>
+            <span class="text-red-400 font-mono font-bold text-xs w-20 text-right">${lineTotal.toLocaleString('th-TH')} บาท</span>
+            <button onclick="removeCartItem(${idx})" class="text-gray-600 hover:text-red-400 ml-2 cursor-pointer"><i class="fa-solid fa-xmark"></i></button>
+          </div>`;
+      });
+
+      if (appliedPosCoupon) {
+        total -= appliedPosCoupon.discountAmount;
+        html += `
+          <div class="flex justify-between items-center bg-green-950/30 border border-green-800 rounded-xl p-3">
+            <span class="text-green-400 text-xs font-bold"><i class="fa-solid fa-ticket mr-2"></i>ส่วนลดคูปอง (${appliedPosCoupon.code})</span>
+            <span class="text-green-400 font-mono font-bold text-xs">-${appliedPosCoupon.discountAmount.toLocaleString('th-TH')} บาท</span>
+            <button onclick="resetPosCoupon(); renderCart();" class="text-gray-600 hover:text-red-400 ml-2 cursor-pointer"><i class="fa-solid fa-xmark"></i></button>
+          </div>`;
+      }
+
+      if (manualDiscount) {
+        total -= manualDiscount.discountAmount;
+        const label = manualDiscount.type === 'Fixed' ? manualDiscount.value.toLocaleString('th-TH') + ' บาท' : manualDiscount.value + '%';
+        html += `
+          <div class="flex justify-between items-center bg-blue-950/30 border border-blue-800 rounded-xl p-3">
+            <span class="text-blue-400 text-xs font-bold"><i class="fa-solid fa-tag mr-2"></i>ส่วนลดพิเศษ (${label})</span>
+            <span class="text-blue-400 font-mono font-bold text-xs">-${manualDiscount.discountAmount.toLocaleString('th-TH')} บาท</span>
+            <button onclick="resetManualDiscount(); renderCart();" class="text-gray-600 hover:text-red-400 ml-2 cursor-pointer"><i class="fa-solid fa-xmark"></i></button>
+          </div>`;
+      }
+
+      trainerFees.forEach((tf, idx) => {
+        total += tf.amount;
+        html += `
+          <div class="flex justify-between items-center bg-black/40 border border-blue-900/50 rounded-xl p-3">
+            <span class="text-blue-300 text-xs font-bold"><i class="fa-solid fa-person-running mr-2"></i>ค่าเทรนเนอร์: ${tf.name}</span>
+            <span class="text-blue-300 font-mono font-bold text-xs">${tf.amount.toLocaleString('th-TH')} บาท</span>
+            <button onclick="removeTrainerFee(${idx}); renderCart();" class="text-gray-600 hover:text-red-400 ml-2 cursor-pointer"><i class="fa-solid fa-xmark"></i></button>
+          </div>`;
+      });
+
+      if (!hasAnyItem) {
+        listEl.innerHTML = '<p class="text-gray-600 text-xs text-center py-4">ยังไม่มีรายการ เลือกค่าเข้ายิมหรือสินค้าด้านบน</p>';
+      } else {
+        listEl.innerHTML = html;
+      }
+
+      totalEl.innerText = Math.max(0, total).toLocaleString('th-TH') + ' บาท';
+    }
+
+    function resetDayPassQty() {
+      dayPassQty = { student: 0, adult: 0 };
+      document.getElementById('dayPassQtyStudent').innerText = '0';
+      document.getElementById('dayPassQtyAdult').innerText = '0';
+    }
+
+    // ==========================================
+    // 👥 รายชื่อลูกค้าหลายคน (เพิ่ม/ลบแถวได้ เวลามาพร้อมกัน)
+    // ==========================================
+    let customerRowCounter = 0;
+
+    function addCustomerRow(prefillName, prefillPhone) {
+      const id = 'custRow' + (customerRowCounter++);
+      const container = document.getElementById('customersList');
+      const row = document.createElement('div');
+      row.id = id;
+      row.className = 'grid grid-cols-1 sm:grid-cols-2 gap-2 items-start';
+      row.innerHTML = `
+        <input type="text" class="custName w-full bg-black border border-gray-800 rounded-xl p-3 text-white text-sm outline-none" placeholder="ชื่อ-นามสกุล" value="${prefillName || ''}">
+        <div class="flex gap-2">
+          <input type="tel" class="custPhone flex-1 bg-black border border-gray-800 rounded-xl p-3 text-white text-sm outline-none" placeholder="08xxxxxxxx (ถ้ามี)" value="${prefillPhone || ''}">
+          <button type="button" onclick="removeCustomerRow('${id}')" class="shrink-0 w-11 h-11 rounded-xl bg-gray-800 hover:bg-red-900 text-gray-400 hover:text-red-400 cursor-pointer"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+      `;
+      container.appendChild(row);
+    }
+
+    function removeCustomerRow(id) {
+      const container = document.getElementById('customersList');
+      if (container.children.length <= 1) { alert('ต้องมีลูกค้าอย่างน้อย 1 คน'); return; }
+      document.getElementById(id).remove();
+    }
+
+    function resetCustomersList() {
+      document.getElementById('customersList').innerHTML = '';
+      customerRowCounter = 0;
+      addCustomerRow();
+    }
+
+    function getCustomersData() {
+      const rows = document.querySelectorAll('#customersList > div');
+      const names = [], phones = [];
+      rows.forEach(row => {
+        const n = row.querySelector('.custName').value.trim();
+        const p = row.querySelector('.custPhone').value.trim();
+        if (n) names.push(n);
+        if (p) phones.push(p);
+      });
+      return { names, phones };
+    }
+
+    function submitDailyPayment() {
+      const { names, phones } = getCustomersData();
+      const studentPrice = document.getElementById('dayPassPriceStudent').value;
+      const adultPrice = document.getElementById('dayPassPriceAdult').value;
+
+      if (names.length === 0) { alert('กรุณากรอกชื่อลูกค้าอย่างน้อย 1 คน'); return; }
+      const hasDayPass = dayPassQty.student > 0 || dayPassQty.adult > 0;
+      if (!hasDayPass && posCart.length === 0) { alert('กรุณาเลือกค่าเข้ายิมหรือสินค้าอย่างน้อย 1 รายการ'); return; }
+
+      const dayPassItems = [];
+      if (dayPassQty.student > 0) dayPassItems.push({ type: 'student', qty: dayPassQty.student, price: studentPrice });
+      if (dayPassQty.adult > 0) dayPassItems.push({ type: 'adult', qty: dayPassQty.adult, price: adultPrice });
+
+      const btn = document.getElementById('btnSubmitDaily');
+      btn.disabled = true; btn.innerText = 'กำลังบันทึก...';
+
+      google.script.run
+        .withSuccessHandler(res => {
+          alert(res.message);
+          btn.disabled = false; btn.innerText = 'รับชำระเงิน & ออกใบเสร็จ';
+          if (res.success) {
+            resetCustomersList();
+            resetDayPassQty();
+            resetPosCoupon();
+            resetManualDiscount();
+            resetTrainerFees();
+            setPosPaymentMethod('cash');
+            posCart = [];
+            renderCart();
+            loadDailyPaymentLogs();
+            document.getElementById('pendingMembershipBanner').classList.add('hidden');
+            if (res.receiptNo && confirm('รับชำระเงินสำเร็จ! ต้องการพิมพ์ใบเสร็จ (' + res.receiptNo + ') เลยหรือไม่?')) {
+              printDailyReceipt(res.receiptNo);
+            }
+          }
+        })
+        .withFailureHandler(err => { goToLoginIfExpired(err); btn.disabled = false; btn.innerText = 'รับชำระเงิน & ออกใบเสร็จ'; })
+        .processDailyPayment({
+          customerName: names.join(', '),
+          phone: phones.join(', '),
+          dayPassItems: dayPassItems,
+          items: posCart,
+          couponCode: appliedPosCoupon ? appliedPosCoupon.code : '',
+          manualDiscountType: manualDiscount ? manualDiscount.type : '',
+          manualDiscountValue: manualDiscount ? manualDiscount.value : 0,
+          trainerFees: trainerFees,
+          paymentMethod: posPaymentMethod
+        }, SESSION_TOKEN);
+    }
+
+    function loadDailyPaymentLogs() {
+      const tbody = document.getElementById('dailyPaymentLogsTableBody');
+      tbody.innerHTML = '<tr><td colspan="7" class="text-center py-6 text-gray-600">กำลังดึงข้อมูล...</td></tr>';
+
+      google.script.run
+        .withSuccessHandler(logs => {
+          if(!logs || logs.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" class="text-center py-6 text-gray-600">ยังไม่มีข้อมูล</td></tr>';
+            return;
+          }
+          tbody.innerHTML = '';
+          logs.forEach(log => {
+            const isRefunded = log.refundStatus === 'Refunded';
+            const tr = document.createElement('tr');
+            tr.className = "hover:bg-white/[0.02] transition-colors" + (isRefunded ? " opacity-50" : "");
+            const statusBadge = isRefunded
+              ? '<span class="text-[10px] bg-red-950 text-red-400 border border-red-800 px-2 py-0.5 rounded-full font-bold">คืนเงินแล้ว</span>'
+              : '<span class="text-[10px] bg-green-950 text-green-400 border border-green-800 px-2 py-0.5 rounded-full font-bold">ปกติ</span>';
+            const voidBtn = isRefunded ? '' :
+              `<button onclick="voidDailyPaymentUI('${log.receiptNo}')" title="ยกเลิก/คืนเงิน" class="text-gray-500 hover:text-red-500 cursor-pointer ml-2"><i class="fa-solid fa-rotate-left"></i></button>`;
+            const isTransfer = log.paymentMethod === 'โอนเงิน';
+            const paymentBadge = `<button onclick="editDailyPaymentMethodUI('${log.receiptNo}', '${isTransfer ? 'cash' : 'transfer'}')" title="กดเพื่อสลับวิธีชำระเงิน" class="text-[10px] px-2 py-0.5 rounded-full font-bold cursor-pointer border ${isTransfer ? 'bg-blue-950 text-blue-400 border-blue-800' : 'bg-gray-800 text-gray-300 border-gray-700'}"><i class="fa-solid ${isTransfer ? 'fa-mobile-screen-button' : 'fa-money-bill-wave'} mr-1"></i>${log.paymentMethod || 'เงินสด'}</button>`;
+            tr.innerHTML = `
+              <td class="py-3 pl-2 font-mono text-gray-400">${log.timestamp}</td>
+              <td class="py-3 font-bold text-white">${log.customerName}</td>
+              <td class="py-3 text-gray-400 max-w-[220px] truncate" title="${log.itemSummary || ''}">${log.itemSummary || '-'}</td>
+              <td class="py-3 text-green-400 font-bold">${Number(log.amount).toLocaleString('th-TH')} บาท</td>
+              <td class="py-3">${statusBadge}</td>
+              <td class="py-3">${paymentBadge}</td>
+              <td class="py-3 pr-2 text-right whitespace-nowrap">
+                ${log.receiptNo ? `<button onclick="printDailyReceipt('${log.receiptNo}')" class="bg-red-950 hover:bg-red-900 text-red-400 border border-red-800 px-2.5 py-1 rounded-lg text-[10px] font-bold cursor-pointer whitespace-nowrap"><i class="fa-solid fa-file-invoice mr-1"></i>${log.receiptNo}</button>` : '-'}
+                ${voidBtn}
+              </td>
+            `;
+            tbody.appendChild(tr);
+          });
+        })
+        .withFailureHandler(goToLoginIfExpired)
+        .getDailyPaymentLogs(SESSION_TOKEN);
+    }
+
+    function editDailyPaymentMethodUI(receiptNo, newMethod) {
+      google.script.run
+        .withSuccessHandler(res => {
+          if (!res.success) alert(res.message);
+          loadDailyPaymentLogs();
+          loadRevenueReport();
+        })
+        .withFailureHandler(goToLoginIfExpired)
+        .updateDailyPaymentMethod(receiptNo, newMethod, SESSION_TOKEN);
+    }
+
+    // ==========================================
+    // 🛒 จัดการสินค้าหน้ายิม (Settings)
+    // ==========================================
+    function renderProductTable() {
+      const tbody = document.getElementById('productListTableBody');
+      if (!tbody) return;
+      if (localProductsArray.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center py-6 text-gray-600">ยังไม่มีสินค้าในระบบ...</td></tr>';
+        return;
+      }
+      tbody.innerHTML = '';
+      localProductsArray.forEach(p => {
+        const statusBadge = (p.status || 'Active') === 'Active'
+          ? '<span class="text-[10px] bg-green-950 text-green-400 border border-green-800 px-2 py-0.5 rounded-full font-bold">Active</span>'
+          : '<span class="text-[10px] bg-gray-800 text-gray-400 border border-gray-700 px-2 py-0.5 rounded-full font-bold">Inactive</span>';
+        const tracksStock = p.stock !== null && typeof p.stock !== 'undefined';
+        let stockCell = '<span class="text-gray-600">ไม่ติดตาม</span>';
+        if (tracksStock) {
+          const outOfStock = p.stock <= 0;
+          const lowStock = p.stock > 0 && p.stock <= (p.lowStockThreshold || 5);
+          const stockColor = outOfStock ? 'text-red-500' : (lowStock ? 'text-yellow-500' : 'text-white');
+          stockCell =
+            '<div class="flex items-center gap-2">' +
+              '<span class="font-bold ' + stockColor + '">' + p.stock + '</span>' +
+              '<button onclick="adjustProductStockUI(' + p.rowNumber + ', -1)" class="w-5 h-5 rounded bg-gray-800 hover:bg-gray-700 text-white text-[10px] cursor-pointer">−</button>' +
+              '<button onclick="adjustProductStockUI(' + p.rowNumber + ', 1)" class="w-5 h-5 rounded bg-gray-800 hover:bg-gray-700 text-white text-[10px] cursor-pointer">+</button>' +
+              '<button onclick="adjustProductStockUI(' + p.rowNumber + ', null)" title="เติมสต็อกจำนวนมาก" class="text-gray-500 hover:text-red-400 cursor-pointer text-[10px] ml-1"><i class="fa-solid fa-boxes-stacked"></i></button>' +
+            '</div>';
+        }
+        const tr = document.createElement('tr');
+        tr.className = 'hover:bg-white/[0.02]';
+        tr.innerHTML =
+          '<td class="py-3 pl-2 text-white font-bold">' + p.name + '</td>' +
+          '<td class="py-3 text-gray-400">' + (p.category || '-') + '</td>' +
+          '<td class="py-3 text-red-400 font-mono">' + Number(p.price).toLocaleString('th-TH') + ' บาท</td>' +
+          '<td class="py-3">' + stockCell + '</td>' +
+          '<td class="py-3">' + statusBadge + '</td>' +
+          '<td class="py-3 text-right pr-2">' +
+            '<button onclick="startEditProduct(' + p.rowNumber + ')" class="text-gray-500 hover:text-red-400 cursor-pointer mr-3"><i class="fa-solid fa-pen"></i></button>' +
+            '<button onclick="deleteProduct(' + p.rowNumber + ')" class="text-gray-500 hover:text-red-500 cursor-pointer"><i class="fa-solid fa-trash-can"></i></button>' +
+          '</td>';
+        tbody.appendChild(tr);
+      });
+    }
+
+    function adjustProductStockUI(rowNumber, delta) {
+      if (delta === null) {
+        const input = prompt('ระบุจำนวนที่ต้องการเติม/ปรับ (ใส่ค่าติดลบเพื่อลด เช่น -3):');
+        if (input === null || input.trim() === '') return;
+        delta = parseInt(input);
+        if (isNaN(delta)) { alert('กรุณากรอกตัวเลข'); return; }
+      }
+      google.script.run
+        .withSuccessHandler(res => {
+          if (res.success) loadProductList();
+          else alert(res.message);
+        })
+        .withFailureHandler(goToLoginIfExpired)
+        .adjustProductStock(rowNumber, delta, SESSION_TOKEN);
+    }
+
+    function handleProductSubmit() {
+      const rowNum = document.getElementById('productRowNumber').value;
+      const stockVal = document.getElementById('productStock').value.trim();
+      const data = {
+        rowNumber: rowNum,
+        name: document.getElementById('productName').value.trim(),
+        category: document.getElementById('productCategory').value.trim(),
+        price: document.getElementById('productPrice').value,
+        stock: stockVal === '' ? '' : stockVal,
+        lowStockThreshold: document.getElementById('productLowStockThreshold').value || 5,
+        status: 'Active'
+      };
+      if (!data.name) { alert('กรุณากรอกชื่อสินค้า'); return; }
+
+      const fn = rowNum ? 'updateProductData' : 'addProductData';
+      google.script.run
+        .withSuccessHandler(res => {
+          alert(res.message);
+          if (res.success) { clearProductForm(); loadProductList(); }
+        })
+        .withFailureHandler(goToLoginIfExpired)
+        [fn](data, SESSION_TOKEN);
+    }
+
+    function startEditProduct(rowNumber) {
+      const p = localProductsArray.find(x => x.rowNumber === rowNumber);
+      if (!p) return;
+      document.getElementById('productRowNumber').value = p.rowNumber;
+      document.getElementById('productName').value = p.name;
+      document.getElementById('productCategory').value = p.category || '';
+      document.getElementById('productPrice').value = p.price;
+      document.getElementById('productStock').value = (p.stock === null || typeof p.stock === 'undefined') ? '' : p.stock;
+      document.getElementById('productLowStockThreshold').value = p.lowStockThreshold || 5;
+      document.getElementById('btnProductSubmit').innerHTML = '<i class="fa-solid fa-check mr-1"></i>บันทึกการแก้ไข';
+      document.getElementById('btnProductCancel').classList.remove('hidden');
+    }
+
+    function clearProductForm() {
+      document.getElementById('productRowNumber').value = '';
+      document.getElementById('productName').value = '';
+      document.getElementById('productCategory').value = '';
+      document.getElementById('productPrice').value = '';
+      document.getElementById('productStock').value = '';
+      document.getElementById('productLowStockThreshold').value = 5;
+      document.getElementById('btnProductSubmit').innerHTML = '<i class="fa-solid fa-plus mr-1"></i>เพิ่มสินค้า';
+      document.getElementById('btnProductCancel').classList.add('hidden');
+    }
+
+    function deleteProduct(rowNumber) {
+      const p = localProductsArray.find(x => x.rowNumber === rowNumber);
+      if (!p) return;
+      if (!confirm('ยืนยันลบสินค้า "' + p.name + '" ออกจากระบบ?')) return;
+      google.script.run
+        .withSuccessHandler(res => { alert(res.message); loadProductList(); })
+        .withFailureHandler(goToLoginIfExpired)
+        .deleteProductData(rowNumber, SESSION_TOKEN);
+    }
+
+    function handleSlipDrop(e) { e.preventDefault(); processImageFile(e.dataTransfer.files[0]); }
+    function handleFileSelect(e) { processImageFile(e.target.files[0]); }
+
+    function processImageFile(file) {
+      if (!file || !file.type.startsWith('image/')) return;
+      const statusText = document.getElementById('dropStatusText');
+      const uploadIcon = document.getElementById('uploadIcon');
+      statusText.innerHTML = "กำลังอ่านรหัส...";
+      const reader = new FileReader();
+      reader.onload = function(event) {
+        const img = new Image();
+        img.onload = function() {
+          const canvas = document.createElement('canvas'); const ctx = canvas.getContext('2d');
+          canvas.width = img.width; canvas.height = img.height;
+          ctx.drawImage(img, 0, 0, img.width, img.height);
+          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          const code = jsQR(imageData.data, imageData.width, imageData.height);
+          if (code) {
+            document.getElementById('qrDecodedData').value = code.data;
+            statusText.innerHTML = "✅ สำเร็จ!"; uploadIcon.className = "fa-solid fa-circle-check text-4xl text-green-500";
+            document.getElementById('btnSubmitPayment').disabled = false;
+            document.getElementById('btnSubmitPayment').className = "w-full bg-red-600 hover:bg-red-500 text-white font-black py-4 rounded-xl text-sm cursor-pointer";
+          } else { statusText.innerHTML = "❌ ไม่พบ QR Code"; resetPaymentButton(); }
+        };
+        img.src = event.target.result;
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function resetPaymentButton() {
+      const btn = document.getElementById('btnSubmitPayment'); btn.disabled = true;
+      btn.className = "w-full bg-gray-800 text-gray-500 font-black py-4 rounded-xl text-sm cursor-not-allowed";
+    }
+
+    function updatePaymentDropdown() {
+      const select = document.getElementById('paymentMemberSelect');
+      select.innerHTML = '<option>กำลังโหลด...</option>';
+      google.script.run
+        .withSuccessHandler(list => {
+          if(list.length === 0) return; select.innerHTML = '';
+          list.forEach(m => {
+            const opt = document.createElement('option'); opt.value = m.fullName; opt.innerText = `${m.fullName} (${m.package})${m.isBirthdayMonth ? ' 🎂' : ''}`;
+            opt.dataset.birthday = m.isBirthdayMonth ? '1' : '0';
+            select.appendChild(opt);
+          });
+          checkRenewalBirthday();
+        })
+        .withFailureHandler(goToLoginIfExpired)
+        .getMemberList(SESSION_TOKEN);
+    }
+
+    function checkRenewalBirthday() {
+      const select = document.getElementById('paymentMemberSelect');
+      const badge = document.getElementById('renewalBirthdayBadge');
+      const selectedOption = select.options[select.selectedIndex];
+      if (selectedOption && selectedOption.dataset.birthday === '1') {
+        badge.classList.remove('hidden');
+      } else {
+        badge.classList.add('hidden');
+      }
+    }
+
+    let renewalPaymentMethod = 'cash';
+
+    function setRenewalPaymentMethod(method) {
+      renewalPaymentMethod = method;
+      const btnCash = document.getElementById('btnRenewalPayCash');
+      const btnTransfer = document.getElementById('btnRenewalPayTransfer');
+      const activeClass = 'py-4 rounded-xl text-xs font-bold uppercase cursor-pointer border transition-all flex items-center justify-center gap-1.5 bg-red-600 border-red-500 text-white';
+      const inactiveClass = 'py-4 rounded-xl text-xs font-bold uppercase cursor-pointer border transition-all flex items-center justify-center gap-1.5 bg-black border-gray-800 text-gray-400 hover:border-gray-600';
+      btnCash.className = (method === 'cash') ? activeClass : inactiveClass;
+      btnTransfer.className = (method === 'transfer') ? activeClass : inactiveClass;
+    }
+
+    let newMemberPaymentMethod = 'cash';
+
+    function setNewMemberPaymentMethod(method) {
+      newMemberPaymentMethod = method;
+      const btnCash = document.getElementById('btnNewMemberPayCash');
+      const btnTransfer = document.getElementById('btnNewMemberPayTransfer');
+      if (!btnCash || !btnTransfer) return; // เผื่อฟอร์มยังไม่ถูก render ตอน initForm() รันครั้งแรกสุด
+      const activeClass = 'py-4 rounded-xl text-xs font-bold uppercase cursor-pointer border transition-all flex items-center justify-center gap-1.5 bg-red-600 border-red-500 text-white';
+      const inactiveClass = 'py-4 rounded-xl text-xs font-bold uppercase cursor-pointer border transition-all flex items-center justify-center gap-1.5 bg-black border-gray-800 text-gray-400 hover:border-gray-600';
+      btnCash.className = (method === 'cash') ? activeClass : inactiveClass;
+      btnTransfer.className = (method === 'transfer') ? activeClass : inactiveClass;
+    }
+
+    function submitRenewal() {
+      const paymentData = { memberName: document.getElementById('paymentMemberSelect').value, package: document.getElementById('paymentPackageSelect').value, qrData: document.getElementById('qrDecodedData').value, couponCode: document.getElementById('renewalCouponCode').value.trim(), paymentMethod: renewalPaymentMethod };
+      const btn = document.getElementById('btnSubmitPayment');
+      btn.disabled = true; btn.innerText = "กำลังตรวจสอบ...";
+
+      google.script.run
+        .withSuccessHandler(res => {
+          alert(res.message);
+          if(res.success) {
+            document.getElementById('qrDecodedData').value = "";
+            document.getElementById('renewalCouponCode').value = "";
+            document.getElementById('dropStatusText').innerHTML = "ลากไฟล์รูปภาพสลิปมาวางที่นี่";
+            document.getElementById('uploadIcon').className = "fa-solid fa-cloud-arrow-up text-4xl text-gray-700";
+            resetPaymentButton();
+            setRenewalPaymentMethod('cash');
+            loadPaymentLogs();
+            // 🧾 หลังต่ออายุสำเร็จ ระบบจะออกเลขที่ใบเสร็จให้แล้ว ถามว่าจะพิมพ์ใบเสร็จให้ลูกค้าเลยไหม
+            if (res.receiptNo && confirm('ต่ออายุสำเร็จ! ต้องการพิมพ์ใบเสร็จรับเงิน (' + res.receiptNo + ') ให้ลูกค้าเลยหรือไม่?')) {
+              printReceipt(res.receiptNo);
+            }
+          }
+          btn.innerText = "ยืนยันการชำระเงิน & ต่ออายุ";
+        })
+        .withFailureHandler(err => { goToLoginIfExpired(err); btn.innerText = "ยืนยันการชำระเงิน & ต่ออายุ"; })
+        .processRenewalPayment(paymentData, SESSION_TOKEN);
+    }
+
+    function loadPaymentLogs() {
+      const tbody = document.getElementById('paymentLogsTableBody');
+      tbody.innerHTML = '<tr><td colspan="8" class="text-center py-6 text-gray-600">กำลังดึงข้อมูล...</td></tr>';
+
+      google.script.run
+        .withSuccessHandler(logs => {
+          localPaymentLogsArray = logs;
+          if(!logs || logs.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="8" class="text-center py-6 text-gray-600">ไม่พบประวัติการชำระเงิน</td></tr>';
+            return;
+          }
+          tbody.innerHTML = '';
+          logs.forEach(log => {
+            const isRefunded = log.refundStatus === 'Refunded';
+            const tr = document.createElement('tr');
+            tr.className = "hover:bg-white/[0.02] transition-colors" + (isRefunded ? " opacity-50" : "");
+            const statusBadge = isRefunded
+              ? '<span class="text-[10px] bg-red-950 text-red-400 border border-red-800 px-2 py-0.5 rounded-full font-bold">คืนเงินแล้ว</span>'
+              : '<span class="text-[10px] bg-green-950 text-green-400 border border-green-800 px-2 py-0.5 rounded-full font-bold">ปกติ</span>';
+            // รายการที่ฝังอยู่ในบิล POS ลูกค้ารายวัน ต้องใช้ฟังก์ชันคนละชุด (อ้างอิงชีท DailyPayments แทน Payments)
+            const voidFn = log.bundledInDailyBill ? 'voidDailyPaymentUI' : 'voidMembershipPaymentUI';
+            const printFn = log.bundledInDailyBill ? 'printDailyReceipt' : 'printReceipt';
+            const editMethodFn = log.bundledInDailyBill ? 'editDailyPaymentMethodUI' : 'editMembershipPaymentMethodUI';
+            const voidBtn = isRefunded ? '' :
+              `<button onclick="${voidFn}('${log.receiptNo}')" title="ยกเลิก/คืนเงิน" class="text-gray-500 hover:text-red-500 cursor-pointer ml-2"><i class="fa-solid fa-rotate-left"></i></button>`;
+            const isTransfer = log.paymentMethod === 'โอนเงิน';
+            const paymentBadge = `<button onclick="${editMethodFn}('${log.receiptNo}', '${isTransfer ? 'cash' : 'transfer'}')" title="กดเพื่อสลับวิธีชำระเงิน" class="text-[10px] px-2 py-0.5 rounded-full font-bold cursor-pointer border ${isTransfer ? 'bg-blue-950 text-blue-400 border-blue-800' : 'bg-gray-800 text-gray-300 border-gray-700'}"><i class="fa-solid ${isTransfer ? 'fa-mobile-screen-button' : 'fa-money-bill-wave'} mr-1"></i>${log.paymentMethod || 'เงินสด'}</button>`;
+            const bundledMark = log.bundledInDailyBill ? ' <span class="text-[9px] bg-purple-950 text-purple-400 border border-purple-800 px-1.5 py-0.5 rounded-full font-bold" title="ค่าสมัครนี้ถูกรวมชำระในบิล POS ลูกค้ารายวัน ไม่ได้จ่ายแยก">รวมใน POS</span>' : '';
+            tr.innerHTML = `
+              <td class="py-3 pl-2 font-mono text-gray-400">${log.timestamp}</td>
+              <td class="py-3 font-bold text-white">${log.memberName}${bundledMark}</td>
+              <td class="py-3 text-red-400 font-medium">${log.package}</td>
+              <td class="py-3 font-mono text-gray-500 max-w-[200px] truncate" title="${log.qrData}">${log.qrData || '-'}</td>
+              <td class="py-3 font-mono text-green-400 font-bold">${log.newExpiry || '-'}</td>
+              <td class="py-3">${statusBadge}</td>
+              <td class="py-3">${paymentBadge}</td>
+              <td class="py-3 pr-2 text-right whitespace-nowrap">
+                ${log.receiptNo ? `<button onclick="${printFn}('${log.receiptNo}')" class="bg-red-950 hover:bg-red-900 text-red-400 border border-red-800 px-2.5 py-1 rounded-lg text-[10px] font-bold cursor-pointer whitespace-nowrap"><i class="fa-solid fa-file-invoice mr-1"></i>${log.receiptNo}</button>` : '-'}
+                ${voidBtn}
+              </td>
+            `;
+            tbody.appendChild(tr);
+          });
+        })
+        .withFailureHandler(goToLoginIfExpired)
+        .getPaymentLogs(SESSION_TOKEN);
+    }
+
+    function editMembershipPaymentMethodUI(receiptNo, newMethod) {
+      google.script.run
+        .withSuccessHandler(res => {
+          if (!res.success) alert(res.message);
+          loadPaymentLogs();
+          loadRevenueReport();
+        })
+        .withFailureHandler(goToLoginIfExpired)
+        .updatePaymentMethod(receiptNo, newMethod, SESSION_TOKEN);
+    }
+
+    function handleFormSubmit(e) {
+      e.preventDefault();
+      const rowNum = document.getElementById('rowNumber').value;
+      const data = {
+        rowNumber: rowNum, 
+        fullName: document.getElementById('fullName').value, 
+        phone: document.getElementById('phone').value,
+        email: document.getElementById('email').value, 
+        package: document.getElementById('package').value,
+        startDate: document.getElementById('startDate').value, 
+        expiryDate: document.getElementById('expiryDate').value,
+        fingerprintId: document.getElementById('fingerprintId').value, 
+        status: document.getElementById('status').value,
+        pin: document.getElementById('memberPin').value,
+        amount: document.getElementById('memberChargeAmount').value,
+        dob: document.getElementById('memberDob').value,
+        couponCode: document.getElementById('memberCouponCode').value.trim(),
+        paymentMethod: newMemberPaymentMethod
+      };
+      if (rowNum) {
+        google.script.run
+          .withSuccessHandler(res => { alert(res.message); clearEditMode(); loadMemberList(); })
+          .withFailureHandler(goToLoginIfExpired)
+          .updateMemberData(data, SESSION_TOKEN);
+      } else if (membershipAddOnMode) {
+        data.deferPayment = true;
+        google.script.run
+          .withSuccessHandler(res => {
+            if (!res.success) { alert(res.message); return; }
+            const price = (typeof res.chargeAmount === 'number') ? res.chargeAmount : (parseFloat(document.getElementById('memberChargeAmount').value) || 0);
+            posCart.push({ name: 'สมัครสมาชิกรายเดือน - ' + data.package + ' (' + data.fullName + ')', price: price, qty: 1 });
+            document.getElementById('memberForm').reset(); initForm(); loadMemberList();
+            finishMembershipAddOn();
+            switchSection('payments');
+            document.getElementById('pendingMembershipBanner').classList.remove('hidden');
+            renderCart();
+            alert('เพิ่มแพ็กเกจสมัครสมาชิกของ "' + data.fullName + '" ลงในบิลแล้ว! ตรวจสอบรายการแล้วกดรับชำระเงินด้านล่าง');
+          })
+          .withFailureHandler(goToLoginIfExpired)
+          .saveMemberData(data, SESSION_TOKEN);
+      } else {
+        google.script.run
+          .withSuccessHandler(res => {
+            alert(res.message);
+            document.getElementById('memberForm').reset(); initForm(); loadMemberList();
+            if (res.receiptNo && confirm('ลงทะเบียนและรับชำระเงินสำเร็จ! ต้องการพิมพ์ใบเสร็จ (' + res.receiptNo + ') เลยหรือไม่?')) {
+              printReceipt(res.receiptNo);
+            }
+          })
+          .withFailureHandler(goToLoginIfExpired)
+          .saveMemberData(data, SESSION_TOKEN);
+      }
+    }
+
+    // ==========================================
+    // 🔗 สมัครสมาชิกรายเดือน เป็นแพ็กเกจเสริมรวมกับบิลลูกค้ารายวัน
+    // ==========================================
+    let membershipAddOnMode = false;
+
+    function startMembershipAddOn() {
+      membershipAddOnMode = true;
+      clearEditMode(); // เริ่มจากฟอร์มว่าง โหมดเพิ่มใหม่เสมอ
+
+      const { names, phones } = getCustomersData();
+      if (names.length > 0) document.getElementById('fullName').value = names[0];
+      if (phones.length > 0) document.getElementById('phone').value = phones[0];
+
+      document.getElementById('membershipAddOnBanner').classList.remove('hidden');
+      document.getElementById('memberPaymentSection').classList.add('hidden');
+      document.getElementById('btnSubmit').innerText = 'สมัครสมาชิก แล้วกลับไปรวมบิล';
+      document.getElementById('btnSubmit').className = 'w-full bg-green-600 hover:bg-green-500 text-white font-black py-4 rounded-xl text-sm cursor-pointer';
+
+      switchSection('members');
+    }
+
+    function finishMembershipAddOn() {
+      membershipAddOnMode = false;
+      document.getElementById('membershipAddOnBanner').classList.add('hidden');
+      document.getElementById('memberPaymentSection').classList.remove('hidden');
+      document.getElementById('btnSubmit').innerText = 'Register & Link Fingerprint';
+      document.getElementById('btnSubmit').className = 'w-full bg-red-600 hover:bg-red-500 text-white font-black py-4 rounded-xl transition-all cursor-pointer text-sm';
+    }
+
+    function cancelMembershipAddOn() {
+      finishMembershipAddOn();
+      clearEditMode();
+    }
+
+    // ==========================================
+    // 🖐️ ลงทะเบียนลายนิ้วมือจากหน้าเว็บ (ไม่ต้องเปิด CMD เอง)
+    // ==========================================
+    let enrollPollInterval = null;
+
+    function manualCheckInUI(rowNumber, memberName) {
+      if (!confirm('ยืนยันเช็คอินให้ "' + memberName + '" ด้วยมือ?\n\nใช้ตอนเครื่องสแกนลายนิ้วมือหน้าประตูใช้งานไม่ได้เท่านั้น')) return;
+      google.script.run
+        .withSuccessHandler(res => {
+          alert(res.message);
+          if (res.success) { loadMemberList(); renderCheckinList(); }
+        })
+        .withFailureHandler(goToLoginIfExpired)
+        .manualCheckIn(rowNumber, SESSION_TOKEN);
+    }
+
+    // ==========================================
+    // ✅ หน้าเช็คอินลูกค้าแบบง่าย (ไว้ใช้เวลาเครื่องสแกนลายนิ้วมือใช้งานไม่ได้)
+    // ==========================================
+    function renderCheckinList() {
+      const container = document.getElementById('checkinListContainer');
+      const searchTerm = (document.getElementById('checkinSearchBar').value || '').trim().toLowerCase();
+      if (!container) return;
+
+      if (!localMembersArray || localMembersArray.length === 0) {
+        container.innerHTML = '<p class="text-gray-600 text-xs text-center py-8">กำลังโหลดข้อมูลสมาชิก...</p>';
+        return;
+      }
+
+      let filtered = localMembersArray;
+      if (searchTerm) {
+        filtered = localMembersArray.filter(m => (m.fullName || '').toLowerCase().includes(searchTerm) || (m.phone || '').includes(searchTerm));
+      }
+
+      if (filtered.length === 0) {
+        container.innerHTML = '<p class="text-gray-600 text-xs text-center py-8">ไม่พบสมาชิกที่ค้นหา</p>';
+        return;
+      }
+
+      // ถ้ายังไม่ได้พิมพ์ค้นหา แสดงแค่ 15 คนแรกพอ กันหน้ายาวเกินไป
+      const displayList = searchTerm ? filtered : filtered.slice(0, 15);
+
+      container.innerHTML = displayList.map(member => {
+        const isActive = member.status === 'Active';
+        const statusBadge = isActive
+          ? '<span class="text-[10px] bg-green-950 text-green-400 border border-green-800 px-2.5 py-1 rounded-full font-bold uppercase">Active</span>'
+          : `<span class="text-[10px] bg-gray-800 text-gray-400 border border-gray-700 px-2.5 py-1 rounded-full font-bold uppercase">${member.status}</span>`;
+        return `
+          <div class="glass-card p-4 md:p-5 rounded-2xl flex items-center justify-between gap-4">
+            <div class="min-w-0">
+              <div class="flex items-center gap-2 mb-1">
+                <h4 class="text-white font-bold text-base truncate">${member.fullName}</h4>
+                ${statusBadge}
+              </div>
+              <p class="text-gray-500 text-xs">${member.package} • ${member.phone}</p>
+              <p class="text-gray-600 text-[11px] mt-0.5"><i class="fa-solid fa-calendar-days mr-1"></i>หมดอายุ: <span class="font-mono">${member.expiryDate}</span> <span class="mx-1">•</span><i class="fa-solid fa-dumbbell mr-1"></i>เข้าแล้ว ${member.checkInCount} ครั้ง</p>
+            </div>
+            <button onclick="manualCheckInUI(${member.rowNumber}, '${member.fullName.replace(/'/g, "\\'")}')" class="shrink-0 bg-green-600 hover:bg-green-500 text-white font-black py-3 px-5 rounded-xl text-xs uppercase cursor-pointer flex items-center gap-2">
+              <i class="fa-solid fa-check text-sm"></i> เช็คอิน
+            </button>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function openEnrollFingerprintModal(rowNumber, memberName) {
+      document.getElementById('enrollWaitingState').classList.remove('hidden');
+      document.getElementById('enrollSuccessState').classList.add('hidden');
+      document.getElementById('enrollFailedState').classList.add('hidden');
+      document.getElementById('btnCancelEnroll').classList.remove('hidden');
+      document.getElementById('enrollMemberNameText').innerText = memberName;
+      document.getElementById('enrollFingerprintModal').classList.remove('hidden');
+
+      google.script.run
+        .withSuccessHandler(res => {
+          if (!res.success) {
+            alert(res.message);
+            closeEnrollFingerprintModal();
+            return;
+          }
+          if (enrollPollInterval) clearInterval(enrollPollInterval);
+          enrollPollInterval = setInterval(checkEnrollmentStatus, 2000);
+        })
+        .withFailureHandler(err => { goToLoginIfExpired(err); closeEnrollFingerprintModal(); })
+        .requestFingerprintEnrollment(rowNumber, SESSION_TOKEN);
+    }
+
+    function checkEnrollmentStatus() {
+      google.script.run
+        .withSuccessHandler(res => {
+          if (res.status === 'done') {
+            clearInterval(enrollPollInterval);
+            enrollPollInterval = null;
+            document.getElementById('enrollWaitingState').classList.add('hidden');
+            document.getElementById('enrollSuccessState').classList.remove('hidden');
+            document.getElementById('enrollSuccessText').innerText = 'รหัสลายนิ้วมือ: ' + res.fingerprintId;
+            document.getElementById('btnCancelEnroll').innerText = 'ปิด';
+            loadMemberList();
+          } else if (res.status === 'failed') {
+            clearInterval(enrollPollInterval);
+            enrollPollInterval = null;
+            document.getElementById('enrollWaitingState').classList.add('hidden');
+            document.getElementById('enrollFailedState').classList.remove('hidden');
+            document.getElementById('enrollFailedText').innerText = res.errorMessage || 'ไม่ทราบสาเหตุ ลองใหม่อีกครั้ง';
+            document.getElementById('btnCancelEnroll').innerText = 'ปิด';
+          }
+          // ถ้า status ยัง 'waiting' ก็ไม่ต้องทำอะไร รอ poll รอบถัดไป
+        })
+        .withFailureHandler(() => { /* เงียบไว้ก่อน ไม่ต้อง logout ระหว่าง polling เผื่อเน็ตสะดุดชั่วคราว */ })
+        .getEnrollmentStatus(SESSION_TOKEN);
+    }
+
+    function cancelEnrollFingerprint() {
+      if (enrollPollInterval) { clearInterval(enrollPollInterval); enrollPollInterval = null; }
+      google.script.run
+        .withFailureHandler(() => {})
+        .cancelFingerprintEnrollmentRequest(SESSION_TOKEN);
+      closeEnrollFingerprintModal();
+    }
+
+    function closeEnrollFingerprintModal() {
+      if (enrollPollInterval) { clearInterval(enrollPollInterval); enrollPollInterval = null; }
+      document.getElementById('enrollFingerprintModal').classList.add('hidden');
+      document.getElementById('btnCancelEnroll').innerText = 'ยกเลิก';
+    }
+
+    function startEditMember(rowNumber) {
+      const member = localMembersArray.find(m => m.rowNumber === rowNumber);
+      if (!member) return;
+      document.getElementById('rowNumber').value = member.rowNumber;
+      document.getElementById('fullName').value = member.fullName;
+      document.getElementById('phone').value = member.phone;
+      document.getElementById('email').value = member.email;
+      document.getElementById('package').value = member.package;
+      document.getElementById('startDate').value = member.startDate;
+      document.getElementById('expiryDate').value = member.expiryDate;
+      document.getElementById('fingerprintId').value = member.fingerprintId;
+      document.getElementById('status').value = member.status || "Active";
+      document.getElementById('memberPin').value = member.pin || "";
+      document.getElementById('memberDob').value = member.dob || "";
+      
+      document.getElementById('editModeIndicator').classList.remove('hidden');
+      document.getElementById('formTitle').innerText = "EDIT MEMBER PROFILE";
+      document.getElementById('btnSubmit').innerText = "Update Member Info";
+      document.getElementById('btnSubmit').className = "w-full bg-blue-600 hover:bg-blue-500 text-white font-black py-4 rounded-xl text-sm cursor-pointer";
+
+      document.getElementById('btnDeleteMember').classList.remove('hidden');
+      document.getElementById('memberPaymentSection').classList.add('hidden');
+    }
+
+    function clearEditMode() {
+      document.getElementById('memberForm').reset(); document.getElementById('rowNumber').value = "";
+      document.getElementById('editModeIndicator').classList.add('hidden'); document.getElementById('formTitle').innerText = "Add New Gym Member";
+      document.getElementById('btnSubmit').className = "w-full bg-red-600 hover:bg-red-500 text-white font-black py-4 rounded-xl text-sm cursor-pointer";
+      document.getElementById('btnDeleteMember').classList.add('hidden');
+      document.getElementById('memberPaymentSection').classList.remove('hidden');
+      document.getElementById('birthdayDiscountBadge').classList.add('hidden');
+      initForm();
+    }
+
+    function deleteCurrentMember() {
+      const rowNum = document.getElementById('rowNumber').value;
+      const name = document.getElementById('fullName').value;
+      if (!rowNum) return;
+      if (!confirm(`ยืนยันลบสมาชิก "${name}" ออกจากระบบถาวร?`)) return;
+      google.script.run
+        .withSuccessHandler(res => { alert(res.message); clearEditMode(); loadMemberList(); })
+        .withFailureHandler(goToLoginIfExpired)
+        .deleteMemberData(rowNum, SESSION_TOKEN);
+    }
+
+    // ==========================================
+    // 📜 ประวัติสมาชิกรายคนแบบละเอียด
+    // ==========================================
+    let currentHistoryData = null;
+
+    function openMemberHistory(rowNumber) {
+      document.getElementById('memberHistoryModal').classList.remove('hidden');
+      document.getElementById('historyMemberName').innerText = 'กำลังโหลด...';
+      document.getElementById('historyMemberMeta').innerText = '';
+      ['payments', 'checkins', 'bookings'].forEach(t => {
+        document.getElementById('historyTab-' + t).innerHTML = '<p class="text-gray-600 text-xs text-center py-6">กำลังโหลด...</p>';
+      });
+
+      google.script.run
+        .withSuccessHandler(data => {
+          currentHistoryData = data;
+          document.getElementById('historyMemberName').innerText = data.profile.fullName;
+          document.getElementById('historyMemberMeta').innerText = data.profile.package + ' • ' + (data.profile.phone || '-') + ' • หมดอายุ ' + data.profile.expiryDate;
+          renderHistoryPayments(data.payments);
+          renderHistoryCheckIns(data.checkIns);
+          renderHistoryBookings(data.bookings);
+          switchHistoryTab('payments');
+        })
+        .withFailureHandler(err => { goToLoginIfExpired(err); closeMemberHistory(); })
+        .getMemberFullHistory(SESSION_TOKEN, rowNumber);
+    }
+
+    function closeMemberHistory() {
+      document.getElementById('memberHistoryModal').classList.add('hidden');
+    }
+
+    function switchHistoryTab(tab) {
+      ['payments', 'checkins', 'bookings'].forEach(t => {
+        document.getElementById('historyTab-' + t).classList.toggle('hidden', t !== tab);
+        const btn = document.getElementById('historyTabBtn-' + t);
+        btn.className = 'historyTabBtn text-xs font-bold px-3 py-2 rounded-lg cursor-pointer ' +
+          (t === tab ? 'bg-red-600 text-white' : 'bg-black border border-gray-800 text-gray-400');
+      });
+    }
+
+    function renderHistoryPayments(payments) {
+      const container = document.getElementById('historyTab-payments');
+      if (!payments || payments.length === 0) {
+        container.innerHTML = '<p class="text-gray-600 text-xs text-center py-6">ยังไม่มีประวัติการชำระเงิน</p>';
+        return;
+      }
+      container.innerHTML = '';
+      payments.forEach(p => {
+        const isRefunded = p.refundStatus === 'Refunded';
+        const row = document.createElement('div');
+        row.className = 'flex justify-between items-center p-3 rounded-xl bg-black/40 border border-gray-900' + (isRefunded ? ' opacity-50' : '');
+        row.innerHTML = `
+          <div class="min-w-0">
+            <p class="text-white font-bold text-xs">${p.package}</p>
+            <p class="text-gray-500 text-[10px] font-mono">${p.timestamp} • ใบเสร็จ ${p.receiptNo || '-'}</p>
+          </div>
+          <div class="text-right shrink-0 ml-2">
+            <p class="text-red-400 font-mono font-bold text-xs">${Number(p.amount).toLocaleString('th-TH')} บาท</p>
+            ${isRefunded ? '<span class="text-[9px] text-red-500">คืนเงินแล้ว</span>' : ''}
+          </div>
+        `;
+        container.appendChild(row);
+      });
+    }
+
+    function renderHistoryCheckIns(checkIns) {
+      const container = document.getElementById('historyTab-checkins');
+      if (!checkIns || checkIns.length === 0) {
+        container.innerHTML = '<p class="text-gray-600 text-xs text-center py-6">ยังไม่มีประวัติการเข้ายิม</p>';
+        return;
+      }
+      container.innerHTML = '';
+      checkIns.forEach(c => {
+        const statusBadge = c.status === 'SUCCESS'
+          ? '<span class="text-[9px] bg-green-950 text-green-400 border border-green-800 px-2 py-0.5 rounded-full font-bold">SUCCESS</span>'
+          : '<span class="text-[9px] bg-red-950 text-red-400 border border-red-800 px-2 py-0.5 rounded-full font-bold">BLOCKED</span>';
+        const row = document.createElement('div');
+        row.className = 'flex justify-between items-center p-3 rounded-xl bg-black/40 border border-gray-900';
+        row.innerHTML = `
+          <div class="min-w-0">
+            <p class="text-gray-400 text-[10px] font-mono">${c.timestamp}</p>
+            <p class="text-gray-500 text-[10px]">${c.details || ''}</p>
+          </div>
+          ${statusBadge}
+        `;
+        container.appendChild(row);
+      });
+    }
+
+    function renderHistoryBookings(bookings) {
+      const container = document.getElementById('historyTab-bookings');
+      if (!bookings || bookings.length === 0) {
+        container.innerHTML = '<p class="text-gray-600 text-xs text-center py-6">ยังไม่มีประวัติการจองคิวเทรนเนอร์</p>';
+        return;
+      }
+      container.innerHTML = '';
+      bookings.forEach(b => {
+        let badgeClass = 'bg-green-950 text-green-400 border-green-800';
+        if (b.status === 'Cancelled') badgeClass = 'bg-gray-800 text-gray-400 border-gray-700';
+        else if (b.status === 'Completed') badgeClass = 'bg-blue-950 text-blue-400 border-blue-800';
+        const row = document.createElement('div');
+        row.className = 'flex justify-between items-center p-3 rounded-xl bg-black/40 border border-gray-900';
+        row.innerHTML = `
+          <div class="min-w-0">
+            <p class="text-white font-bold text-xs">${b.trainerName}</p>
+            <p class="text-gray-500 text-[10px] font-mono">${b.date} • ${b.timeSlot}</p>
+          </div>
+          <span class="text-[9px] px-2 py-0.5 rounded-full border ${badgeClass} font-bold uppercase">${b.status}</span>
+        `;
+        container.appendChild(row);
+      });
+    }
+
+    function loadMemberList() {
+      google.script.run
+        .withSuccessHandler(list => {
+          localMembersArray = list;
+          currentFilteredList = list;
+          currentPage = 1;
+          renderListCards();
+          renderCheckinList();
+          populateAdminBookMemberSelect();
+        })
+        .withFailureHandler(goToLoginIfExpired)
+        .getMemberList(SESSION_TOKEN);
+    }
+
+    function filterMemberList() {
+      const query = document.getElementById('searchBar').value.toLowerCase().trim();
+      currentFilteredList = localMembersArray.filter(m =>
+        m.fullName.toLowerCase().includes(query) ||
+        m.phone.includes(query) ||
+        (m.fingerprintId || '').toString().toLowerCase().includes(query)
+      );
+      currentPage = 1;
+      renderListCards();
+    }
+
+    function changePage(delta) {
+      currentPage += delta;
+      renderListCards();
+    }
+
+    function renderListCards() {
+      const container = document.getElementById('memberListContainer');
+      const array = currentFilteredList;
+
+      if (!array || array.length === 0) {
+        container.innerHTML = '<p class="text-gray-600 text-xs text-center py-10">ไม่พบข้อมูล</p>';
+        return;
+      }
+
+      const totalPages = Math.max(1, Math.ceil(array.length / PAGE_SIZE));
+      if (currentPage > totalPages) currentPage = totalPages;
+      const startIdx = (currentPage - 1) * PAGE_SIZE;
+      const pageItems = array.slice(startIdx, startIdx + PAGE_SIZE);
+
+      container.innerHTML = '';
+      const today = new Date();
+
+      pageItems.forEach(member => {
+        const expDate = new Date(member.expiryDate);
+        const daysLeft = Math.ceil((expDate.getTime() - today.getTime()) / (1000 * 3600 * 24));
+        let badge = '', borderStyle = 'border-gray-800 hover:border-red-500/50', expiryTextColor = 'text-gray-400';
+
+        if (member.status === 'Suspended') {
+          badge = `<span class="text-[10px] bg-yellow-950 text-yellow-400 border border-yellow-800 px-2 py-0.5 rounded-full font-bold">Freeze</span>`;
+          borderStyle = 'border-yellow-700 bg-yellow-950/10 hover:border-yellow-500'; expiryTextColor = 'text-yellow-400/70';
+        } else if (member.status === 'Inactive') {
+          badge = `<span class="text-[10px] bg-gray-800 text-gray-400 border border-gray-700 px-2 py-0.5 rounded-full font-bold">Inactive</span>`;
+          borderStyle = 'border-gray-800 bg-gray-900/40 opacity-50 hover:opacity-100';
+        } else if (daysLeft < 0) {
+          badge = `<span class="text-[10px] bg-red-950 text-red-400 border border-red-800 px-2 py-0.5 rounded-full font-bold">Expired</span>`;
+          borderStyle = 'border-red-900 bg-red-950/10 hover:border-red-500'; expiryTextColor = 'text-red-400 font-bold';
+        } else if (daysLeft <= 7) {
+          badge = `<span class="text-[10px] bg-red-950 text-red-400 border border-red-800 px-2 py-0.5 rounded-full font-bold">ใกล้หมดอายุ</span>`;
+          borderStyle = 'border-red-800 bg-red-950/10 hover:border-red-500'; expiryTextColor = 'text-red-400 font-bold';
+        } else { badge = `<span class="text-[10px] bg-green-950 text-green-400 border border-green-800 px-2 py-0.5 rounded-full font-bold">Active</span>`; }
+
+        const card = document.createElement('div');
+        card.className = `p-4 border ${borderStyle} rounded-2xl bg-black/40 flex flex-col gap-2 cursor-pointer transition-all`;
+        card.setAttribute('onclick', `startEditMember(${member.rowNumber})`);
+        card.innerHTML = `<div class="flex justify-between items-start"><div><h4 class="text-white font-bold text-sm">${member.fullName}</h4><p class="text-gray-500 text-[11px]">${member.package} • ${member.phone}</p><div class="mt-2 flex items-center ${expiryTextColor} text-[11px]"><i class="fa-solid fa-calendar-days mr-1.5 opacity-80"></i><span>หมดอายุ: <span class="font-mono">${member.expiryDate}</span></span></div></div>${badge}</div><div class="flex justify-between items-center mt-1 border-t border-gray-950 pt-2 text-[11px]"><span class="text-gray-500"><i class="fa-solid fa-fingerprint mr-1"></i>รหัส: <span class="font-mono text-gray-500">${member.fingerprintId || 'ยังไม่ลงทะเบียน'}</span> <button onclick="event.stopPropagation(); openEnrollFingerprintModal(${member.rowNumber}, '${member.fullName.replace(/'/g, "\\'")}')" class="text-red-500 hover:text-red-400 cursor-pointer ml-1" title="ลงทะเบียน/เปลี่ยนลายนิ้วมือ"><i class="fa-solid fa-rotate"></i></button></span><span class="flex items-center gap-2"><span class="text-red-400 font-black"><i class="fa-solid fa-dumbbell mr-1"></i>${member.checkInCount} ครั้ง</span><button onclick="event.stopPropagation(); manualCheckInUI(${member.rowNumber}, '${member.fullName.replace(/'/g, "\\'")}')" class="bg-green-950 hover:bg-green-900 text-green-400 border border-green-800 px-2 py-1 rounded-lg text-[10px] font-bold cursor-pointer" title="เช็คอินด้วยมือ (ใช้เวลาเครื่องสแกนใช้งานไม่ได้)"><i class="fa-solid fa-check mr-1"></i>เช็คอิน</button></span></div><button onclick="event.stopPropagation(); openMemberHistory(${member.rowNumber})" class="mt-1 text-[10px] text-gray-500 hover:text-red-400 border-t border-gray-950 pt-2 text-left cursor-pointer"><i class="fa-solid fa-clock-rotate-left mr-1"></i>ดูประวัติทั้งหมด</button>`;
+        container.appendChild(card);
+      });
+
+      const pager = document.createElement('div');
+      pager.className = "flex justify-between items-center pt-4 mt-3 border-t border-gray-900 sticky bottom-0 bg-[#0b0b0b]/95 backdrop-blur-sm pb-1";
+      const dots = totalPages <= 10
+        ? Array.from({ length: totalPages }, (_, idx) => idx + 1).map(p =>
+            `<span class="w-1.5 h-1.5 rounded-full ${p === currentPage ? 'bg-red-500' : 'bg-gray-800'} transition-all"></span>`
+          ).join('')
+        : '';
+      pager.innerHTML = `
+        <button onclick="changePage(-1)" ${currentPage <= 1 ? 'disabled' : ''} class="w-9 h-9 rounded-full border border-gray-800 hover:border-red-600 hover:bg-red-950/40 disabled:opacity-20 disabled:hover:border-gray-800 disabled:hover:bg-transparent disabled:cursor-not-allowed cursor-pointer flex items-center justify-center text-gray-400 hover:text-red-400 transition-all shrink-0">
+          <i class="fa-solid fa-chevron-left text-xs"></i>
+        </button>
+        <div class="flex flex-col items-center gap-1.5">
+          <span class="text-[11px] text-gray-400 font-bold tracking-wide">หน้า <span class="text-white">${currentPage}</span> / ${totalPages} <span class="text-gray-700 mx-0.5">•</span> ${array.length} รายการ</span>
+          <div class="flex items-center gap-1">${dots}</div>
+        </div>
+        <button onclick="changePage(1)" ${currentPage >= totalPages ? 'disabled' : ''} class="w-9 h-9 rounded-full border border-gray-800 hover:border-red-600 hover:bg-red-950/40 disabled:opacity-20 disabled:hover:border-gray-800 disabled:hover:bg-transparent disabled:cursor-not-allowed cursor-pointer flex items-center justify-center text-gray-400 hover:text-red-400 transition-all shrink-0">
+          <i class="fa-solid fa-chevron-right text-xs"></i>
+        </button>
+      `;
+      container.appendChild(pager);
+    }
+
+    function handleTrainerSubmit(e) {
+      e.preventDefault();
+      const rowNum = document.getElementById('trainerRowNumber').value;
+      const days = Array.from(document.querySelectorAll('.trainerDayChk:checked')).map(c => c.value);
+      const data = {
+        rowNumber: rowNum,
+        fullName: document.getElementById('trainerFullName').value,
+        specialty: document.getElementById('trainerSpecialty').value,
+        phone: document.getElementById('trainerPhone').value,
+        email: document.getElementById('trainerEmail').value.trim(),
+        workingDays: days,
+        startHour: document.getElementById('trainerStartHour').value,
+        endHour: document.getElementById('trainerEndHour').value,
+        slotMinutes: document.getElementById('trainerSlotMinutes').value,
+        status: document.getElementById('trainerStatus').value,
+        bio: document.getElementById('trainerBio').value.trim(),
+        photoUrl: document.getElementById('trainerPhotoUrl').value
+      };
+
+      if (rowNum) {
+        google.script.run
+          .withSuccessHandler(res => { alert(res.message); clearTrainerForm(); loadTrainerListAdmin(); })
+          .withFailureHandler(goToLoginIfExpired)
+          .updateTrainerData(data, SESSION_TOKEN);
+      } else {
+        google.script.run
+          .withSuccessHandler(res => { alert(res.message); clearTrainerForm(); loadTrainerListAdmin(); })
+          .withFailureHandler(goToLoginIfExpired)
+          .addTrainerData(data, SESSION_TOKEN);
+      }
+    }
+
+    function deleteTrainerPhotoAdminUI() {
+      if (!confirm('ยืนยันลบรูปโปรไฟล์เทรนเนอร์คนนี้?')) return;
+      const statusEl = document.getElementById('trainerPhotoUploadStatus');
+      const rowNum = document.getElementById('trainerRowNumber').value;
+
+      const clearLocalPreview = () => {
+        document.getElementById('trainerPhotoUrl').value = '';
+        document.getElementById('trainerPhotoPreview').classList.add('hidden');
+        document.getElementById('trainerPhotoPreview').src = '';
+        document.getElementById('trainerPhotoPlaceholder').classList.remove('hidden');
+      };
+
+      if (!rowNum) {
+        // ยังไม่ได้บันทึกเทรนเนอร์คนนี้ (กำลังสร้างใหม่) - แค่ล้างค่าในฟอร์มพอ
+        clearLocalPreview();
+        statusEl.innerText = '';
+        return;
+      }
+
+      google.script.run
+        .withSuccessHandler(res => {
+          statusEl.innerText = res.success ? '✅ ลบรูปแล้ว' : '❌ ' + res.message;
+          if (res.success) { clearLocalPreview(); loadTrainerListAdmin(); }
+        })
+        .withFailureHandler(goToLoginIfExpired)
+        .deleteTrainerPhoto(rowNum, SESSION_TOKEN);
+    }
+
+    function handleTrainerPhotoSelect(e) {
+      const file = e.target.files[0];
+      if (!file || !file.type.startsWith('image/')) return;
+      const statusEl = document.getElementById('trainerPhotoUploadStatus');
+      statusEl.innerText = 'กำลังอัปโหลด...';
+
+      const reader = new FileReader();
+      reader.onload = function(evt) {
+        const base64Data = evt.target.result;
+        // แสดง preview ทันทีระหว่างรออัปโหลด
+        const preview = document.getElementById('trainerPhotoPreview');
+        preview.src = base64Data;
+        preview.classList.remove('hidden');
+        document.getElementById('trainerPhotoPlaceholder').classList.add('hidden');
+
+        google.script.run
+          .withSuccessHandler(res => {
+            if (res.success) {
+              document.getElementById('trainerPhotoUrl').value = res.url;
+              statusEl.innerText = '✅ อัปโหลดสำเร็จ';
+            } else {
+              statusEl.innerText = '❌ อัปโหลดไม่สำเร็จ: ' + res.message;
+            }
+          })
+          .withFailureHandler(err => { goToLoginIfExpired(err); statusEl.innerText = '❌ เกิดข้อผิดพลาด'; })
+          .uploadTrainerPhoto(base64Data, file.type, file.name, SESSION_TOKEN);
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function loadTrainerListAdmin() {
+      google.script.run
+        .withSuccessHandler(list => {
+          localTrainersArray = list;
+          const tbody = document.getElementById('trainerListTableBody');
+          if (!list || list.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="8" class="text-center py-6 text-gray-600">ยังไม่มีเทรนเนอร์ในระบบ</td></tr>';
+          } else {
+            tbody.innerHTML = '';
+            const dayLabel = { Mon: 'จ.', Tue: 'อ.', Wed: 'พ.', Thu: 'พฤ.', Fri: 'ศ.', Sat: 'ส.', Sun: 'อา.' };
+            list.forEach(t => {
+              const daysText = (t.workingDays || []).map(d => dayLabel[d] || d).join(' ');
+              const statusBadge = t.status === 'Active'
+                ? '<span class="text-[10px] bg-green-950 text-green-400 border border-green-800 px-2 py-0.5 rounded-full font-bold">Active</span>'
+                : '<span class="text-[10px] bg-gray-800 text-gray-400 border border-gray-700 px-2 py-0.5 rounded-full font-bold">Inactive</span>';
+              const busyBadge = t.busyStatus === 'Busy'
+                ? '<button onclick="adminToggleTrainerStatus(' + t.rowNumber + ', true)" title="กดเพื่อสลับเป็นว่าง" class="text-[10px] bg-red-950 hover:bg-red-900 text-red-400 border border-red-800 px-2 py-0.5 rounded-full font-bold cursor-pointer"><i class="fa-solid fa-user-clock mr-1"></i>ติดลูกค้า</button>'
+                : '<button onclick="adminToggleTrainerStatus(' + t.rowNumber + ', false)" title="กดเพื่อสลับเป็นติดลูกค้า" class="text-[10px] bg-green-950 hover:bg-green-900 text-green-400 border border-green-800 px-2 py-0.5 rounded-full font-bold cursor-pointer"><i class="fa-solid fa-circle-check mr-1"></i>ว่าง</button>';
+              const avatarHtml = t.photoUrl
+                ? `<span class="w-8 h-8 rounded-md bg-gray-800 inline-flex items-center justify-center mr-2 align-middle overflow-hidden relative"><img src="${t.photoUrl}" onerror="this.style.display='none'" class="w-full h-full object-cover absolute inset-0"><i class="fa-solid fa-user text-gray-600 text-xs relative"></i></span>`
+                : `<span class="w-8 h-8 rounded-md bg-gray-800 inline-flex items-center justify-center mr-2 align-middle"><i class="fa-solid fa-user text-gray-600 text-xs"></i></span>`;
+              const lineBadge = t.lineLinked
+                ? '<span class="text-[10px] bg-green-950 text-green-400 border border-green-800 px-2 py-0.5 rounded-full font-bold"><i class="fa-brands fa-line mr-1"></i>เชื่อมแล้ว</span>'
+                : `<button onclick="generateTrainerLineCodeUI(${t.rowNumber}, '${t.fullName.replace(/'/g, "\\'")}')" class="text-[10px] bg-gray-800 hover:bg-gray-700 text-gray-400 border border-gray-700 px-2 py-0.5 rounded-full font-bold cursor-pointer">สร้างรหัสเชื่อมต่อ</button>`;
+              const tr = document.createElement('tr');
+              tr.className = 'hover:bg-white/[0.02]';
+              tr.innerHTML =
+                '<td class="py-3 pl-2 text-white font-bold">' + avatarHtml + t.fullName + '</td>' +
+                '<td class="py-3 text-gray-400">' + (t.specialty || '-') + '</td>' +
+                '<td class="py-3 text-gray-400">' + (daysText || '-') + '</td>' +
+                '<td class="py-3 text-gray-400 font-mono">' + t.startHour + '-' + t.endHour + '</td>' +
+                '<td class="py-3">' + statusBadge + '</td>' +
+                '<td class="py-3">' + busyBadge + '</td>' +
+                '<td class="py-3">' + lineBadge + '</td>' +
+                '<td class="py-3 text-right pr-2 whitespace-nowrap">' +
+                  '<button onclick="resetTrainerPinUI(' + t.rowNumber + ')" title="รีเซ็ต PIN แอปเทรนเนอร์" class="text-gray-500 hover:text-yellow-400 cursor-pointer mr-3"><i class="fa-solid fa-key"></i></button>' +
+                  '<button onclick="startEditTrainer(' + t.rowNumber + ')" class="text-gray-500 hover:text-red-400 cursor-pointer"><i class="fa-solid fa-pen"></i></button>' +
+                '</td>';
+              tbody.appendChild(tr);
+            });
+          }
+          loadTrainerOptionsForSchedule();
+        })
+        .withFailureHandler(goToLoginIfExpired)
+        .getTrainerList(SESSION_TOKEN);
+    }
+
+    function startEditTrainer(rowNumber) {
+      const t = localTrainersArray.find(x => x.rowNumber === rowNumber);
+      if (!t) return;
+      document.getElementById('trainerRowNumber').value = t.rowNumber;
+      document.getElementById('trainerFullName').value = t.fullName;
+      document.getElementById('trainerSpecialty').value = t.specialty || '';
+      document.getElementById('trainerPhone').value = t.phone || '';
+      document.getElementById('trainerEmail').value = t.email || '';
+      document.getElementById('trainerBio').value = t.bio || '';
+      document.getElementById('trainerPhotoUrl').value = t.photoUrl || '';
+      document.getElementById('trainerStartHour').value = t.startHour;
+      document.getElementById('trainerEndHour').value = t.endHour;
+      document.getElementById('trainerSlotMinutes').value = t.slotMinutes;
+      document.getElementById('trainerStatus').value = t.status;
+      document.querySelectorAll('.trainerDayChk').forEach(c => { c.checked = (t.workingDays || []).indexOf(c.value) !== -1; });
+
+      const preview = document.getElementById('trainerPhotoPreview');
+      const placeholder = document.getElementById('trainerPhotoPlaceholder');
+      if (t.photoUrl) { preview.src = t.photoUrl; preview.classList.remove('hidden'); placeholder.classList.add('hidden'); }
+      else { preview.classList.add('hidden'); placeholder.classList.remove('hidden'); }
+      document.getElementById('trainerPhotoUploadStatus').innerText = '';
+
+      document.getElementById('trainerEditIndicator').classList.remove('hidden');
+      document.getElementById('trainerFormTitle').innerText = 'EDIT TRAINER';
+      document.getElementById('btnTrainerSubmit').innerText = 'Update Trainer';
+      document.getElementById('btnTrainerSubmit').className = 'w-full bg-blue-600 hover:bg-blue-500 text-white font-black py-3.5 rounded-xl text-xs uppercase cursor-pointer';
+      document.getElementById('btnDeleteTrainer').classList.remove('hidden');
+    }
+
+    function clearTrainerForm() {
+      document.getElementById('trainerForm').reset();
+      document.getElementById('trainerRowNumber').value = '';
+      document.getElementById('trainerPhotoUrl').value = '';
+      document.getElementById('trainerPhotoPreview').classList.add('hidden');
+      document.getElementById('trainerPhotoPreview').src = '';
+      document.getElementById('trainerPhotoPlaceholder').classList.remove('hidden');
+      document.getElementById('trainerPhotoUploadStatus').innerText = '';
+      document.getElementById('trainerEditIndicator').classList.add('hidden');
+      document.getElementById('trainerFormTitle').innerText = 'Add New Trainer';
+      document.getElementById('btnTrainerSubmit').innerText = 'Add Trainer';
+      document.getElementById('btnTrainerSubmit').className = 'w-full bg-red-600 hover:bg-red-500 text-white font-black py-3.5 rounded-xl text-xs uppercase cursor-pointer';
+      document.getElementById('btnDeleteTrainer').classList.add('hidden');
+    }
+
+    function deleteCurrentTrainer() {
+      const rowNum = document.getElementById('trainerRowNumber').value;
+      const name = document.getElementById('trainerFullName').value;
+      if (!rowNum) return;
+      if (!confirm('ยืนยันลบเทรนเนอร์ "' + name + '" ออกจากระบบ?')) return;
+      google.script.run
+        .withSuccessHandler(res => { alert(res.message); clearTrainerForm(); loadTrainerListAdmin(); })
+        .withFailureHandler(goToLoginIfExpired)
+        .deleteTrainerData(rowNum, SESSION_TOKEN);
+    }
+
+    function resetTrainerPinUI(rowNumber) {
+      const t = localTrainersArray.find(x => x.rowNumber === rowNumber);
+      if (!t) return;
+      if (!confirm('รีเซ็ต PIN แอปเทรนเนอร์ของ "' + t.fullName + '" กลับเป็น 1234 หรือไม่?')) return;
+      google.script.run
+        .withSuccessHandler(res => alert(res.message))
+        .withFailureHandler(goToLoginIfExpired)
+        .resetTrainerPin(rowNumber, SESSION_TOKEN);
+    }
+
+    function adminToggleTrainerStatus(rowNumber, currentlyBusy) {
+      const newIsBusy = !currentlyBusy;
+      google.script.run
+        .withSuccessHandler(res => {
+          if (res.success) loadTrainerListAdmin();
+          else alert(res.message);
+        })
+        .withFailureHandler(goToLoginIfExpired)
+        .adminSetTrainerBusyStatus(rowNumber, newIsBusy, SESSION_TOKEN);
+    }
+
+    function generateTrainerLineCodeUI(rowNumber, fullName) {
+      google.script.run
+        .withSuccessHandler(res => {
+          if (!res.success) { alert(res.message); return; }
+          alert('รหัสเชื่อมต่อ LINE ของ "' + fullName + '" คือ: ' + res.code +
+            '\n\nวิธีใช้: ให้เทรนเนอร์เพิ่มเพื่อน LINE OA ของร้านก่อน แล้วพิมพ์รหัสนี้ส่งในแชท LINE เพื่อเชื่อมต่อบัญชี\n\n(รหัสนี้ใช้ได้ครั้งเดียว หมดอายุเมื่อเชื่อมต่อสำเร็จ)');
+        })
+        .withFailureHandler(goToLoginIfExpired)
+        .generateTrainerLineLinkCode(rowNumber, SESSION_TOKEN);
+    }
+
+    function copyTrainerAppLink() {
+      const link = SCRIPT_URL + "?page=trainer";
+      navigator.clipboard.writeText(link).then(() => {
+        alert('คัดลอกลิงก์แอปเทรนเนอร์แล้ว!\n' + link + '\n\nส่งลิงก์นี้ให้เทรนเนอร์ล็อกอินด้วยเบอร์โทร + PIN (เริ่มต้น 1234)');
+      }).catch(() => {
+        prompt('คัดลอกลิงก์นี้ให้เทรนเนอร์:', link);
+      });
+    }
+
+    function loadTrainerOptionsForSchedule() {
+      const select = document.getElementById('scheduleTrainerSelect');
+      const currentVal = select.value;
+      select.innerHTML = '<option value="">-- เลือกเทรนเนอร์ --</option>';
+      localTrainersArray.forEach(t => {
+        const opt = document.createElement('option');
+        opt.value = t.trainerId;
+        opt.innerText = t.fullName;
+        select.appendChild(opt);
+      });
+      if (currentVal) select.value = currentVal;
+      if (!document.getElementById('scheduleDate').value) {
+        document.getElementById('scheduleDate').valueAsDate = new Date();
+      }
+    }
+
+    function loadTrainerScheduleAdmin() {
+      const trainerId = document.getElementById('scheduleTrainerSelect').value;
+      const dateStr = document.getElementById('scheduleDate').value;
+      const tbody = document.getElementById('scheduleTableBody');
+      loadAdminBookSlots();
+      if (!trainerId || !dateStr) {
+        tbody.innerHTML = '<tr><td colspan="5" class="text-center py-6 text-gray-600">เลือกเทรนเนอร์และวันที่เพื่อดูตารางงาน</td></tr>';
+        return;
+      }
+      tbody.innerHTML = '<tr><td colspan="5" class="text-center py-6 text-gray-600">กำลังโหลด...</td></tr>';
+
+      google.script.run
+        .withSuccessHandler(list => {
+          if (!list || list.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center py-6 text-gray-600">ไม่มีคิวในวันที่เลือก</td></tr>';
+            return;
+          }
+          tbody.innerHTML = '';
+          list.forEach(b => {
+            let badge = '<span class="text-[10px] bg-green-950 text-green-400 border border-green-800 px-2 py-0.5 rounded-full font-bold">Booked</span>';
+            if (b.status === 'Cancelled') badge = '<span class="text-[10px] bg-gray-800 text-gray-400 border border-gray-700 px-2 py-0.5 rounded-full font-bold">Cancelled</span>';
+            if (b.status === 'Completed') badge = '<span class="text-[10px] bg-blue-950 text-blue-400 border border-blue-800 px-2 py-0.5 rounded-full font-bold">Completed</span>';
+
+            const tr = document.createElement('tr');
+            tr.className = 'hover:bg-white/[0.02]';
+            tr.innerHTML =
+              '<td class="py-3 pl-2 font-mono text-white">' + b.timeSlot + '</td>' +
+              '<td class="py-3 text-gray-300">' + b.memberName + '</td>' +
+              '<td class="py-3 text-gray-500 font-mono">' + (b.memberPhone || '-') + '</td>' +
+              '<td class="py-3">' + badge + '</td>' +
+              '<td class="py-3 pr-2 text-right">' +
+                (b.status === 'Booked'
+                  ? '<button onclick="setBookingStatus(\'' + b.bookingId + '\',\'Completed\')" class="text-green-500 hover:text-green-400 cursor-pointer mr-2" title="Mark Completed"><i class="fa-solid fa-check"></i></button>' +
+                    '<button onclick="setBookingStatus(\'' + b.bookingId + '\',\'Cancelled\')" class="text-red-500 hover:text-red-400 cursor-pointer" title="Cancel"><i class="fa-solid fa-xmark"></i></button>'
+                  : '') +
+              '</td>';
+            tbody.appendChild(tr);
+          });
+        })
+        .withFailureHandler(goToLoginIfExpired)
+        .getTrainerScheduleByDate(SESSION_TOKEN, trainerId, dateStr);
+    }
+
+    // ==========================================
+    // 📅 แอดมินจองคิวเทรนเนอร์แทนสมาชิก (หน้าเคาน์เตอร์ / โทรมาจอง)
+    // ==========================================
+    let adminSelectedSlot = '';
+
+    function populateAdminBookMemberSelect() {
+      const select = document.getElementById('adminBookMemberSelect');
+      if (!select) return;
+      const currentVal = select.value;
+      select.innerHTML = '<option value="">-- เลือกสมาชิก --</option>';
+      (localMembersArray || []).forEach(m => {
+        const opt = document.createElement('option');
+        opt.value = m.rowNumber;
+        opt.innerText = m.fullName + (m.phone ? ' (' + m.phone + ')' : '');
+        select.appendChild(opt);
+      });
+      if (currentVal) select.value = currentVal;
+    }
+
+    function loadAdminBookSlots() {
+      const trainerId = document.getElementById('scheduleTrainerSelect').value;
+      const dateStr = document.getElementById('scheduleDate').value;
+      const container = document.getElementById('adminBookSlotsContainer');
+      const msg = document.getElementById('adminBookSlotsMsg');
+      container.innerHTML = '';
+      document.getElementById('btnAdminConfirmBooking').classList.add('hidden');
+      adminSelectedSlot = '';
+
+      if (!trainerId || !dateStr) {
+        msg.innerText = 'เลือกเทรนเนอร์ วันที่ และสมาชิกด้านบนก่อน';
+        return;
+      }
+      msg.innerText = 'กำลังโหลดช่วงเวลาว่าง...';
+
+      google.script.run
+        .withSuccessHandler(res => {
+          msg.innerText = '';
+          if (!res.success) { msg.innerText = res.message || 'เกิดข้อผิดพลาด'; return; }
+          if (!res.slots || res.slots.length === 0) {
+            msg.innerText = res.message || 'ไม่มีช่วงเวลาว่างในวันที่เลือก';
+            return;
+          }
+          res.slots.forEach(slot => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'bg-black border border-gray-800 hover:border-red-500 text-gray-300 text-[11px] py-2 rounded-lg cursor-pointer';
+            btn.innerText = slot;
+            btn.onclick = () => selectAdminBookSlot(slot, btn);
+            container.appendChild(btn);
+          });
+        })
+        .withFailureHandler(goToLoginIfExpired)
+        .getTrainerAvailableSlotsAdmin(SESSION_TOKEN, trainerId, dateStr);
+    }
+
+    function selectAdminBookSlot(slot, btnEl) {
+      adminSelectedSlot = slot;
+      document.querySelectorAll('#adminBookSlotsContainer button').forEach(b => {
+        b.className = 'bg-black border border-gray-800 hover:border-red-500 text-gray-300 text-[11px] py-2 rounded-lg cursor-pointer';
+      });
+      btnEl.className = 'bg-red-600 border border-red-500 text-white text-[11px] py-2 rounded-lg cursor-pointer font-bold';
+      document.getElementById('adminSelectedSlotText').innerText = slot;
+      document.getElementById('btnAdminConfirmBooking').classList.remove('hidden');
+    }
+
+    function confirmAdminBooking() {
+      const memberRow = document.getElementById('adminBookMemberSelect').value;
+      const trainerId = document.getElementById('scheduleTrainerSelect').value;
+      const dateStr = document.getElementById('scheduleDate').value;
+      if (!memberRow) { alert('กรุณาเลือกสมาชิก'); return; }
+      if (!trainerId || !dateStr || !adminSelectedSlot) return;
+
+      const btn = document.getElementById('btnAdminConfirmBooking');
+      btn.disabled = true;
+
+      google.script.run
+        .withSuccessHandler(res => {
+          alert(res.message);
+          btn.disabled = false;
+          if (res.success) {
+            loadAdminBookSlots();
+            loadTrainerScheduleAdmin();
+            loadAllBookings();
+          }
+        })
+        .withFailureHandler(err => { goToLoginIfExpired(err); btn.disabled = false; })
+        .adminBookTrainerSlot(SESSION_TOKEN, memberRow, trainerId, dateStr, adminSelectedSlot);
+    }
+
+    function setBookingStatus(bookingId, status) {
+      google.script.run
+        .withSuccessHandler(res => { alert(res.message); loadTrainerScheduleAdmin(); loadAllBookings(); })
+        .withFailureHandler(goToLoginIfExpired)
+        .updateBookingStatus(bookingId, status, SESSION_TOKEN);
+    }
+
+    function loadAllBookings() {
+      const tbody = document.getElementById('allBookingsTableBody');
+      google.script.run
+        .withSuccessHandler(list => {
+          if (!list || list.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center py-6 text-gray-600">ยังไม่มีข้อมูล...</td></tr>';
+            return;
+          }
+          tbody.innerHTML = '';
+          list.forEach(b => {
+            let badge = '<span class="text-[10px] bg-green-950 text-green-400 border border-green-800 px-2 py-0.5 rounded-full font-bold">Booked</span>';
+            if (b.status === 'Cancelled') badge = '<span class="text-[10px] bg-gray-800 text-gray-400 border border-gray-700 px-2 py-0.5 rounded-full font-bold">Cancelled</span>';
+            if (b.status === 'Completed') badge = '<span class="text-[10px] bg-blue-950 text-blue-400 border border-blue-800 px-2 py-0.5 rounded-full font-bold">Completed</span>';
+
+            const tr = document.createElement('tr');
+            tr.className = 'hover:bg-white/[0.02]';
+            tr.innerHTML =
+              '<td class="py-3 pl-2 font-mono text-gray-500">' + b.timestamp + '</td>' +
+              '<td class="py-3 text-red-400 font-medium">' + b.trainerName + '</td>' +
+              '<td class="py-3 text-white">' + b.memberName + '</td>' +
+              '<td class="py-3 font-mono text-gray-400">' + b.date + ' • ' + b.timeSlot + '</td>' +
+              '<td class="py-3 pr-2">' + badge + '</td>';
+            tbody.appendChild(tr);
+          });
+        })
+        .withFailureHandler(goToLoginIfExpired)
+        .getAllBookings(SESSION_TOKEN);
+    }
+
+    function handleAdminSubmit(e) {
+      e.preventDefault();
+      const adminData = {
+        user: document.getElementById('adminUser').value.trim(),
+        pass: document.getElementById('adminPassword').value,
+        email: document.getElementById('adminEmail').value.trim(),
+        role: document.getElementById('adminRole').value
+      };
+      google.script.run
+        .withSuccessHandler(res => { alert(res.message); document.getElementById('adminForm').reset(); loadAdminList(); })
+        .withFailureHandler(goToLoginIfExpired)
+        .addAdminData(adminData, SESSION_TOKEN);
+    }
+
+    function loadAdminList() {
+      const tbody = document.getElementById('adminListTableBody'); tbody.innerHTML = '';
+      google.script.run
+        .withSuccessHandler(list => {
+          list.forEach(admin => {
+            const tr = document.createElement('tr'); tr.className = "hover:bg-white/[0.02]";
+            tr.innerHTML = `<td class="py-3 pl-2 text-white">${admin.user}</td><td class="py-3 text-gray-400">${admin.role}</td><td class="py-3 text-gray-500">${admin.email || '-'}</td><td class="py-3 text-right pr-2"><button onclick="deleteAdmin('${admin.user}')" class="text-gray-600 hover:text-red-400 cursor-pointer"><i class="fa-solid fa-trash-can"></i></button></td>`;
+            tbody.appendChild(tr);
+          });
+        })
+        .withFailureHandler(goToLoginIfExpired)
+        .getAdminList(SESSION_TOKEN);
+    }
+
+    function deleteAdmin(username) {
+      if(username === 'admin_im') return;
+      if(confirm(`ลบแอดมิน "${username}"?`)) {
+        google.script.run
+          .withSuccessHandler(res => { alert(res.message); loadAdminList(); })
+          .withFailureHandler(goToLoginIfExpired)
+          .deleteAdminData(username, SESSION_TOKEN);
+      }
+    }
+
+    function loadStats() {
+      google.script.run
+        .withSuccessHandler(data => {
+          document.getElementById('stat-total').innerText = data.total;
+          document.getElementById('stat-active').innerText = data.active;
+          const tbody = document.getElementById('liveFeedTableBody');
+          if (!data.logs || data.logs.length === 0) { tbody.innerHTML = '<tr><td colspan="5" class="text-center py-10 text-gray-600">ยังไม่มีประวัติสแกนลายนิ้วมือ...</td></tr>'; return; }
+          tbody.innerHTML = '';
+          data.logs.forEach(log => {
+            let sBadge = '', rClass = '';
+            if (log.status === 'SUCCESS') sBadge = '<span class="bg-green-950 text-green-400 border border-green-900 px-2 py-0.5 rounded text-[10px]">SUCCESS</span>';
+            else if (log.status === 'BLOCKED') { sBadge = '<span class="bg-red-950 text-red-400 border border-red-800 px-2 py-0.5 rounded text-[10px]">BLOCKED</span>'; rClass = 'bg-red-950/5'; }
+            else sBadge = '<span class="bg-gray-800 text-gray-400 border border-gray-700 px-2 py-0.5 rounded text-[10px]">UNKNOWN</span>';
+
+            const tr = document.createElement('tr'); tr.className = `hover:bg-white/[0.02] ${rClass}`;
+            tr.innerHTML = `<td class="py-3 font-mono text-gray-400">${log.time}</td><td class="py-3 font-bold text-white">${log.name}</td><td class="py-3 font-mono text-gray-500">${log.uid}</td><td class="py-3">${sBadge}</td><td class="py-3 pr-2 text-gray-400">${log.details}</td>`;
+            tbody.appendChild(tr);
+          });
+        })
+        .withFailureHandler(goToLoginIfExpired)
+        .getDashboardStats(SESSION_TOKEN);
+    }
+
+    function loadMonthlyStats() {
+      google.script.run
+        .withSuccessHandler(data => renderMonthlyChart(data))
+        .withFailureHandler(goToLoginIfExpired)
+        .getMonthlyStats(SESSION_TOKEN);
+    }
+
+    function renderMonthlyChart(data) {
+      if (!data || data.length === 0) return;
+      const labels = data.map(d => d.label);
+      const newMembers = data.map(d => d.newMembers);
+      const revenue = data.map(d => d.revenue);
+
+      const ctx = document.getElementById('monthlyChart').getContext('2d');
+      if (monthlyChartInstance) monthlyChartInstance.destroy();
+
+      monthlyChartInstance = new Chart(ctx, {
+        data: {
+          labels: labels,
+          datasets: [
+            {
+              type: 'bar',
+              label: 'สมาชิกใหม่ (คน)',
+              data: newMembers,
+              backgroundColor: 'rgba(220, 38, 38, 0.6)',
+              borderRadius: 6,
+              yAxisID: 'y'
+            },
+            {
+              type: 'line',
+              label: 'รายได้ (บาท)',
+              data: revenue,
+              borderColor: '#22c55e',
+              backgroundColor: '#22c55e',
+              tension: 0.3,
+              yAxisID: 'y1'
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          interaction: { mode: 'index', intersect: false },
+          plugins: {
+            legend: { labels: { color: '#9CA3AF', font: { family: 'Prompt' } } }
+          },
+          scales: {
+            x: { ticks: { color: '#6B7280' }, grid: { color: '#1a1a1a' } },
+            y: {
+              position: 'left', ticks: { color: '#6B7280' }, grid: { color: '#1a1a1a' },
+              title: { display: true, text: 'คน', color: '#6B7280' }
+            },
+            y1: {
+              position: 'right', ticks: { color: '#6B7280' }, grid: { display: false },
+              title: { display: true, text: 'บาท', color: '#6B7280' }
+            }
+          }
+        }
+      });
+    }
+
+    function loadExpiringMembers() {
+      const container = document.getElementById('expiringMembersList');
+      const badge = document.getElementById('expiringCountBadge');
+      google.script.run
+        .withSuccessHandler(list => {
+          badge.innerText = (list ? list.length : 0) + ' คน';
+          if (!list || list.length === 0) {
+            container.innerHTML = '<p class="text-gray-600 text-xs text-center py-6">ไม่มีสมาชิกที่ใกล้หมดอายุตอนนี้ 🎉</p>';
+            return;
+          }
+          container.innerHTML = '';
+          list.forEach(m => {
+            const isExpired = m.daysLeft < 0;
+            const badgeText = isExpired ? 'หมดอายุแล้ว ' + Math.abs(m.daysLeft) + ' วัน' : (m.daysLeft === 0 ? 'หมดอายุวันนี้' : 'เหลือ ' + m.daysLeft + ' วัน');
+            const badgeClass = isExpired
+              ? 'bg-red-950 text-red-400 border-red-800'
+              : 'bg-yellow-950 text-yellow-400 border-yellow-800';
+            const row = document.createElement('div');
+            row.className = 'flex items-center justify-between p-3 rounded-xl bg-black/40 border border-gray-900';
+            row.innerHTML = `
+              <div class="min-w-0">
+                <p class="text-white font-bold text-xs truncate">${m.fullName}</p>
+                <p class="text-gray-500 text-[10px]">${m.package} • ${m.phone || '-'} • หมดอายุ ${m.expiryDate}</p>
+              </div>
+              <span class="text-[10px] px-2.5 py-1 rounded-full border font-bold uppercase tracking-wider shrink-0 ml-2 ${badgeClass}">${badgeText}</span>
+            `;
+            container.appendChild(row);
+          });
+        })
+        .withFailureHandler(goToLoginIfExpired)
+        .getExpiringMembers(SESSION_TOKEN);
+    }
+
+    function loadLowStockProducts() {
+      const container = document.getElementById('lowStockProductsList');
+      const badge = document.getElementById('lowStockCountBadge');
+      google.script.run
+        .withSuccessHandler(list => {
+          badge.innerText = (list ? list.length : 0) + ' รายการ';
+          if (!list || list.length === 0) {
+            container.innerHTML = '<p class="text-gray-600 text-xs text-center py-6">สินค้าทุกชิ้นยังมีเพียงพอ 🎉</p>';
+            return;
+          }
+          container.innerHTML = '';
+          list.forEach(p => {
+            const outOfStock = p.stock <= 0;
+            const badgeText = outOfStock ? 'สินค้าหมด' : 'เหลือ ' + p.stock + ' ชิ้น';
+            const badgeClass = outOfStock
+              ? 'bg-red-950 text-red-400 border-red-800'
+              : 'bg-yellow-950 text-yellow-400 border-yellow-800';
+            const row = document.createElement('div');
+            row.className = 'flex items-center justify-between p-3 rounded-xl bg-black/40 border border-gray-900';
+            row.innerHTML = `
+              <div class="min-w-0">
+                <p class="text-white font-bold text-xs truncate">${p.name}</p>
+                <p class="text-gray-500 text-[10px]">แจ้งเตือนที่ ${p.threshold} ชิ้น</p>
+              </div>
+              <span class="text-[10px] px-2.5 py-1 rounded-full border font-bold uppercase tracking-wider shrink-0 ml-2 ${badgeClass}">${badgeText}</span>
+            `;
+            container.appendChild(row);
+          });
+        })
+        .withFailureHandler(goToLoginIfExpired)
+        .getLowStockProducts(SESSION_TOKEN);
+    }
+
+    function loadBirthdayMembers() {
+      const container = document.getElementById('birthdayMembersList');
+      const badge = document.getElementById('birthdayCountBadge');
+      google.script.run
+        .withSuccessHandler(list => {
+          badge.innerText = (list ? list.length : 0) + ' คน';
+          if (!list || list.length === 0) {
+            container.innerHTML = '<p class="text-gray-600 text-xs text-center py-6">ไม่มีสมาชิกเกิดเดือนนี้</p>';
+            return;
+          }
+          container.innerHTML = '';
+          list.forEach(m => {
+            const row = document.createElement('div');
+            row.className = 'flex items-center justify-between p-3 rounded-xl bg-black/40 border border-gray-900';
+            row.innerHTML = `
+              <div class="min-w-0">
+                <p class="text-white font-bold text-xs truncate">🎂 ${m.fullName}</p>
+                <p class="text-gray-500 text-[10px]">${m.package} • ${m.phone || '-'} • เกิดวันที่ ${m.birthDay}</p>
+              </div>
+              <span class="text-[10px] px-2.5 py-1 rounded-full border font-bold uppercase tracking-wider shrink-0 ml-2 bg-pink-950 text-pink-400 border-pink-800">ลด ${birthdayDiscountSettings.type === 'Fixed' ? birthdayDiscountSettings.value.toLocaleString('th-TH') + ' บาท' : birthdayDiscountSettings.value + '%'}</span>
+            `;
+            container.appendChild(row);
+          });
+        })
+        .withFailureHandler(goToLoginIfExpired)
+        .getBirthdayMembersThisMonth(SESSION_TOKEN);
+    }
+
+    function loadLeaderboard() {
+      const container = document.getElementById('leaderboardList');
+      google.script.run
+        .withSuccessHandler(list => {
+          if (!list || list.length === 0) {
+            container.innerHTML = '<p class="text-gray-600 text-xs text-center py-6">ยังไม่มีข้อมูลการเช็คอิน</p>';
+            return;
+          }
+          const medals = ['🥇', '🥈', '🥉'];
+          container.innerHTML = '';
+          list.forEach((m, idx) => {
+            const row = document.createElement('div');
+            row.className = "flex items-center justify-between p-3 rounded-xl bg-black/40 border border-gray-900";
+            const rankDisplay = medals[idx] || `#${idx + 1}`;
+            row.innerHTML = `
+              <div class="flex items-center gap-3">
+                <span class="text-lg w-8 text-center">${rankDisplay}</span>
+                <div>
+                  <p class="text-white font-bold text-xs">${m.fullName}</p>
+                  <p class="text-gray-500 text-[10px]">${m.package}</p>
+                </div>
+              </div>
+              <span class="text-red-400 font-black text-sm"><i class="fa-solid fa-dumbbell mr-1.5"></i>${m.checkInCount} ครั้ง</span>
+            `;
+            container.appendChild(row);
+          });
+        })
+        .withFailureHandler(goToLoginIfExpired)
+        .getCheckInLeaderboard(SESSION_TOKEN);
+    }
+
+    function loadAuditLog() {
+      const tbody = document.getElementById('auditLogTableBody');
+      google.script.run
+        .withSuccessHandler(logs => {
+          if (!logs || logs.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center py-6 text-gray-600">ยังไม่มีบันทึก...</td></tr>';
+            return;
+          }
+          tbody.innerHTML = '';
+          logs.forEach(log => {
+            const tr = document.createElement('tr');
+            tr.className = "hover:bg-white/[0.02]";
+            tr.innerHTML = `
+              <td class="py-3 pl-2 font-mono text-gray-500">${log.timestamp}</td>
+              <td class="py-3 font-bold text-white">${log.admin}</td>
+              <td class="py-3 text-red-400 font-medium">${log.action}</td>
+              <td class="py-3 text-gray-300">${log.target}</td>
+              <td class="py-3 pr-2 text-gray-500">${log.details}</td>
+            `;
+            tbody.appendChild(tr);
+          });
+        })
+        .withFailureHandler(goToLoginIfExpired)
+        .getAuditLog(SESSION_TOKEN);
+    }
+
+    function initForm() { document.getElementById('startDate').valueAsDate = new Date(); calculateExpiryDate(); setNewMemberPaymentMethod('cash'); }
+
+    function logout() {
+      if(confirm("Confirm Logout?")) {
+        google.script.run.logoutAdmin(SESSION_TOKEN);
+        window.top.location.href = "<?= getScriptUrl() ?>?page=login";
+      }
+    }
+
+    window.onload = () => {
+      initForm(); loadStats(); loadMemberList(); loadMonthlyStats(); loadLeaderboard(); loadExpiringMembers(); loadLowStockProducts(); loadBirthdayMembers(); loadPackageList(); loadBirthdayDiscountSettings(); loadPaymentQRInfo();
+      addCustomerRow();
+      const expenseDateEl = document.getElementById('expenseDate');
+      if (expenseDateEl) expenseDateEl.value = formatYMD_(new Date());
+      setPosPaymentMethod('cash');
+      setRenewalPaymentMethod('cash');
+      setInterval(() => { if(document.getElementById('dashboard').classList.contains('active')) { loadStats(); loadExpiringMembers(); loadLowStockProducts(); loadBirthdayMembers(); } }, 10000);
+    };
+  </script>

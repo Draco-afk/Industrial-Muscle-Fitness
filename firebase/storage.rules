@@ -1,0 +1,14 @@
+rules_version = '2';
+
+// Same posture as firestore.rules: uploads (trainer photos, payment QR)
+// go through Cloud Functions using the Admin SDK. Direct client writes
+// are denied; reads are public since the original DriveApp files were
+// shared "anyone with link" and embedded directly in <img> tags.
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /{allPaths=**} {
+      allow read: if true;
+      allow write: if false;
+    }
+  }
+}

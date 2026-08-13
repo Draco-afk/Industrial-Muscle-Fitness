@@ -1,0 +1,18 @@
+{
+  "name": "industrial-muscle-fitness-functions",
+  "description": "Cloud Functions backend for Industrial Muscle Fitness — Firebase port of the original Apps Script system",
+  "engines": {
+    "node": "20"
+  },
+  "main": "index.js",
+  "scripts": {
+    "serve": "firebase emulators:start --only functions,firestore,auth,storage",
+    "shell": "firebase functions:shell",
+    "deploy": "firebase deploy --only functions"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.7.0",
+    "firebase-functions": "^6.3.2"
+  },
+  "private": true
+}

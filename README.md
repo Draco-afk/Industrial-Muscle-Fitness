@@ -38,10 +38,26 @@ Done against the real project:
 - Authentication provisioned.
 - All 28 real members migrated in (`node scripts/migrate-members-to-firestore.js --prod`).
 
+**Live**: https://industrial-muscle-fitness.web.app — Hosting + all 42 Cloud
+Functions are deployed to production (Blaze plan active as of 2026-08-14).
+
+One-time production setup note: freshly deployed Cloud Functions v2 run
+under the default Compute Engine service account
+(`<project-number>-compute@developer.gserviceaccount.com`), which does **not**
+have permission to sign custom tokens (`admin.auth().createCustomToken()`
+fails with `iam.serviceAccounts.signBlob` permission denied) until it's
+granted the Service Account Token Creator role on itself:
+```bash
+gcloud iam service-accounts add-iam-policy-binding \
+  <project-number>-compute@developer.gserviceaccount.com \
+  --member="serviceAccount:<project-number>-compute@developer.gserviceaccount.com" \
+  --role="roles/iam.serviceAccountTokenCreator" \
+  --project=industrial-muscle-fitness
+```
+Already done for this project — only relevant if functions are ever
+redeployed to a fresh project.
+
 Not done yet:
-- **Cloud Functions are not deployed** — they require upgrading the project to the
-  Blaze (pay-as-you-go) plan first. Local dev/testing works fine without it via
-  `firebase emulators:start` (see below).
 - Auth, Members, Packages, Trainers, and Bookings/Waitlist are ported (see
   `docs/firestore-schema.md` for what's schema-only vs. implemented). Remaining:
   Coupons, Products, DailyPOS, Receipts/PDF, Reports/Dashboard, Automation,

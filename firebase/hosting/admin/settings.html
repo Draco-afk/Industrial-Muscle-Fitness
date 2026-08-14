@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Industrial Muscle - Admin - Settings</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Urbanist:wght@700;900&family=Prompt:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <link rel="stylesheet" href="../shared/admin-nav.css">
+  <style>
+    .toggle { width: 44px; height: 24px; border-radius: 999px; background: #333; position: relative; cursor: pointer; transition: background .15s; }
+    .toggle.on { background: #dc2626; }
+    .toggle .knob { width: 18px; height: 18px; border-radius: 999px; background: #fff; position: absolute; top: 3px; left: 3px; transition: left .15s; }
+    .toggle.on .knob { left: 23px; }
+  </style>
+</head>
+<body class="min-h-screen p-4 md:p-8">
+  <div id="loadingGate" class="fixed inset-0 bg-black flex items-center justify-center z-50">
+    <i class="fa-solid fa-circle-notch fa-spin text-3xl text-red-500"></i>
+  </div>
+
+  <div id="app" class="hidden max-w-6xl mx-auto space-y-6">
+    <div id="navSlot"></div>
+
+    <!-- LINE -->
+    <div class="panel rounded-2xl p-5">
+      <h3 class="text-xs uppercase tracking-widest text-gray-500 mb-3">LINE Official Account</h3>
+      <p id="lineStatus" class="text-xs text-gray-500 mb-3"></p>
+      <div class="grid md:grid-cols-2 gap-3 mb-3">
+        <input id="lineToken" type="password" placeholder="Channel Access Token (เว้นว่าง = ไม่เปลี่ยน)" class="bg-black border border-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-red-500">
+        <input id="lineAddFriendUrl" placeholder="ลิงก์ Add Friend LINE OA" class="bg-black border border-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-red-500">
+      </div>
+      <button onclick="saveLine()" class="btn-primary px-5 py-2 rounded-xl text-sm font-bold">บันทึกการตั้งค่า LINE</button>
+      <p class="text-[11px] text-gray-600 mt-2">Webhook URL สำหรับตั้งค่าใน LINE Developers Console: ดูได้จาก Firebase Console → Functions → lineWebhook</p>
+    </div>
+
+    <!-- Payment QR -->
+    <div class="panel rounded-2xl p-5">
+      <h3 class="text-xs uppercase tracking-widest text-gray-500 mb-3">QR รับเงิน (PromptPay)</h3>
+      <div id="qrPreview" class="mb-3"></div>
+      <input id="qrFile" type="file" accept="image/*" class="text-xs text-gray-400 mb-2">
+      <input id="qrCaption" placeholder="คำอธิบาย QR" class="w-full bg-black border border-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-red-500 mb-2">
+      <div class="flex gap-2">
+        <button onclick="uploadQr()" class="bg-gray-900 hover:bg-gray-800 border border-gray-800 rounded-lg px-4 py-2 text-sm">อัปโหลด QR ใหม่</button>
+        <button onclick="saveQrCaption()" class="bg-gray-900 hover:bg-gray-800 border border-gray-800 rounded-lg px-4 py-2 text-sm">บันทึกคำอธิบาย</button>
+      </div>
+    </div>
+
+    <!-- Automation -->
+    <div class="panel rounded-2xl p-5">
+      <h3 class="text-xs uppercase tracking-widest text-gray-500 mb-3">ระบบอัตโนมัติ</h3>
+      <div class="space-y-4">
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-sm font-medium">ปิดสถานะสมาชิกหมดอายุอัตโนมัติ</p>
+            <p class="text-xs text-gray-500">ทำงานทุกวันตี 2 — ผ่อนผัน <input id="graceDays" type="number" value="3" class="w-14 bg-black border border-gray-800 rounded px-1 text-center"> วัน</p>
+          </div>
+          <div id="toggleAutoExpire" class="toggle" onclick="toggleSetting(this, 'toggleAutoExpireTrigger', { graceDays: document.getElementById('graceDays').value })"><div class="knob"></div></div>
+        </div>
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-sm font-medium">Win-back Campaign (ดึงสมาชิกที่หายไปกลับมา)</p>
+            <p class="text-xs text-gray-500">ทำงานทุกวัน 10 โมงเช้า</p>
+          </div>
+          <div id="toggleWinback" class="toggle" onclick="toggleSetting(this, 'toggleWinBackCampaign', {})"><div class="knob"></div></div>
+        </div>
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-sm font-medium">แจ้งเตือนสมาชิกทาง LINE (ใกล้หมดอายุ/วันเกิด)</p>
+            <p class="text-xs text-gray-500">ทำงานทุกวัน 9 โมงเช้า</p>
+          </div>
+          <div id="toggleMemberLine" class="toggle" onclick="toggleSetting(this, 'toggleMemberLineNotifications', {})"><div class="knob"></div></div>
+        </div>
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-sm font-medium">สำรองข้อมูลอัตโนมัติทุกสัปดาห์</p>
+            <p class="text-xs text-gray-500" id="lastBackupText">ทำงานทุกวันอาทิตย์ตี 3</p>
+          </div>
+          <div id="toggleBackup" class="toggle" onclick="toggleSetting(this, 'toggleWeeklyBackup', {})"><div class="knob"></div></div>
+        </div>
+      </div>
+      <button onclick="backupNow()" class="mt-4 bg-gray-900 hover:bg-gray-800 border border-gray-800 rounded-lg px-4 py-2 text-sm">สำรองข้อมูลเดี๋ยวนี้</button>
+    </div>
+
+    <!-- Admins -->
+    <div class="panel rounded-2xl p-5">
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="text-xs uppercase tracking-widest text-gray-500">บัญชีแอดมิน</h3>
+        <button onclick="openAddAdminModal()" class="text-xs text-red-400 hover:underline">+ เพิ่มแอดมิน</button>
+      </div>
+      <div id="adminList" class="space-y-2 text-sm"></div>
+    </div>
+
+    <!-- Audit log -->
+    <div class="panel rounded-2xl p-5">
+      <h3 class="text-xs uppercase tracking-widest text-gray-500 mb-3">ประวัติการใช้งาน (Audit Log)</h3>
+      <div id="auditList" class="space-y-1 text-xs max-h-96 overflow-y-auto font-mono"></div>
+    </div>
+  </div>
+
+  <div id="adminModal" class="hidden fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-40">
+    <div class="panel rounded-2xl p-6 max-w-sm w-full space-y-3">
+      <h2 class="text-lg font-bold">เพิ่มบัญชีแอดมิน</h2>
+      <input id="am_user" placeholder="Username" class="w-full bg-black border border-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-red-500">
+      <input id="am_pass" type="password" placeholder="Password" class="w-full bg-black border border-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-red-500">
+      <input id="am_role" placeholder="Role (เช่น Owner, Manager)" class="w-full bg-black border border-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-red-500">
+      <input id="am_email" placeholder="อีเมล (สำหรับกู้คืนรหัสผ่าน)" class="w-full bg-black border border-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-red-500">
+      <div class="flex gap-3 pt-2">
+        <button onclick="document.getElementById('adminModal').classList.add('hidden')" class="flex-1 bg-gray-900 hover:bg-gray-800 border border-gray-800 py-2.5 rounded-xl text-sm">ยกเลิก</button>
+        <button onclick="submitAdmin()" class="flex-1 btn-primary py-2.5 rounded-xl text-sm font-bold">เพิ่ม</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { callServer, auth, onAuthStateChanged, signOut } from '../shared/firebase-init.js';
+    import { renderNav } from '../shared/admin-nav.js';
+
+    function escapeHtml(s) {
+      return (s || '').toString().replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
+    onAuthStateChanged(auth, async (user) => {
+      if (!user) { window.location.href = '../login.html'; return; }
+      const tok = await user.getIdTokenResult();
+      if (tok.claims.role !== 'admin') { window.location.href = '../login.html'; return; }
+      document.getElementById('navSlot').outerHTML = renderNav('settings', tok.claims.adminRole);
+      document.getElementById('loadingGate').classList.add('hidden');
+      document.getElementById('app').classList.remove('hidden');
+      window.doLogout = async () => { await signOut(auth); window.location.href = '../login.html'; };
+      await loadAll();
+    });
+
+    async function loadAll() {
+      const [line, qr, autoExpire, winback, memberLine, backup, admins, audit] = await Promise.all([
+        callServer('getLineSettings'), callServer('getPaymentQRInfo'), callServer('getAutoExpireSettings'),
+        callServer('getWinBackSettings'), callServer('getMemberLineNotifySettings'), callServer('getBackupSettings'),
+        callServer('getAdminList'), callServer('getAuditLog')
+      ]);
+
+      document.getElementById('lineStatus').textContent = line.hasToken ? '✅ ตั้งค่า Token แล้ว' : '⚠️ ยังไม่ได้ตั้งค่า Channel Access Token';
+      document.getElementById('lineAddFriendUrl').value = line.addFriendUrl;
+
+      if (qr.url) document.getElementById('qrPreview').innerHTML = `<img src="${qr.url}" class="w-32 h-32 object-contain bg-white rounded-lg p-2">`;
+      document.getElementById('qrCaption').value = qr.caption;
+
+      document.getElementById('graceDays').value = autoExpire.graceDays;
+      setToggle('toggleAutoExpire', autoExpire.enabled);
+      setToggle('toggleWinback', winback.enabled);
+      setToggle('toggleMemberLine', memberLine.enabled);
+      setToggle('toggleBackup', backup.enabled);
+      document.getElementById('lastBackupText').textContent = backup.lastBackupAt ? `ทำงานทุกวันอาทิตย์ตี 3 — สำรองล่าสุด: ${new Date(backup.lastBackupAt).toLocaleString('th-TH')}` : 'ทำงานทุกวันอาทิตย์ตี 3 — ยังไม่เคยสำรอง';
+
+      renderAdmins(admins);
+      document.getElementById('auditList').innerHTML = audit.map((a) => `<div class="border-b border-gray-900 pb-1"><span class="text-gray-600">${a.timestamp}</span> <span class="text-red-400">${escapeHtml(a.action)}</span> <span class="text-gray-400">${escapeHtml(a.admin)}</span> → ${escapeHtml(a.target)} <span class="text-gray-600">${escapeHtml(a.details)}</span></div>`).join('') || '<p class="text-gray-600">ยังไม่มีประวัติ</p>';
+    }
+
+    function setToggle(id, on) {
+      document.getElementById(id).classList.toggle('on', !!on);
+    }
+
+    window.toggleSetting = async function toggleSetting(el, fnName, extraData) {
+      const willBeOn = !el.classList.contains('on');
+      const res = await callServer(fnName, { enable: willBeOn, ...extraData });
+      if (res.success) { setToggle(el.id, willBeOn); } else { alert(res.message); }
+    };
+
+    window.saveLine = async function saveLine() {
+      const res = await callServer('updateLineSettings', {
+        channelAccessToken: document.getElementById('lineToken').value.trim(),
+        addFriendUrl: document.getElementById('lineAddFriendUrl').value.trim()
+      });
+      alert(res.message);
+      if (res.success) { document.getElementById('lineToken').value = ''; await loadAll(); }
+    };
+
+    window.uploadQr = async function uploadQr() {
+      const file = document.getElementById('qrFile').files[0];
+      if (!file) return alert('กรุณาเลือกไฟล์รูป QR ก่อน');
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const res = await callServer('uploadPaymentQR', { base64Data: reader.result, mimeType: file.type, fileName: file.name });
+        alert(res.success ? 'อัปโหลดสำเร็จ!' : res.message);
+        if (res.success) await loadAll();
+      };
+      reader.readAsDataURL(file);
+    };
+
+    window.saveQrCaption = async function saveQrCaption() {
+      const res = await callServer('updatePaymentQRCaption', { caption: document.getElementById('qrCaption').value.trim() });
+      alert(res.message);
+    };
+
+    window.backupNow = async function backupNow() {
+      const res = await callServer('createFullBackup');
+      alert(res.message);
+      if (res.success) await loadAll();
+    };
+
+    function renderAdmins(admins) {
+      document.getElementById('adminList').innerHTML = admins.map((a) => `
+        <div class="flex justify-between items-center border-b border-gray-900 pb-2">
+          <span>${escapeHtml(a.user)} <span class="text-gray-500 text-xs">(${escapeHtml(a.role)})</span></span>
+          <button data-user="${escapeHtml(a.user)}" class="deleteAdminBtn text-red-400 hover:text-red-300 text-xs">ลบ</button>
+        </div>`).join('') || '<p class="text-gray-600 text-xs">ยังไม่มีบัญชีแอดมิน</p>';
+      document.querySelectorAll('.deleteAdminBtn').forEach((btn) => {
+        btn.onclick = async () => {
+          if (!confirm(`ลบบัญชีแอดมิน "${btn.dataset.user}"?`)) return;
+          const res = await callServer('deleteAdminData', { username: btn.dataset.user });
+          alert(res.message);
+          if (res.success) await loadAll();
+        };
+      });
+    }
+
+    window.openAddAdminModal = function openAddAdminModal() {
+      ['am_user', 'am_pass', 'am_role', 'am_email'].forEach((id) => document.getElementById(id).value = '');
+      document.getElementById('adminModal').classList.remove('hidden');
+    };
+
+    window.submitAdmin = async function submitAdmin() {
+      const res = await callServer('addAdminData', {
+        user: document.getElementById('am_user').value.trim(),
+        pass: document.getElementById('am_pass').value,
+        role: document.getElementById('am_role').value.trim() || 'Admin Staff',
+        email: document.getElementById('am_email').value.trim()
+      });
+      alert(res.message);
+      if (res.success) { document.getElementById('adminModal').classList.add('hidden'); await loadAll(); }
+    };
+  </script>
+</body>
+</html>

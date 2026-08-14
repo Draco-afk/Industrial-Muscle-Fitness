@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Industrial Muscle - Admin - Payments</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Urbanist:wght@700;900&family=Prompt:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <link rel="stylesheet" href="../shared/admin-nav.css">
+  <style>
+    .badge-Refunded { background: rgba(107,114,128,0.15); color: #9ca3af; }
+    .badge-normal { background: rgba(34,197,94,0.15); color: #4ade80; }
+  </style>
+</head>
+<body class="min-h-screen p-4 md:p-8">
+  <div id="loadingGate" class="fixed inset-0 bg-black flex items-center justify-center z-50">
+    <i class="fa-solid fa-circle-notch fa-spin text-3xl text-red-500"></i>
+  </div>
+
+  <div id="app" class="hidden max-w-6xl mx-auto">
+    <div id="navSlot"></div>
+
+    <div class="panel rounded-2xl p-5 mb-6">
+      <h3 class="text-xs uppercase tracking-widest text-gray-500 mb-3">ต่ออายุสมาชิก</h3>
+      <div class="grid md:grid-cols-3 gap-3 mb-3">
+        <select id="pickMember" class="bg-black border border-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-red-500"><option value="">เลือกสมาชิก...</option></select>
+        <select id="pickPackage" class="bg-black border border-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-red-500"><option value="">เลือกแพ็กเกจ...</option></select>
+        <select id="payMethod" class="bg-black border border-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-red-500">
+          <option value="cash">เงินสด</option>
+          <option value="transfer">โอนเงิน</option>
+        </select>
+      </div>
+      <div class="grid md:grid-cols-2 gap-3 mb-3">
+        <input id="qrData" placeholder="รหัสสลิป QR (บังคับ — ป้องกันใช้สลิปซ้ำ)" class="bg-black border border-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-red-500">
+        <input id="couponCode" placeholder="โค้ดคูปอง (ถ้ามี)" class="bg-black border border-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-red-500">
+      </div>
+      <button onclick="submitRenewal()" id="renewBtn" class="w-full md:w-auto btn-primary px-6 py-2.5 rounded-xl text-sm font-bold">ต่ออายุ + ออกใบเสร็จ</button>
+      <p id="renewErr" class="hidden text-red-400 text-xs bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2 mt-2"></p>
+    </div>
+
+    <div class="panel rounded-2xl overflow-hidden overflow-x-auto">
+      <table class="w-full">
+        <thead><tr><th>วันเวลา</th><th>สมาชิก</th><th>แพ็กเกจ</th><th>เลขที่ใบเสร็จ</th><th>ยอด</th><th>สถานะ</th><th></th></tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+      <p id="emptyState" class="hidden text-center text-gray-600 text-sm py-10">ยังไม่มีประวัติการชำระเงิน</p>
+    </div>
+  </div>
+
+  <script type="module">
+    import { callServer, auth, onAuthStateChanged, signOut } from '../shared/firebase-init.js';
+    import { renderNav } from '../shared/admin-nav.js';
+
+    function escapeHtml(s) {
+      return (s || '').toString().replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
+    onAuthStateChanged(auth, async (user) => {
+      if (!user) { window.location.href = '../login.html'; return; }
+      const tok = await user.getIdTokenResult();
+      if (tok.claims.role !== 'admin') { window.location.href = '../login.html'; return; }
+      document.getElementById('navSlot').outerHTML = renderNav('payments', tok.claims.adminRole);
+      document.getElementById('loadingGate').classList.add('hidden');
+      document.getElementById('app').classList.remove('hidden');
+      window.doLogout = async () => { await signOut(auth); window.location.href = '../login.html'; };
+      await Promise.all([loadMembers(), loadPackages(), loadLogs()]);
+    });
+
+    async function loadMembers() {
+      const members = await callServer('getMemberList');
+      document.getElementById('pickMember').innerHTML = '<option value="">เลือกสมาชิก...</option>' +
+        members.map((m) => `<option value="${m.docId}">${escapeHtml(m.fullName)} (${escapeHtml(m.phone)})</option>`).join('');
+    }
+
+    async function loadPackages() {
+      const pkgs = await callServer('getPackageList');
+      document.getElementById('pickPackage').innerHTML = '<option value="">เลือกแพ็กเกจ...</option>' +
+        pkgs.map((p) => `<option value="${escapeHtml(p.name)}">${escapeHtml(p.name)} (${p.price}฿ / ${p.durationMonths} เดือน)</option>`).join('');
+    }
+
+    window.submitRenewal = async function submitRenewal() {
+      const payload = {
+        memberDocId: document.getElementById('pickMember').value,
+        package: document.getElementById('pickPackage').value,
+        paymentMethod: document.getElementById('payMethod').value,
+        qrData: document.getElementById('qrData').value.trim(),
+        couponCode: document.getElementById('couponCode').value.trim()
+      };
+      if (!payload.memberDocId || !payload.package) return showErr('กรุณาเลือกสมาชิกและแพ็กเกจ');
+
+      const btn = document.getElementById('renewBtn');
+      btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i>';
+      try {
+        const res = await callServer('processRenewalPayment', payload);
+        if (res.success) {
+          alert(res.message);
+          document.getElementById('qrData').value = '';
+          document.getElementById('couponCode').value = '';
+          document.getElementById('renewErr').classList.add('hidden');
+          await loadLogs();
+        } else {
+          showErr(res.message);
+        }
+      } catch (e) {
+        showErr(e.message || 'เกิดข้อผิดพลาด');
+      } finally {
+        btn.disabled = false; btn.innerHTML = 'ต่ออายุ + ออกใบเสร็จ';
+      }
+    };
+
+    function showErr(msg) {
+      const el = document.getElementById('renewErr');
+      el.textContent = msg; el.classList.remove('hidden');
+    }
+
+    async function loadLogs() {
+      const logs = await callServer('getPaymentLogs');
+      const tbody = document.getElementById('rows');
+      tbody.innerHTML = '';
+      document.getElementById('emptyState').classList.toggle('hidden', logs.length > 0);
+      for (const p of logs) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td class="text-gray-400">${escapeHtml(p.timestamp)}</td>
+          <td class="font-medium">${escapeHtml(p.memberName)}</td>
+          <td class="text-gray-400">${escapeHtml(p.package)}</td>
+          <td class="text-gray-400 font-mono">${escapeHtml(p.receiptNo)}</td>
+          <td class="text-gray-400">${(p.amount || 0).toLocaleString('th-TH')} บาท</td>
+          <td><span class="badge badge-${p.refundStatus === 'Refunded' ? 'Refunded' : 'normal'}">${p.refundStatus === 'Refunded' ? 'คืนเงินแล้ว' : 'ปกติ'}</span></td>
+          <td class="text-right">${p.refundStatus !== 'Refunded' && !p.bundledInDailyBill ? '<button data-act="void" class="text-red-400 hover:text-red-300 text-xs">ยกเลิก/คืนเงิน</button>' : ''}</td>`;
+        const voidBtn = tr.querySelector('[data-act="void"]');
+        if (voidBtn) {
+          voidBtn.onclick = async () => {
+            const reason = prompt('เหตุผลที่ยกเลิก/คืนเงิน:');
+            if (reason === null) return;
+            const res = await callServer('voidMembershipPayment', { receiptNo: p.receiptNo, reason });
+            alert(res.message);
+            if (res.success) await loadLogs();
+          };
+        }
+        tbody.appendChild(tr);
+      }
+    }
+  </script>
+</body>
+</html>

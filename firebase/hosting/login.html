@@ -89,7 +89,7 @@
         const res = await callServer('loginAdmin', { user, pass });
         if (res.success) {
           await signInWithCustomToken(auth, res.token);
-          window.location.href = 'admin/members.html';
+          window.location.href = 'admin/dashboard.html';
         } else {
           showError(res.message || 'Access Denied: Invalid Credentials');
         }

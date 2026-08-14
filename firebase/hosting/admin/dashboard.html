@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Industrial Muscle - Admin - Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Urbanist:wght@700;900&family=Prompt:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <link rel="stylesheet" href="../shared/admin-nav.css">
+</head>
+<body class="min-h-screen p-4 md:p-8">
+  <div id="loadingGate" class="fixed inset-0 bg-black flex items-center justify-center z-50">
+    <i class="fa-solid fa-circle-notch fa-spin text-3xl text-red-500"></i>
+  </div>
+
+  <div id="app" class="hidden max-w-6xl mx-auto">
+    <div id="navSlot"></div>
+
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      <div class="panel rounded-2xl p-5">
+        <p class="text-[10px] uppercase tracking-widest text-gray-500 mb-1">สมาชิกทั้งหมด</p>
+        <p id="statTotal" class="text-3xl font-black">-</p>
+      </div>
+      <div class="panel rounded-2xl p-5">
+        <p class="text-[10px] uppercase tracking-widest text-gray-500 mb-1">Active</p>
+        <p id="statActive" class="text-3xl font-black text-green-400">-</p>
+      </div>
+      <div class="panel rounded-2xl p-5">
+        <p class="text-[10px] uppercase tracking-widest text-gray-500 mb-1">ใกล้หมดอายุ</p>
+        <p id="statExpiring" class="text-3xl font-black text-yellow-400">-</p>
+      </div>
+      <div class="panel rounded-2xl p-5">
+        <p class="text-[10px] uppercase tracking-widest text-gray-500 mb-1">วันเกิดเดือนนี้</p>
+        <p id="statBirthday" class="text-3xl font-black text-pink-400">-</p>
+      </div>
+    </div>
+
+    <div class="grid md:grid-cols-2 gap-6">
+      <div class="panel rounded-2xl p-5">
+        <h3 class="text-xs uppercase tracking-widest text-gray-500 mb-3">เช็คอินล่าสุด</h3>
+        <div id="logList" class="space-y-2 text-sm max-h-80 overflow-y-auto"></div>
+      </div>
+      <div class="panel rounded-2xl p-5">
+        <h3 class="text-xs uppercase tracking-widest text-gray-500 mb-3">สมาชิกใกล้หมดอายุ (7 วัน)</h3>
+        <div id="expiringList" class="space-y-2 text-sm max-h-80 overflow-y-auto"></div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { callServer, auth, onAuthStateChanged, signOut } from '../shared/firebase-init.js';
+    import { renderNav } from '../shared/admin-nav.js';
+
+    function escapeHtml(s) {
+      return (s || '').toString().replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
+    onAuthStateChanged(auth, async (user) => {
+      if (!user) { window.location.href = '../login.html'; return; }
+      const tok = await user.getIdTokenResult();
+      if (tok.claims.role !== 'admin') { window.location.href = '../login.html'; return; }
+      document.getElementById('navSlot').outerHTML = renderNav('dashboard', tok.claims.adminRole);
+      document.getElementById('loadingGate').classList.add('hidden');
+      document.getElementById('app').classList.remove('hidden');
+      window.doLogout = async () => { await signOut(auth); window.location.href = '../login.html'; };
+      await load();
+    });
+
+    async function load() {
+      const [stats, expiring, birthdays] = await Promise.all([
+        callServer('getDashboardStats'),
+        callServer('getExpiringMembers'),
+        callServer('getBirthdayMembersThisMonth')
+      ]);
+
+      document.getElementById('statTotal').textContent = stats.total;
+      document.getElementById('statActive').textContent = stats.active;
+      document.getElementById('statExpiring').textContent = expiring.length;
+      document.getElementById('statBirthday').textContent = birthdays.length;
+
+      const logList = document.getElementById('logList');
+      logList.innerHTML = stats.logs.length ? stats.logs.map((l) => `
+        <div class="flex justify-between border-b border-gray-900 pb-2">
+          <span>${escapeHtml(l.name)}</span>
+          <span class="text-gray-500 font-mono text-xs">${escapeHtml(l.time)}</span>
+          <span class="text-xs ${l.status === 'SUCCESS' ? 'text-green-400' : 'text-red-400'}">${escapeHtml(l.status)}</span>
+        </div>`).join('') : '<p class="text-gray-600 text-xs text-center py-4">ยังไม่มีการเช็คอิน</p>';
+
+      const expList = document.getElementById('expiringList');
+      expList.innerHTML = expiring.length ? expiring.map((m) => `
+        <div class="flex justify-between border-b border-gray-900 pb-2">
+          <span>${escapeHtml(m.fullName)}</span>
+          <span class="text-gray-500">${escapeHtml(m.expiryDate)}</span>
+          <span class="text-xs ${m.daysLeft < 0 ? 'text-red-400' : 'text-yellow-400'}">${m.daysLeft < 0 ? 'หมดอายุแล้ว' : `เหลือ ${m.daysLeft} วัน`}</span>
+        </div>`).join('') : '<p class="text-gray-600 text-xs text-center py-4">ไม่มีสมาชิกใกล้หมดอายุ</p>';
+    }
+  </script>
+</body>
+</html>

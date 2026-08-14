@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Industrial Muscle - Admin - Products</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Urbanist:wght@700;900&family=Prompt:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <link rel="stylesheet" href="../shared/admin-nav.css">
+  <style>
+    .badge-Active { background: rgba(34,197,94,0.15); color: #4ade80; }
+    .badge-Inactive { background: rgba(107,114,128,0.15); color: #9ca3af; }
+    .badge-low { background: rgba(239,68,68,0.15); color: #f87171; }
+  </style>
+</head>
+<body class="min-h-screen p-4 md:p-8">
+  <div id="loadingGate" class="fixed inset-0 bg-black flex items-center justify-center z-50">
+    <i class="fa-solid fa-circle-notch fa-spin text-3xl text-red-500"></i>
+  </div>
+
+  <div id="app" class="hidden max-w-6xl mx-auto">
+    <div id="navSlot"></div>
+
+    <div id="lowStockBanner" class="hidden rounded-xl px-4 py-3 text-xs font-medium bg-red-500/15 text-red-300 border border-red-500/30 mb-4"></div>
+
+    <div class="flex items-center justify-end mb-4">
+      <button onclick="openAddModal()" class="btn-primary text-xs font-bold uppercase tracking-wider px-5 py-2.5 rounded-xl">
+        <i class="fa-solid fa-plus mr-1"></i> เพิ่มสินค้า
+      </button>
+    </div>
+
+    <div class="panel rounded-2xl overflow-hidden overflow-x-auto">
+      <table class="w-full">
+        <thead><tr><th>ชื่อสินค้า</th><th>หมวดหมู่</th><th>ราคา</th><th>สต็อก</th><th>สถานะ</th><th></th></tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+      <p id="emptyState" class="hidden text-center text-gray-600 text-sm py-10">ยังไม่มีสินค้าในระบบ</p>
+    </div>
+  </div>
+
+  <div id="modal" class="hidden fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-40 overflow-y-auto">
+    <div class="panel rounded-2xl p-6 max-w-md w-full space-y-3 my-8">
+      <h2 id="modalTitle" class="text-lg font-bold">เพิ่มสินค้าใหม่</h2>
+      <input type="hidden" id="f_docId">
+      <div>
+        <label class="block text-[10px] uppercase tracking-widest text-gray-500 mb-1">ชื่อสินค้า</label>
+        <input id="f_name" class="w-full bg-black border border-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-red-500">
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-[10px] uppercase tracking-widest text-gray-500 mb-1">หมวดหมู่</label>
+          <input id="f_category" class="w-full bg-black border border-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-red-500">
+        </div>
+        <div>
+          <label class="block text-[10px] uppercase tracking-widest text-gray-500 mb-1">ราคา</label>
+          <input id="f_price" type="number" class="w-full bg-black border border-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-red-500">
+        </div>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-[10px] uppercase tracking-widest text-gray-500 mb-1">สต็อก (เว้นว่าง = ไม่ติดตาม)</label>
+          <input id="f_stock" type="number" class="w-full bg-black border border-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-red-500">
+        </div>
+        <div>
+          <label class="block text-[10px] uppercase tracking-widest text-gray-500 mb-1">แจ้งเตือนเมื่อเหลือ</label>
+          <input id="f_lowStockThreshold" type="number" value="5" class="w-full bg-black border border-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-red-500">
+        </div>
+      </div>
+      <div id="statusRow" class="hidden">
+        <label class="block text-[10px] uppercase tracking-widest text-gray-500 mb-1">สถานะ</label>
+        <select id="f_status" class="w-full bg-black border border-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-red-500">
+          <option value="Active">Active</option>
+          <option value="Inactive">Inactive</option>
+        </select>
+      </div>
+      <p id="modalErr" class="hidden text-red-400 text-xs bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2"></p>
+      <div class="flex gap-3 pt-2">
+        <button onclick="closeModal()" class="flex-1 bg-gray-900 hover:bg-gray-800 border border-gray-800 py-2.5 rounded-xl text-sm">ยกเลิก</button>
+        <button onclick="submitProduct()" id="submitBtn" class="flex-1 btn-primary py-2.5 rounded-xl text-sm font-bold">บันทึก</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { callServer, auth, onAuthStateChanged, signOut } from '../shared/firebase-init.js';
+    import { renderNav } from '../shared/admin-nav.js';
+
+    function escapeHtml(s) {
+      return (s || '').toString().replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
+    onAuthStateChanged(auth, async (user) => {
+      if (!user) { window.location.href = '../login.html'; return; }
+      const tok = await user.getIdTokenResult();
+      if (tok.claims.role !== 'admin') { window.location.href = '../login.html'; return; }
+      document.getElementById('navSlot').outerHTML = renderNav('products', tok.claims.adminRole);
+      document.getElementById('loadingGate').classList.add('hidden');
+      document.getElementById('app').classList.remove('hidden');
+      window.doLogout = async () => { await signOut(auth); window.location.href = '../login.html'; };
+      await Promise.all([load(), loadLowStock()]);
+    });
+
+    let products = [];
+    async function load() {
+      products = await callServer('getProductList');
+      const tbody = document.getElementById('rows');
+      tbody.innerHTML = '';
+      document.getElementById('emptyState').classList.toggle('hidden', products.length > 0);
+      for (const p of products) {
+        const low = p.stock !== null && p.stock <= p.lowStockThreshold;
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td class="font-medium">${escapeHtml(p.name)}</td>
+          <td class="text-gray-400">${escapeHtml(p.category)}</td>
+          <td class="text-gray-400">${p.price.toLocaleString('th-TH')} บาท</td>
+          <td>${p.stock === null ? '<span class="text-gray-600">ไม่ติดตาม</span>' : `<span class="${low ? 'badge badge-low' : 'text-gray-400'}">${p.stock} ชิ้น</span>`}</td>
+          <td><span class="badge badge-${p.status}">${escapeHtml(p.status)}</span></td>
+          <td class="text-right whitespace-nowrap">
+            ${p.stock !== null ? '<button data-act="add" class="text-green-400 hover:text-green-300 px-1" title="เติมสต็อก"><i class="fa-solid fa-plus"></i></button><button data-act="sub" class="text-yellow-400 hover:text-yellow-300 px-1" title="ลดสต็อก"><i class="fa-solid fa-minus"></i></button>' : ''}
+            <button data-act="edit" class="text-blue-400 hover:text-blue-300 px-2"><i class="fa-solid fa-pen"></i></button>
+            <button data-act="delete" class="text-red-400 hover:text-red-300 px-2"><i class="fa-solid fa-trash"></i></button>
+          </td>`;
+        const addBtn = tr.querySelector('[data-act="add"]');
+        const subBtn = tr.querySelector('[data-act="sub"]');
+        if (addBtn) addBtn.onclick = () => adjustStock(p, 1);
+        if (subBtn) subBtn.onclick = () => adjustStock(p, -1);
+        tr.querySelector('[data-act="edit"]').onclick = () => openEditModal(p);
+        tr.querySelector('[data-act="delete"]').onclick = async () => {
+          if (!confirm(`ลบสินค้า "${p.name}"?`)) return;
+          const res = await callServer('deleteProductData', { docId: p.docId });
+          alert(res.message);
+          if (res.success) { await load(); await loadLowStock(); }
+        };
+        tbody.appendChild(tr);
+      }
+    }
+
+    async function adjustStock(p, dir) {
+      const qtyStr = prompt(`ปรับสต็อก "${p.name}" (ปัจจุบัน ${p.stock} ชิ้น)\nกรอกจำนวนที่จะ${dir > 0 ? 'เติม' : 'ลด'}:`, '1');
+      if (!qtyStr) return;
+      const qty = parseInt(qtyStr, 10);
+      if (isNaN(qty) || qty <= 0) return;
+      const res = await callServer('adjustProductStock', { docId: p.docId, delta: dir * qty });
+      alert(res.message);
+      if (res.success) { await load(); await loadLowStock(); }
+    }
+
+    async function loadLowStock() {
+      const low = await callServer('getLowStockProducts');
+      const banner = document.getElementById('lowStockBanner');
+      if (low.length > 0) {
+        banner.textContent = `⚠️ สินค้าใกล้หมด: ${low.map((p) => `${p.name} (${p.stock})`).join(', ')}`;
+        banner.classList.remove('hidden');
+      } else {
+        banner.classList.add('hidden');
+      }
+    }
+
+    window.openAddModal = function openAddModal() {
+      document.getElementById('modalTitle').textContent = 'เพิ่มสินค้าใหม่';
+      document.getElementById('f_docId').value = '';
+      ['f_name', 'f_category', 'f_price', 'f_stock'].forEach((id) => document.getElementById(id).value = '');
+      document.getElementById('f_lowStockThreshold').value = '5';
+      document.getElementById('statusRow').classList.add('hidden');
+      document.getElementById('modalErr').classList.add('hidden');
+      document.getElementById('modal').classList.remove('hidden');
+    };
+
+    function openEditModal(p) {
+      document.getElementById('modalTitle').textContent = 'แก้ไขข้อมูลสินค้า';
+      document.getElementById('f_docId').value = p.docId;
+      document.getElementById('f_name').value = p.name;
+      document.getElementById('f_category').value = p.category;
+      document.getElementById('f_price').value = p.price;
+      document.getElementById('f_stock').value = p.stock === null ? '' : p.stock;
+      document.getElementById('f_lowStockThreshold').value = p.lowStockThreshold;
+      document.getElementById('f_status').value = p.status;
+      document.getElementById('statusRow').classList.remove('hidden');
+      document.getElementById('modalErr').classList.add('hidden');
+      document.getElementById('modal').classList.remove('hidden');
+    }
+
+    window.closeModal = function closeModal() { document.getElementById('modal').classList.add('hidden'); };
+
+    window.submitProduct = async function submitProduct() {
+      const docId = document.getElementById('f_docId').value;
+      const payload = {
+        name: document.getElementById('f_name').value.trim(),
+        category: document.getElementById('f_category').value.trim(),
+        price: document.getElementById('f_price').value,
+        stock: document.getElementById('f_stock').value,
+        lowStockThreshold: document.getElementById('f_lowStockThreshold').value,
+        status: document.getElementById('f_status').value
+      };
+      const btn = document.getElementById('submitBtn');
+      btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i>';
+      try {
+        const res = docId
+          ? await callServer('updateProductData', { ...payload, docId })
+          : await callServer('addProductData', payload);
+        if (res.success) { window.closeModal(); await load(); await loadLowStock(); if (!docId) alert(res.message); }
+        else showModalErr(res.message);
+      } catch (e) {
+        showModalErr(e.message || 'เกิดข้อผิดพลาด');
+      } finally {
+        btn.disabled = false; btn.innerHTML = 'บันทึก';
+      }
+    };
+
+    function showModalErr(msg) {
+      const el = document.getElementById('modalErr');
+      el.textContent = msg; el.classList.remove('hidden');
+    }
+  </script>
+</body>
+</html>

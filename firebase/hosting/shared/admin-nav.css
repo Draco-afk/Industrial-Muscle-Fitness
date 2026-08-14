@@ -1,0 +1,14 @@
+body {
+  background-color: #050505;
+  color: #F3F4F6;
+  font-family: 'Prompt', sans-serif;
+  background-image: radial-gradient(ellipse at top, rgba(220, 38, 38, 0.08), transparent 55%);
+}
+.panel { background: rgba(15, 15, 15, 0.9); border: 1px solid #222; }
+table th { font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: #6b7280; text-align: left; padding: 10px 12px; }
+table td { padding: 10px 12px; border-top: 1px solid #1f1f1f; font-size: 13px; }
+.badge { padding: 2px 10px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+.navlink { font-size: 12px; color: #6b7280; padding: 6px 12px; border-radius: 8px; white-space: nowrap; }
+.navlink.active, .navlink:hover { color: #fff; background: rgba(255,255,255,0.06); }
+.btn-primary { background: linear-gradient(to right, #dc2626, #ef4444); color: #fff; }
+.btn-primary:hover { background: linear-gradient(to right, #ef4444, #f87171); }

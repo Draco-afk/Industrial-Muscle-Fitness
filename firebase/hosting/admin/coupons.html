@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Industrial Muscle - Admin - Coupons</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Urbanist:wght@700;900&family=Prompt:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <link rel="stylesheet" href="../shared/admin-nav.css">
+  <style>
+    .badge-Active { background: rgba(34,197,94,0.15); color: #4ade80; }
+    .badge-Inactive { background: rgba(107,114,128,0.15); color: #9ca3af; }
+  </style>
+</head>
+<body class="min-h-screen p-4 md:p-8">
+  <div id="loadingGate" class="fixed inset-0 bg-black flex items-center justify-center z-50">
+    <i class="fa-solid fa-circle-notch fa-spin text-3xl text-red-500"></i>
+  </div>
+
+  <div id="app" class="hidden max-w-6xl mx-auto">
+    <div id="navSlot"></div>
+
+    <div class="flex items-center justify-end mb-4">
+      <button onclick="openAddModal()" class="btn-primary text-xs font-bold uppercase tracking-wider px-5 py-2.5 rounded-xl">
+        <i class="fa-solid fa-plus mr-1"></i> เพิ่มคูปอง
+      </button>
+    </div>
+
+    <div class="panel rounded-2xl overflow-hidden overflow-x-auto">
+      <table class="w-full">
+        <thead><tr><th>โค้ด</th><th>ส่วนลด</th><th>ใช้ไปแล้ว</th><th>หมดเขต</th><th>ใช้ได้กับ</th><th>สถานะ</th><th></th></tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+      <p id="emptyState" class="hidden text-center text-gray-600 text-sm py-10">ยังไม่มีคูปองในระบบ</p>
+    </div>
+  </div>
+
+  <div id="modal" class="hidden fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-40 overflow-y-auto">
+    <div class="panel rounded-2xl p-6 max-w-md w-full space-y-3 my-8">
+      <h2 class="text-lg font-bold">เพิ่มคูปองใหม่</h2>
+      <input type="hidden" id="f_docId">
+      <div>
+        <label class="block text-[10px] uppercase tracking-widest text-gray-500 mb-1">โค้ดคูปอง</label>
+        <input id="f_code" class="w-full bg-black border border-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-red-500 uppercase">
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-[10px] uppercase tracking-widest text-gray-500 mb-1">ประเภทส่วนลด</label>
+          <select id="f_discountType" class="w-full bg-black border border-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-red-500">
+            <option value="Percent">เปอร์เซ็นต์ (%)</option>
+            <option value="Fixed">จำนวนเงิน (บาท)</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-[10px] uppercase tracking-widest text-gray-500 mb-1">มูลค่าส่วนลด</label>
+          <input id="f_discountValue" type="number" class="w-full bg-black border border-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-red-500">
+        </div>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-[10px] uppercase tracking-widest text-gray-500 mb-1">จำกัดจำนวนใช้ (เว้นว่าง = ไม่จำกัด)</label>
+          <input id="f_usageLimit" type="number" class="w-full bg-black border border-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-red-500">
+        </div>
+        <div>
+          <label class="block text-[10px] uppercase tracking-widest text-gray-500 mb-1">ยอดซื้อขั้นต่ำ</label>
+          <input id="f_minPurchaseAmount" type="number" value="0" class="w-full bg-black border border-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-red-500">
+        </div>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-[10px] uppercase tracking-widest text-gray-500 mb-1">หมดเขต</label>
+          <input id="f_expiryDate" type="date" class="w-full bg-black border border-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-red-500">
+        </div>
+        <div>
+          <label class="block text-[10px] uppercase tracking-widest text-gray-500 mb-1">ใช้ได้กับ</label>
+          <select id="f_applicableTo" class="w-full bg-black border border-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-red-500">
+            <option value="All">ทั้งหมด</option>
+            <option value="newmember">สมัครสมาชิกใหม่</option>
+            <option value="membership">ต่ออายุสมาชิก</option>
+            <option value="daily">ลูกค้ารายวัน</option>
+          </select>
+        </div>
+      </div>
+      <div>
+        <label class="block text-[10px] uppercase tracking-widest text-gray-500 mb-1">คำอธิบาย</label>
+        <input id="f_description" class="w-full bg-black border border-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-red-500">
+      </div>
+      <div id="statusRow" class="hidden">
+        <label class="block text-[10px] uppercase tracking-widest text-gray-500 mb-1">สถานะ</label>
+        <select id="f_status" class="w-full bg-black border border-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-red-500">
+          <option value="Active">Active</option>
+          <option value="Inactive">Inactive</option>
+        </select>
+      </div>
+      <label id="broadcastRow" class="flex items-center gap-2 cursor-pointer">
+        <input type="checkbox" id="f_broadcastLine" class="w-4 h-4 accent-red-600">
+        <span class="text-gray-400 text-xs">ส่งแจ้งเตือนคูปองนี้ให้สมาชิกทาง LINE ทันที</span>
+      </label>
+      <p id="modalErr" class="hidden text-red-400 text-xs bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2"></p>
+      <div class="flex gap-3 pt-2">
+        <button onclick="closeModal()" class="flex-1 bg-gray-900 hover:bg-gray-800 border border-gray-800 py-2.5 rounded-xl text-sm">ยกเลิก</button>
+        <button onclick="submitCoupon()" id="submitBtn" class="flex-1 btn-primary py-2.5 rounded-xl text-sm font-bold">บันทึก</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { callServer, auth, onAuthStateChanged, signOut } from '../shared/firebase-init.js';
+    import { renderNav } from '../shared/admin-nav.js';
+
+    function escapeHtml(s) {
+      return (s || '').toString().replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
+    onAuthStateChanged(auth, async (user) => {
+      if (!user) { window.location.href = '../login.html'; return; }
+      const tok = await user.getIdTokenResult();
+      if (tok.claims.role !== 'admin') { window.location.href = '../login.html'; return; }
+      document.getElementById('navSlot').outerHTML = renderNav('coupons', tok.claims.adminRole);
+      document.getElementById('loadingGate').classList.add('hidden');
+      document.getElementById('app').classList.remove('hidden');
+      window.doLogout = async () => { await signOut(auth); window.location.href = '../login.html'; };
+      await load();
+    });
+
+    let coupons = [];
+    async function load() {
+      coupons = await callServer('getCouponList');
+      const tbody = document.getElementById('rows');
+      tbody.innerHTML = '';
+      document.getElementById('emptyState').classList.toggle('hidden', coupons.length > 0);
+      for (const c of coupons) {
+        const discountLabel = c.discountType === 'Fixed' ? `${c.discountValue} บาท` : `${c.discountValue}%`;
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td class="font-mono font-medium">${escapeHtml(c.code)}</td>
+          <td class="text-gray-400">${discountLabel}</td>
+          <td class="text-gray-400">${c.usedCount}${c.usageLimit !== null ? ' / ' + c.usageLimit : ''}</td>
+          <td class="text-gray-400">${escapeHtml(c.expiryDate) || '-'}</td>
+          <td class="text-gray-400">${escapeHtml(c.applicableTo)}</td>
+          <td><span class="badge badge-${c.status}">${escapeHtml(c.status)}</span></td>
+          <td class="text-right whitespace-nowrap">
+            <button data-act="edit" class="text-blue-400 hover:text-blue-300 px-2"><i class="fa-solid fa-pen"></i></button>
+            <button data-act="delete" class="text-red-400 hover:text-red-300 px-2"><i class="fa-solid fa-trash"></i></button>
+          </td>`;
+        tr.querySelector('[data-act="edit"]').onclick = () => openEditModal(c);
+        tr.querySelector('[data-act="delete"]').onclick = async () => {
+          if (!confirm(`ลบคูปอง "${c.code}"?`)) return;
+          const res = await callServer('deleteCouponData', { docId: c.docId });
+          alert(res.message);
+          if (res.success) await load();
+        };
+        tbody.appendChild(tr);
+      }
+    }
+
+    window.openAddModal = function openAddModal() {
+      document.getElementById('f_docId').value = '';
+      ['f_code', 'f_usageLimit', 'f_expiryDate', 'f_description'].forEach((id) => document.getElementById(id).value = '');
+      document.getElementById('f_discountType').value = 'Percent';
+      document.getElementById('f_discountValue').value = '';
+      document.getElementById('f_minPurchaseAmount').value = '0';
+      document.getElementById('f_applicableTo').value = 'All';
+      document.getElementById('statusRow').classList.add('hidden');
+      document.getElementById('broadcastRow').classList.remove('hidden');
+      document.getElementById('f_broadcastLine').checked = false;
+      document.getElementById('modalErr').classList.add('hidden');
+      document.getElementById('modal').classList.remove('hidden');
+    };
+
+    function openEditModal(c) {
+      document.getElementById('f_docId').value = c.docId;
+      document.getElementById('f_code').value = c.code;
+      document.getElementById('f_discountType').value = c.discountType;
+      document.getElementById('f_discountValue').value = c.discountValue;
+      document.getElementById('f_usageLimit').value = c.usageLimit === null ? '' : c.usageLimit;
+      document.getElementById('f_minPurchaseAmount').value = c.minPurchaseAmount;
+      document.getElementById('f_expiryDate').value = c.expiryDate;
+      document.getElementById('f_applicableTo').value = c.applicableTo;
+      document.getElementById('f_description').value = c.description;
+      document.getElementById('f_status').value = c.status;
+      document.getElementById('statusRow').classList.remove('hidden');
+      document.getElementById('broadcastRow').classList.add('hidden');
+      document.getElementById('modalErr').classList.add('hidden');
+      document.getElementById('modal').classList.remove('hidden');
+    }
+
+    window.closeModal = function closeModal() { document.getElementById('modal').classList.add('hidden'); };
+
+    window.submitCoupon = async function submitCoupon() {
+      const docId = document.getElementById('f_docId').value;
+      const payload = {
+        code: document.getElementById('f_code').value.trim(),
+        discountType: document.getElementById('f_discountType').value,
+        discountValue: document.getElementById('f_discountValue').value,
+        usageLimit: document.getElementById('f_usageLimit').value,
+        minPurchaseAmount: document.getElementById('f_minPurchaseAmount').value,
+        expiryDate: document.getElementById('f_expiryDate').value,
+        applicableTo: document.getElementById('f_applicableTo').value,
+        description: document.getElementById('f_description').value,
+        status: document.getElementById('f_status').value,
+        broadcastLine: document.getElementById('f_broadcastLine').checked
+      };
+      const btn = document.getElementById('submitBtn');
+      btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i>';
+      try {
+        const res = docId
+          ? await callServer('updateCouponData', { ...payload, docId })
+          : await callServer('addCouponData', payload);
+        if (res.success) { window.closeModal(); await load(); alert(res.message); }
+        else showModalErr(res.message);
+      } catch (e) {
+        showModalErr(e.message || 'เกิดข้อผิดพลาด');
+      } finally {
+        btn.disabled = false; btn.innerHTML = 'บันทึก';
+      }
+    };
+
+    function showModalErr(msg) {
+      const el = document.getElementById('modalErr');
+      el.textContent = msg; el.classList.remove('hidden');
+    }
+  </script>
+</body>
+</html>

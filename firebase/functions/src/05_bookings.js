@@ -3,10 +3,11 @@
 // the original's "Member Row" foreign key. `bookingId` (a UUID) is kept as
 // a stable external-facing identifier, same as the original.
 //
-// notifyTrainerNewBooking_ and the waitlist LINE/email notification are
-// stubbed as safe no-ops until the LINE Integration module is ported —
-// same "don't let a missing notification break the booking" contract the
-// original had (those calls were themselves wrapped in try/catch there).
+// Trainer/waitlist LINE notifications use util/lineClient.js (email
+// delivery is not implemented — no email provider configured yet, matching
+// the honest-stub approach used elsewhere; these calls never throw, same
+// "don't let a missing notification break the booking" contract as the
+// original where they were wrapped in try/catch).
 'use strict';
 const crypto = require('crypto');
 const { onCall } = require('firebase-functions/v2/https');
@@ -15,10 +16,39 @@ const { requireAuth, authOrNull } = require('./util/authGuard');
 const { logAudit_ } = require('./util/auditLog');
 const { getTrainerByCode_ } = require('./util/trainerLookup');
 const { generateTimeSlots_, timeStrToMinutes_ } = require('./util/timeSlots');
+const { sendLineMessage_ } = require('./util/lineClient');
 const config = require('./00_config');
 
-function notifyTrainerNewBooking_() { /* TODO: wire up once 18_LineIntegration.js is ported */ }
-function notifyNextWaitlistPerson_() { /* TODO: wire up once 18_LineIntegration.js is ported */ }
+async function notifyTrainerNewBooking_(trainerId, memberName, memberPhone, dateStr, timeSlot) {
+  try {
+    const trainer = await getTrainerByCode_(trainerId);
+    if (!trainer || !trainer.lineUserId) return;
+    await sendLineMessage_(trainer.lineUserId,
+      `🔔 มีลูกค้าจองคิวใหม่!\n\nลูกค้า: ${memberName}\nเบอร์โทร: ${memberPhone || '-'}\nวันที่: ${dateStr}\nเวลา: ${timeSlot}`);
+  } catch (e) { /* don't let a notification failure break the booking */ }
+}
+
+async function notifyNextWaitlistPerson_(trainerId, dateStr, timeSlot) {
+  try {
+    const snap = await db.collection('waitlist')
+      .where('trainerId', '==', trainerId).where('date', '==', dateStr).where('timeSlot', '==', timeSlot).where('status', '==', 'Waiting')
+      .orderBy('createdAt', 'asc').limit(1).get();
+    if (snap.empty) return;
+    const doc = snap.docs[0];
+    const w = doc.data();
+    await doc.ref.update({ status: 'Notified' });
+
+    if (w.memberDocId) {
+      const memberSnap = await db.collection('members').doc(w.memberDocId).get();
+      const lineUserId = memberSnap.exists ? (memberSnap.data().lineUserId || '').toString().trim() : '';
+      if (lineUserId) {
+        await sendLineMessage_(lineUserId,
+          `🎉 มีคิวว่างแล้ว!\n\nสวัสดีคุณ ${w.memberName}\nช่วงเวลาที่คุณรอคิวไว้ (${dateStr} เวลา ${timeSlot}) ว่างแล้ว!\n\nรีบเข้าแอปเพื่อจองคิวก่อนคนอื่นนะครับ`);
+      }
+    }
+    await logAudit_('SYSTEM (Auto)', 'WAITLIST_NOTIFY', w.memberName, `แจ้งเตือนคิวว่างให้สมาชิกที่รอคิว วันที่ ${dateStr} เวลา ${timeSlot}`);
+  } catch (e) { /* don't let a notification failure break the cancellation */ }
+}
 
 async function computeAvailableSlots_(trainerId, dateStr) {
   const trainer = await getTrainerByCode_(trainerId);
@@ -66,7 +96,7 @@ async function createBookingRecord_(trainerId, dateStr, timeSlot, memberDocId, m
     date: dateStr, timeSlot, status: 'Booked', notes: '',
     createdAt: FieldValue.serverTimestamp()
   });
-  notifyTrainerNewBooking_(trainerId, memberName, memberPhone, dateStr, timeSlot);
+  await notifyTrainerNewBooking_(trainerId, memberName, memberPhone, dateStr, timeSlot);
   return { success: true, message: `🟢 จองคิวเทรนเนอร์ ${trainer.fullName} สำเร็จ! วันที่ ${dateStr} เวลา ${timeSlot}`, trainerName: trainer.fullName };
 }
 
@@ -137,7 +167,7 @@ exports.cancelMyBooking = onCall(async (request) => {
     const doc = snap.docs[0];
     const b = doc.data();
     await doc.ref.update({ status: 'Cancelled' });
-    notifyNextWaitlistPerson_(b.trainerId, b.date, b.timeSlot);
+    await notifyNextWaitlistPerson_(b.trainerId, b.date, b.timeSlot);
     const m = (await db.collection('members').doc(authCtx.uid).get()).data();
     await logAudit_(m.fullName, 'MEMBER_CANCEL_BOOKING', b.trainerName, `ยกเลิกคิว วันที่ ${b.date} เวลา ${b.timeSlot}`);
     return { success: true, message: 'ยกเลิกคิวเรียบร้อยแล้ว' };
@@ -232,7 +262,7 @@ exports.trainerUpdateBookingStatus = onCall(async (request) => {
     const b = doc.data();
     await doc.ref.update({ status: newStatus });
     const statusLabel = newStatus === 'Completed' ? 'เสร็จสิ้น' : 'ยกเลิก';
-    if (newStatus === 'Cancelled') notifyNextWaitlistPerson_(b.trainerId, b.date, b.timeSlot);
+    if (newStatus === 'Cancelled') await notifyNextWaitlistPerson_(b.trainerId, b.date, b.timeSlot);
     await logAudit_(t.fullName, 'TRAINER_UPDATE_BOOKING', b.memberName, `เทรนเนอร์ตั้งสถานะคิวเป็น ${statusLabel} (สมาชิก: ${b.memberName})`);
     return { success: true, message: `ตั้งสถานะคิวเป็น "${statusLabel}" เรียบร้อยแล้ว` };
   } catch (e) {
@@ -311,7 +341,7 @@ exports.updateBookingStatus = onCall(async (request) => {
     const doc = snap.docs[0];
     const b = doc.data();
     await doc.ref.update({ status: newStatus });
-    if (newStatus === 'Cancelled') notifyNextWaitlistPerson_(b.trainerId, b.date, b.timeSlot);
+    if (newStatus === 'Cancelled') await notifyNextWaitlistPerson_(b.trainerId, b.date, b.timeSlot);
     await logAudit_(authCtx.token.adminRole || authCtx.uid, 'UPDATE_BOOKING_STATUS', b.trainerName, `เปลี่ยนสถานะคิวเป็น ${newStatus} (สมาชิก: ${b.memberName})`);
     return { success: true, message: 'อัปเดตสถานะคิวเรียบร้อยแล้ว' };
   } catch (e) {

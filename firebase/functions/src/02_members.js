@@ -1,26 +1,20 @@
 // Members — ported from apps-script-source-refactored/06_Members.js.
 //
-// Scope note: this module depends on Packages/Coupons/Payments/Bookings/Logs,
-// which are documented in docs/firestore-schema.md but not ported yet (see
-// the migration plan). Where the original touched those:
-//   - Package price lookup: reads the (not-yet-seeded) `packages` collection;
-//     same fallback as the original when a package isn't found (amount 0).
-//   - Payment recording on signup: implemented directly here (receipt
-//     numbering + a `payments` write) since it's plain data plumbing, not
-//     business logic that belongs to a future Coupons/Payments module.
-//   - Coupon codes at signup: NOT implemented yet — returns an explicit
-//     message instead of silently ignoring the discount, so staff never
-//     charge a member the coupon price without applying it.
-//   - Check-in history / booking history in getMemberFullHistory: queries the
-//     relevant collections and simply returns [] until Logs/Bookings modules
-//     are ported (Firestore queries on empty/nonexistent collections are not
-//     errors), matching the original's defensive "if (sheet) {...}" checks.
+// Package price lookup and coupon validation on signup delegate to
+// 03_packages.js / 06_coupons.js. Payment recording is implemented directly
+// here (receipt numbering + a `payments` write) since it's plain data
+// plumbing shared with what will become the full Payments module.
+// Check-in history / booking history in getMemberFullHistory queries the
+// relevant collections and simply returns [] if empty (Firestore queries on
+// empty/nonexistent collections are not errors), matching the original's
+// defensive "if (sheet) {...}" checks.
 'use strict';
 const { onCall } = require('firebase-functions/v2/https');
 const { db, FieldValue } = require('./util/admin');
 const { requireAuth, authOrNull } = require('./util/authGuard');
 const { logAudit_ } = require('./util/auditLog');
 const { daysUntil_, isBirthdayMonth_ } = require('./util/dates');
+const { getNextReceiptNumber_ } = require('./util/receiptNumber');
 const config = require('./00_config');
 
 function generateReferralCode_(fullName) {
@@ -28,17 +22,6 @@ function generateReferralCode_(fullName) {
   if (prefix.length < 3) prefix = (prefix + 'GYM').substring(0, 3);
   const rand = Math.floor(1000 + Math.random() * 9000);
   return prefix + rand;
-}
-
-async function getNextReceiptNumber_() {
-  const yearPart = new Date().getFullYear().toString();
-  const ref = db.collection('counters').doc('receipts_' + yearPart);
-  return db.runTransaction(async (tx) => {
-    const snap = await tx.get(ref);
-    const current = (snap.exists ? snap.data().value : 0) + 1;
-    tx.set(ref, { value: current }, { merge: true });
-    return 'RC' + yearPart + '-' + ('0000' + current).slice(-4);
-  });
 }
 
 async function getPackagePrice_(packageName) {
@@ -65,10 +48,6 @@ exports.saveMemberData = onCall(async (request) => {
   if (!authCtx) return { success: false, message: 'Session หมดอายุ กรุณา Login ใหม่' };
   const data = request.data || {};
   try {
-    if ((data.couponCode || '').toString().trim()) {
-      return { success: false, message: 'ระบบคูปองยังไม่ได้ย้ายมา Firebase ในเฟสนี้ กรุณาใช้ระบบเดิม (Apps Script) สำหรับการสมัครที่ใช้คูปอง' };
-    }
-
     const pinInput = (data.pin || '1234').toString().trim();
     const { hashPassword_ } = require('./util/hash');
     const pinHash = hashPassword_(pinInput);
@@ -105,6 +84,17 @@ exports.saveMemberData = onCall(async (request) => {
       chargeAmount = await getPackagePrice_(data.package);
     }
 
+    const newMemberCouponCode = (data.couponCode || '').toString().trim();
+    let newMemberCouponResult = null;
+    let couponNote = '';
+    if (newMemberCouponCode) {
+      const { validateCoupon_ } = require('./06_coupons');
+      newMemberCouponResult = await validateCoupon_(newMemberCouponCode, chargeAmount, 'newmember');
+      if (!newMemberCouponResult.valid) return { success: false, message: newMemberCouponResult.message };
+      chargeAmount = newMemberCouponResult.finalAmount;
+      couponNote = ` 🎟️ (คูปอง ${newMemberCouponResult.code} ลด ${newMemberCouponResult.discountAmount.toLocaleString('th-TH')} บาท)`;
+    }
+
     let receiptNo = '';
     const deferPayment = !!data.deferPayment;
     if (!deferPayment && chargeAmount > 0) {
@@ -125,16 +115,20 @@ exports.saveMemberData = onCall(async (request) => {
         paymentMethod
       });
     }
+    if (newMemberCouponResult) {
+      const { applyCouponUsage_ } = require('./06_coupons');
+      await applyCouponUsage_(newMemberCouponResult.docId);
+    }
 
     await logAudit_(authCtx.token.adminRole || authCtx.uid, 'ADD_MEMBER', data.fullName,
       `แพ็กเกจ: ${data.package} (PIN: ${pinInput})` +
-      (deferPayment ? ' (รอชำระเงินรวมกับบิลลูกค้ารายวัน)' : (receiptNo ? ` ชำระเงิน ${chargeAmount} บาท ใบเสร็จ: ${receiptNo}` : ' (ยังไม่ชำระเงิน)')));
+      (deferPayment ? ' (รอชำระเงินรวมกับบิลลูกค้ารายวัน)' : (receiptNo ? ` ชำระเงิน ${chargeAmount} บาท ใบเสร็จ: ${receiptNo}` : ' (ยังไม่ชำระเงิน)')) + couponNote);
 
     return {
       success: true,
       message: deferPayment
         ? 'ลงทะเบียนสมาชิกสำเร็จ! กำลังพากลับไปรวมบิลกับรายการรายวัน...'
-        : `ลงทะเบียนสมาชิกสำเร็จ! PIN สำหรับเข้ายิมบนมือถือคือ: ${pinInput}${receiptNo ? ' 🧾 ใบเสร็จ: ' + receiptNo : ''}`,
+        : `ลงทะเบียนสมาชิกสำเร็จ! PIN สำหรับเข้ายิมบนมือถือคือ: ${pinInput}${couponNote}${receiptNo ? ' 🧾 ใบเสร็จ: ' + receiptNo : ''}`,
       referralCode: ownCode,
       receiptNo,
       chargeAmount,
@@ -224,8 +218,10 @@ exports.deleteMemberData = onCall(async (request) => {
 
 // ---- getMemberList ----
 
-exports.getMemberList = onCall(async (request) => {
-  requireAuth(request, 'admin');
+// Plain function (not onCall-wrapped) so other modules — e.g. 10_receipts.js
+// exporting a member list to PDF — can call the same logic directly.
+// Cloud Functions v2's onCall() wrapper is not itself callable in-process.
+async function getMemberListCore_() {
   const snap = await db.collection('members').orderBy('createdAt', 'desc').get();
   return snap.docs.map((doc) => {
     const m = doc.data();
@@ -246,7 +242,14 @@ exports.getMemberList = onCall(async (request) => {
       isBirthdayMonth: isBirthdayMonth_(m.dob)
     };
   });
+}
+
+exports.getMemberList = onCall(async (request) => {
+  requireAuth(request, 'admin');
+  return getMemberListCore_();
 });
+
+module.exports.getMemberListCore_ = getMemberListCore_;
 
 // ---- Birthday discount settings ----
 

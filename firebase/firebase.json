@@ -15,7 +15,13 @@
   },
   "hosting": {
     "public": "hosting",
-    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"]
+    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+    "headers": [
+      {
+        "source": "**/*.@(js|css)",
+        "headers": [{ "key": "Cache-Control", "value": "no-cache, max-age=0, must-revalidate" }]
+      }
+    ]
   },
   "emulators": {
     "auth": { "port": 9099 },

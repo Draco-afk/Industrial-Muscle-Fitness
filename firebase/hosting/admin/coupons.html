@@ -13,13 +13,13 @@
     .badge-Inactive { background: rgba(107,114,128,0.15); color: #9ca3af; }
   </style>
 </head>
-<body class="min-h-screen p-4 md:p-8">
+<body class="min-h-screen">
   <div id="loadingGate" class="fixed inset-0 bg-black flex items-center justify-center z-50">
     <i class="fa-solid fa-circle-notch fa-spin text-3xl text-red-500"></i>
   </div>
+  <div id="navSlot"></div>
 
-  <div id="app" class="hidden max-w-6xl mx-auto">
-    <div id="navSlot"></div>
+  <div id="app" class="hidden md:ml-64 p-4 md:p-8 pt-24 md:pt-8 max-w-6xl">
 
     <div class="flex items-center justify-end mb-4">
       <button onclick="openAddModal()" class="btn-primary text-xs font-bold uppercase tracking-wider px-5 py-2.5 rounded-xl">

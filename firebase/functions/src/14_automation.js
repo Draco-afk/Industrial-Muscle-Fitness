@@ -124,7 +124,7 @@ exports.updateWinBackSettings = onCall(async (request) => {
   }
 });
 
-exports.checkWinBackCampaign_ = onSchedule({ schedule: '0 10 * * *', timeZone: 'Asia/Bangkok' }, async () => {
+exports.checkWinBackCampaign = onSchedule({ schedule: '0 10 * * *', timeZone: 'Asia/Bangkok' }, async () => {
   try {
     const c = await getAutomationConfig_();
     if (!c.winbackEnabled) return;
@@ -192,7 +192,7 @@ exports.getMemberLineNotifySettings = onCall(async (request) => {
   return { enabled: !!c.memberLineNotifyEnabled };
 });
 
-exports.checkMemberNotificationsLine_ = onSchedule({ schedule: '0 9 * * *', timeZone: 'Asia/Bangkok' }, async () => {
+exports.checkMemberNotificationsLine = onSchedule({ schedule: '0 9 * * *', timeZone: 'Asia/Bangkok' }, async () => {
   try {
     const c = await getAutomationConfig_();
     if (!c.memberLineNotifyEnabled) return;

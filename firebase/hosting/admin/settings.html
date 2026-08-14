@@ -15,13 +15,13 @@
     .toggle.on .knob { left: 23px; }
   </style>
 </head>
-<body class="min-h-screen p-4 md:p-8">
+<body class="min-h-screen">
   <div id="loadingGate" class="fixed inset-0 bg-black flex items-center justify-center z-50">
     <i class="fa-solid fa-circle-notch fa-spin text-3xl text-red-500"></i>
   </div>
+  <div id="navSlot"></div>
 
-  <div id="app" class="hidden max-w-6xl mx-auto space-y-6">
-    <div id="navSlot"></div>
+  <div id="app" class="hidden md:ml-64 p-4 md:p-8 pt-24 md:pt-8 max-w-6xl space-y-6">
 
     <!-- LINE -->
     <div class="panel rounded-2xl p-5">

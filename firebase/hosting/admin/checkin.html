@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Industrial Muscle - Admin - Check-in</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Urbanist:wght@700;900&family=Prompt:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <link rel="stylesheet" href="../shared/admin-nav.css">
+</head>
+<body class="min-h-screen">
+  <div id="loadingGate" class="fixed inset-0 bg-black flex items-center justify-center z-50">
+    <i class="fa-solid fa-circle-notch fa-spin text-3xl text-red-500"></i>
+  </div>
+  <div id="navSlot"></div>
+
+  <div id="app" class="hidden md:ml-64 p-4 md:p-8 pt-24 md:pt-8 max-w-3xl">
+    <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2 mb-6">
+      <h2 class="text-2xl font-black font-['Urbanist']">เช็คอินลูกค้า</h2>
+      <span class="text-gray-500 text-xs"><i class="fa-solid fa-circle-info mr-1"></i>ใช้เวลาเครื่องสแกนลายนิ้วมือหน้าประตูใช้งานไม่ได้</span>
+    </div>
+
+    <div class="panel rounded-2xl p-4 mb-6">
+      <div class="flex items-center bg-black/60 border border-gray-800 rounded-xl px-4 py-3 focus-within:border-red-500/50">
+        <i class="fa-solid fa-magnifying-glass text-gray-600 mr-3 text-sm"></i>
+        <input type="text" id="checkinSearchBar" placeholder="พิมพ์ชื่อสมาชิกหรือเบอร์โทรที่ต้องการเช็คอิน..." class="bg-transparent w-full outline-none text-sm" autofocus>
+      </div>
+    </div>
+
+    <div id="checkinListContainer" class="space-y-3"></div>
+  </div>
+
+  <script type="module">
+    import { callServer, auth, onAuthStateChanged, signOut } from '../shared/firebase-init.js';
+    import { renderNav } from '../shared/admin-nav.js';
+
+    let members = [];
+
+    function escapeHtml(s) {
+      return (s || '').toString().replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
+    onAuthStateChanged(auth, async (user) => {
+      if (!user) { window.location.href = '../login.html'; return; }
+      const tok = await user.getIdTokenResult();
+      if (tok.claims.role !== 'admin') { window.location.href = '../login.html'; return; }
+      document.getElementById('navSlot').outerHTML = renderNav('checkin', tok.claims.adminRole);
+      document.getElementById('loadingGate').classList.add('hidden');
+      document.getElementById('app').classList.remove('hidden');
+      window.doLogout = async () => { await signOut(auth); window.location.href = '../login.html'; };
+      document.getElementById('checkinSearchBar').addEventListener('input', renderList);
+      await loadMembers();
+    });
+
+    async function loadMembers() {
+      members = await callServer('getMemberList');
+      renderList();
+    }
+
+    function renderList() {
+      const container = document.getElementById('checkinListContainer');
+      const term = (document.getElementById('checkinSearchBar').value || '').trim().toLowerCase();
+
+      let filtered = members;
+      if (term) {
+        filtered = members.filter((m) => (m.fullName || '').toLowerCase().includes(term) || (m.phone || '').includes(term));
+      }
+      if (!filtered.length) {
+        container.innerHTML = '<p class="text-gray-600 text-xs text-center py-8">ไม่พบสมาชิกที่ค้นหา</p>';
+        return;
+      }
+
+      const displayList = term ? filtered : filtered.slice(0, 15);
+
+      container.innerHTML = displayList.map((m) => {
+        const isActive = m.status === 'Active';
+        const badge = isActive
+          ? '<span class="text-[10px] bg-green-950 text-green-400 border border-green-800 px-2.5 py-1 rounded-full font-bold uppercase">Active</span>'
+          : `<span class="text-[10px] bg-gray-800 text-gray-400 border border-gray-700 px-2.5 py-1 rounded-full font-bold uppercase">${escapeHtml(m.status || '')}</span>`;
+        return `
+          <div class="panel rounded-2xl p-4 md:p-5 flex items-center justify-between gap-4">
+            <div class="min-w-0">
+              <div class="flex items-center gap-2 mb-1">
+                <h4 class="font-bold text-base truncate">${escapeHtml(m.fullName)}</h4>
+                ${badge}
+              </div>
+              <p class="text-gray-500 text-xs">${escapeHtml(m.package || '')} • ${escapeHtml(m.phone || '')}</p>
+              <p class="text-gray-600 text-[11px] mt-0.5"><i class="fa-solid fa-calendar-days mr-1"></i>หมดอายุ: <span class="font-mono">${escapeHtml(m.expiryDate || '')}</span> <span class="mx-1">•</span><i class="fa-solid fa-dumbbell mr-1"></i>เข้าแล้ว ${m.checkInCount || 0} ครั้ง</p>
+            </div>
+            <button data-docid="${m.docId}" data-name="${escapeHtml(m.fullName)}" class="checkin-btn shrink-0 bg-green-600 hover:bg-green-500 text-white font-black py-3 px-5 rounded-xl text-xs uppercase flex items-center gap-2">
+              <i class="fa-solid fa-check text-sm"></i> เช็คอิน
+            </button>
+          </div>`;
+      }).join('');
+
+      container.querySelectorAll('.checkin-btn').forEach((btn) => {
+        btn.onclick = () => doCheckIn(btn.dataset.docid, btn.dataset.name);
+      });
+    }
+
+    async function doCheckIn(docId, name) {
+      if (!confirm(`ยืนยันเช็คอินให้ "${name}" ด้วยมือ?`)) return;
+      const res = await callServer('manualCheckIn', { docId });
+      alert(res.message);
+      if (res.success) await loadMembers();
+    }
+  </script>
+</body>
+</html>

@@ -160,21 +160,42 @@ async function getRevenueReportCore_(startDateStr, endDateStr) {
     }
   });
 
-  // 3) Expenses.
+  // 3) Expenses — also taken out of whichever channel actually paid for them,
+  //    so cash + transfer equals the money genuinely left on hand.
   const expenseSnap = await db.collection('expenses').get();
   expenseSnap.forEach((doc) => {
     const e = doc.data();
     if (e.date < startDateStr || e.date > endDateStr) return;
-    totalExpenses += e.amount || 0;
-    if (dailyBuckets[e.date]) dailyBuckets[e.date].expenses += e.amount || 0;
+    const eAmount = e.amount || 0;
+    totalExpenses += eAmount;
+    if (dailyBuckets[e.date]) dailyBuckets[e.date].expenses += eAmount;
+
+    // Blank counts as โอนเงิน, matching the original expensePaymentMethod_().
+    const paidByTransfer = ((e.paymentMethod || '').toString().trim() || 'โอนเงิน') === 'โอนเงิน';
+    if (paidByTransfer) {
+      totalTransfer -= eAmount;
+      if (dailyBuckets[e.date]) dailyBuckets[e.date].transfer -= eAmount;
+    } else {
+      totalCash -= eAmount;
+      if (dailyBuckets[e.date]) dailyBuckets[e.date].cash -= eAmount;
+    }
   });
 
   // 4) Manual per-day overrides.
+  const overriddenDays = [];
   const overrideSnap = await db.collection('dailyPaymentOverrides').get();
   overrideSnap.forEach((doc) => {
     const oKey = doc.id;
     if (oKey < startDateStr || oKey > endDateStr || !dailyBuckets[oKey]) return;
     const o = doc.data();
+
+    // Keep what the bills actually add up to, so the UI can show the admin how
+    // far the hand-entered figure drifts from reality.
+    const autoMembership = dailyBuckets[oKey].membership;
+    const autoDayPass = dailyBuckets[oKey].dayPass;
+    const autoProducts = dailyBuckets[oKey].products;
+    const autoCash = dailyBuckets[oKey].cash;
+    const autoTransfer = dailyBuckets[oKey].transfer;
 
     totalCash -= dailyBuckets[oKey].cash;
     totalTransfer -= dailyBuckets[oKey].transfer;
@@ -197,7 +218,19 @@ async function getRevenueReportCore_(startDateStr, endDateStr) {
     totalMembership += dailyBuckets[oKey].membership;
     totalDayPass += dailyBuckets[oKey].dayPass;
     totalProducts += dailyBuckets[oKey].products;
+
+    overriddenDays.push({
+      date: oKey,
+      autoTotal: autoMembership + autoDayPass + autoProducts,
+      autoCash, autoTransfer,
+      shownTotal: dailyBuckets[oKey].membership + dailyBuckets[oKey].dayPass + dailyBuckets[oKey].products,
+      shownCash: dailyBuckets[oKey].cash,
+      shownTransfer: dailyBuckets[oKey].transfer,
+      updatedBy: (o.updatedBy || '').toString(),
+      updatedAt: o.updatedAt && o.updatedAt.toDate ? o.updatedAt.toDate().toISOString().slice(0, 16).replace('T', ' ') : ''
+    });
   });
+  overriddenDays.sort((a, b) => (a.date < b.date ? -1 : 1));
 
   const breakdown = orderedKeys.map((k) => dailyBuckets[k]);
   const topProducts = Object.keys(productRevenueMap).map((name) => ({ name, qty: productRevenueMap[name].qty, revenue: productRevenueMap[name].revenue })).sort((a, b) => b.revenue - a.revenue);
@@ -212,7 +245,7 @@ async function getRevenueReportCore_(startDateStr, endDateStr) {
       expenses: totalExpenses, netProfit: (totalMembership + totalDayPass + totalProducts) - totalExpenses,
       cash: totalCash, transfer: totalTransfer
     },
-    breakdown, topProducts,
+    breakdown, topProducts, overriddenDays,
     trainerFees: { total: totalTrainerFees, breakdown: trainerFeeBreakdown }
   };
 }

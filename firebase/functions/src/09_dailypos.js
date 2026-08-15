@@ -19,6 +19,43 @@ function isTrainerFeeItemName_(itemName) {
   return (itemName || '').toString().indexOf('ค่าเทรนเนอร์:') !== -1;
 }
 
+// Blank means transfer here — matches the original expensePaymentMethod_(),
+// where older rows without the column are treated as โอนเงิน.
+function expensePaymentMethod_(rawValue) {
+  const v = (rawValue || '').toString().trim();
+  if (!v) return 'โอนเงิน';
+  return (v === 'โอนเงิน' || v === 'transfer') ? 'โอนเงิน' : 'เงินสด';
+}
+
+// A hand-entered daily total stops reflecting reality the moment a real bill,
+// refund or expense lands on that date, so drop the override and go back to
+// computing from the bills. Never throws: failing to unlock must not take the
+// payment or refund down with it.
+async function clearRevenueOverrideForDate_(dateStr, user, note) {
+  try {
+    if (!dateStr) return false;
+    const ref = db.collection('dailyPaymentOverrides').doc(dateStr);
+    if (!(await ref.get()).exists) return false;
+    await ref.delete();
+    await logAudit_(user || 'system', 'AUTO_CLEAR_REVENUE_OVERRIDE', dateStr,
+      `ยกเลิกยอดที่แก้เองของวันที่ ${dateStr} อัตโนมัติ เพราะมีรายการใหม่: ${note || '-'}`);
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+// Firestore Timestamp | Date | "yyyy-MM-dd" -> "yyyy-MM-dd"
+function toOverrideDateKey_(value) {
+  if (!value) return '';
+  if (typeof value.toDate === 'function') return value.toDate().toISOString().slice(0, 10);
+  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  return value.toString().slice(0, 10);
+}
+
+module.exports.clearRevenueOverrideForDate_ = clearRevenueOverrideForDate_;
+module.exports.toOverrideDateKey_ = toOverrideDateKey_;
+
 async function getDailyPassPrices_() {
   const snap = await db.collection('config').doc('dailyPassPrices').get();
   const d = snap.exists ? snap.data() : {};
@@ -73,7 +110,7 @@ exports.clearDailyRevenueOverride = onCall(async (request) => {
 exports.addExpense = onCall(async (request) => {
   const authCtx = authOrNull(request, 'admin');
   if (!authCtx) return { success: false, message: 'Session หมดอายุ กรุณา Login ใหม่' };
-  const { dateStr, description, amount } = request.data || {};
+  const { dateStr, description, amount, paymentMethod } = request.data || {};
   try {
     const desc = (description || '').toString().trim();
     const amt = parseFloat(amount);
@@ -81,9 +118,12 @@ exports.addExpense = onCall(async (request) => {
     if (isNaN(amt) || amt <= 0) return { success: false, message: 'กรุณากรอกจำนวนเงินให้ถูกต้อง' };
     if (!dateStr) return { success: false, message: 'กรุณาเลือกวันที่' };
 
-    await db.collection('expenses').add({ timestamp: FieldValue.serverTimestamp(), date: dateStr, description: desc, amount: amt, addedBy: authCtx.token.adminRole || authCtx.uid });
-    await logAudit_(authCtx.token.adminRole || authCtx.uid, 'ADD_EXPENSE', desc, `บันทึกรายจ่ายวันที่ ${dateStr} จำนวน ${amt.toLocaleString('th-TH')} บาท`);
-    return { success: true, message: '🟢 บันทึกรายจ่ายสำเร็จแล้ว!' };
+    const method = expensePaymentMethod_(paymentMethod);
+    const actor = authCtx.token.adminRole || authCtx.uid;
+    await db.collection('expenses').add({ timestamp: FieldValue.serverTimestamp(), date: dateStr, description: desc, amount: amt, addedBy: actor, paymentMethod: method });
+    await clearRevenueOverrideForDate_(dateStr, actor, 'บันทึกรายจ่าย ' + desc);
+    await logAudit_(actor, 'ADD_EXPENSE', desc, `บันทึกรายจ่ายวันที่ ${dateStr} จำนวน ${amt.toLocaleString('th-TH')} บาท (${method})`);
+    return { success: true, message: `🟢 บันทึกรายจ่ายสำเร็จแล้ว! (${method})` };
   } catch (e) {
     return { success: false, message: e.toString() };
   }
@@ -99,7 +139,7 @@ exports.getExpenseList = onCall(async (request) => {
       const e = doc.data();
       if (startDateStr && e.date < startDateStr) return;
       if (endDateStr && e.date > endDateStr) return;
-      list.push({ docId: doc.id, date: e.date, description: e.description, amount: e.amount || 0, addedBy: e.addedBy || '' });
+      list.push({ docId: doc.id, date: e.date, description: e.description, amount: e.amount || 0, addedBy: e.addedBy || '', paymentMethod: expensePaymentMethod_(e.paymentMethod) });
     });
     list.sort((a, b) => (a.date < b.date ? 1 : (a.date > b.date ? -1 : 0)));
     return list;
@@ -117,8 +157,11 @@ exports.deleteExpense = onCall(async (request) => {
     const snap = await ref.get();
     if (!snap.exists) return { success: false, message: 'ไม่พบรายการนี้' };
     const desc = snap.data().description;
+    const expenseDate = toOverrideDateKey_(snap.data().date);
+    const actor = authCtx.token.adminRole || authCtx.uid;
     await ref.delete();
-    await logAudit_(authCtx.token.adminRole || authCtx.uid, 'DELETE_EXPENSE', desc, 'ลบรายการรายจ่ายออกจากระบบ');
+    await clearRevenueOverrideForDate_(expenseDate, actor, 'ลบรายจ่าย ' + desc);
+    await logAudit_(actor, 'DELETE_EXPENSE', desc, 'ลบรายการรายจ่ายออกจากระบบ');
     return { success: true, message: `ลบรายการ "${desc}" ออกจากระบบสำเร็จ` };
   } catch (e) {
     return { success: false, message: e.toString() };
@@ -224,6 +267,7 @@ exports.processDailyPayment = onCall(async (request) => {
     for (const d of stockDeductions) await d.ref.update({ stock: d.newStock });
 
     const itemSummary = items.map((it) => it.name + (it.qty > 1 ? ` x${it.qty}` : '')).join(', ');
+    await clearRevenueOverrideForDate_(new Date().toISOString().slice(0, 10), authCtx.token.adminRole || authCtx.uid, `รับชำระเงินรายวัน ใบเสร็จ ${receiptNo}`);
     await logAudit_(authCtx.token.adminRole || authCtx.uid, 'DAILY_PAYMENT', name, `รับชำระ ${totalAmount} บาท (${itemSummary}) ใบเสร็จ: ${receiptNo}`);
     return { success: true, message: `🟢 รับชำระเงินสำเร็จ! ยอดรวม ${totalAmount.toLocaleString('th-TH')} บาท เลขที่ใบเสร็จ: ${receiptNo}`, receiptNo, totalAmount };
   } catch (e) {
@@ -269,6 +313,7 @@ exports.updateDailyPaymentMethod = onCall(async (request) => {
     if (snap.empty) return { success: false, message: `ไม่พบใบเสร็จเลขที่ ${receiptNo}` };
     const doc = snap.docs[0];
     await doc.ref.update({ paymentMethod: method });
+    await clearRevenueOverrideForDate_(toOverrideDateKey_(doc.data().timestamp), authCtx.token.adminRole || authCtx.uid, `แก้วิธีชำระเงินใบเสร็จ ${receiptNo}`);
     await logAudit_(authCtx.token.adminRole || authCtx.uid, 'EDIT_PAYMENT_METHOD', doc.data().customerName, `แก้ไขวิธีชำระเงินใบเสร็จ ${receiptNo} เป็น ${method}`);
     return { success: true, message: `🟢 แก้ไขวิธีชำระเงินเป็น "${method}" แล้ว` };
   } catch (e) {
@@ -302,6 +347,7 @@ exports.voidDailyPayment = onCall(async (request) => {
       }
     } catch (e3) { /* don't fail the refund if stock restore fails */ }
 
+    await clearRevenueOverrideForDate_(toOverrideDateKey_(d.timestamp), authCtx.token.adminRole || authCtx.uid, `ยกเลิก/คืนเงินใบเสร็จ ${receiptNo}`);
     await logAudit_(authCtx.token.adminRole || authCtx.uid, 'VOID_DAILY_PAYMENT', d.customerName, `ยกเลิก/คืนเงินใบเสร็จ ${receiptNo} ยอด ${d.amount} บาท เหตุผล: ${reason || '-'}`);
     return { success: true, message: `🟢 ยกเลิก/คืนเงินใบเสร็จ ${receiptNo} เรียบร้อยแล้ว` };
   } catch (e) {
@@ -318,7 +364,9 @@ exports.deleteDailyPaymentLog = onCall(async (request) => {
     if (snap.empty) return { success: false, message: `ไม่พบใบเสร็จเลขที่ ${receiptNo}` };
     const doc = snap.docs[0];
     const custName = doc.data().customerName;
+    const billDate = toOverrideDateKey_(doc.data().timestamp);
     await doc.ref.delete();
+    await clearRevenueOverrideForDate_(billDate, authCtx.token.adminRole || authCtx.uid, `ลบบิลรายวัน ใบเสร็จ ${receiptNo}`);
     await logAudit_(authCtx.token.adminRole || authCtx.uid, 'DELETE_DAILY_PAYMENT', custName, `ลบรายการชำระเงินรายวัน ใบเสร็จ: ${receiptNo}`);
     return { success: true, message: 'ลบรายการเรียบร้อยแล้ว' };
   } catch (e) {

@@ -8,6 +8,13 @@
   <link href="https://fonts.googleapis.com/css2?family=Urbanist:wght@700;900&family=Prompt:wght@300;400;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
   <link rel="stylesheet" href="../shared/admin-nav.css">
+  <style>
+    .fld { width: 100%; background: #000; border: 1px solid #1f2937; border-radius: 12px; padding: 12px; font-size: 13px; color: #fff; outline: none; }
+    .fld:focus { border-color: #ef4444; }
+    .lbl { display: block; font-size: 10px; text-transform: uppercase; font-weight: 700; color: #6b7280; letter-spacing: 0.1em; margin-bottom: 6px; }
+    .cell-edit { width: 84px; background: #000; border: 1px solid #ef4444; border-radius: 8px; padding: 4px 6px; font-size: 12px; color: #fff; outline: none; font-family: monospace; text-align: right; }
+    tr.edited td { background: rgba(234, 179, 8, 0.06); }
+  </style>
 </head>
 <body class="min-h-screen">
   <div id="loadingGate" class="fixed inset-0 bg-black flex items-center justify-center z-50">
@@ -15,24 +22,31 @@
   </div>
   <div id="navSlot"></div>
 
-  <div id="app" class="hidden md:ml-64 p-4 md:p-8 pt-24 md:pt-8 max-w-6xl">
+  <div id="app" class="hidden md:ml-64 p-4 md:p-8 pt-24 md:pt-8 max-w-7xl">
 
     <div class="panel rounded-2xl p-5 mb-6">
       <h3 class="text-xs uppercase tracking-widest text-gray-500 mb-3">รายงานรายรับ</h3>
       <div class="flex flex-wrap gap-3 items-end">
         <div>
-          <label class="block text-[10px] uppercase tracking-widest text-gray-500 mb-1">จากวันที่</label>
+          <label class="lbl">จากวันที่</label>
           <input id="startDate" type="date" class="bg-black border border-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-red-500">
         </div>
         <div>
-          <label class="block text-[10px] uppercase tracking-widest text-gray-500 mb-1">ถึงวันที่</label>
+          <label class="lbl">ถึงวันที่</label>
           <input id="endDate" type="date" class="bg-black border border-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-red-500">
         </div>
-        <button onclick="loadReport()" class="bg-gray-900 hover:bg-gray-800 border border-gray-800 rounded-lg px-4 py-2 text-sm">ดูรายงาน</button>
-        <button onclick="exportReport('exportMembersPDF')" class="text-xs text-gray-400 hover:text-white underline">Export รายชื่อสมาชิก</button>
-        <button onclick="exportReport('exportPaymentsPDF')" class="text-xs text-gray-400 hover:text-white underline">Export ประวัติชำระเงิน</button>
-        <button onclick="exportReport('exportDailyPaymentsPDF')" class="text-xs text-gray-400 hover:text-white underline">Export POS รายวัน</button>
+        <button id="btnLoad" class="bg-gray-900 hover:bg-gray-800 border border-gray-800 rounded-lg px-4 py-2 text-sm">ดูรายงาน</button>
+        <button data-export="exportMembersPDF" class="text-xs text-gray-400 hover:text-white underline">Export รายชื่อสมาชิก</button>
+        <button data-export="exportPaymentsPDF" class="text-xs text-gray-400 hover:text-white underline">Export ประวัติชำระเงิน</button>
+        <button data-export="exportDailyPaymentsPDF" class="text-xs text-gray-400 hover:text-white underline">Export POS รายวัน</button>
       </div>
+    </div>
+
+    <!-- Days whose figures were typed in by hand rather than computed from bills -->
+    <div id="overrideBanner" class="hidden panel rounded-2xl p-5 mb-6" style="border-color:#a16207;background:rgba(161,98,7,0.08)">
+      <p class="text-yellow-500 font-bold text-sm mb-1"><i class="fa-solid fa-triangle-exclamation mr-2"></i>ยอดบางวันถูกแก้ด้วยมือ — ไม่ได้มาจากบิลจริง</p>
+      <p class="text-gray-400 text-xs mb-3">วันที่อยู่ในรายการนี้ ระบบจะไม่นับบิลที่รับเข้ามาจริง แต่ใช้ตัวเลขที่แอดมินพิมพ์ไว้แทนทั้งวัน กดปุ่ม "ใช้ยอดจริง" เพื่อกลับไปคิดจากบิลตามปกติ</p>
+      <div id="overrideList" class="space-y-2"></div>
     </div>
 
     <div id="summary" class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6"></div>
@@ -48,11 +62,33 @@
       </div>
     </div>
 
-    <div class="panel rounded-2xl overflow-hidden overflow-x-auto">
+    <div class="panel rounded-2xl overflow-hidden overflow-x-auto mb-6">
       <table class="w-full">
-        <thead><tr><th>วันที่</th><th>สมาชิก</th><th>รายวัน</th><th>สินค้า</th><th>รวม</th></tr></thead>
+        <thead><tr>
+          <th>วันที่</th><th class="text-right">สมาชิก</th><th class="text-right">รายวัน</th><th class="text-right">สินค้า</th>
+          <th class="text-right">รายจ่าย</th><th class="text-right">เงินสด</th><th class="text-right">เงินโอน</th><th class="text-right">รวม</th><th></th>
+        </tr></thead>
         <tbody id="rows"></tbody>
       </table>
+    </div>
+
+    <!-- Expenses -->
+    <div class="panel rounded-2xl p-5">
+      <h3 class="text-sm font-bold mb-1"><i class="fa-solid fa-cart-shopping text-orange-500 mr-2"></i>บันทึกรายจ่าย</h3>
+      <p class="text-gray-500 text-xs mb-4">กรอกรายการที่ซื้อในแต่ละวัน จะถูกหักออกจากรายรับอัตโนมัติในสรุปยอดด้านบน และหักออกจากช่องทางที่จ่ายจริง (เงินสด หรือ เงินโอน)</p>
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-3 mb-3">
+        <input id="expDate" type="date" class="fld">
+        <input id="expDesc" type="text" placeholder="ซื้ออะไร เช่น น้ำยาถูพื้น" class="fld md:col-span-1">
+        <input id="expAmount" type="number" min="0" step="0.01" placeholder="จำนวนเงิน" class="fld">
+        <select id="expMethod" class="fld cursor-pointer">
+          <option value="cash">💵 จ่ายด้วยเงินสด</option>
+          <option value="transfer">📱 จ่ายด้วยเงินโอน</option>
+        </select>
+      </div>
+      <button id="btnAddExpense" class="bg-orange-700 hover:bg-orange-600 border border-orange-600 rounded-xl px-5 py-2.5 text-sm font-bold">
+        <i class="fa-solid fa-plus mr-1"></i> บันทึกรายจ่าย
+      </button>
+      <div id="expenseList" class="space-y-2 mt-5"></div>
     </div>
   </div>
 
@@ -60,30 +96,39 @@
     import { callServer, auth, onAuthStateChanged, signOut } from '../shared/firebase-init.js';
     import { renderNav } from '../shared/admin-nav.js';
 
-    function escapeHtml(s) {
-      return (s || '').toString().replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-    }
-    function baht(n) { return (n || 0).toLocaleString('th-TH'); }
+    const $ = (id) => document.getElementById(id);
+    const escapeHtml = (s) => (s || '').toString().replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const baht = (n) => (Math.round((n || 0) * 100) / 100).toLocaleString('th-TH');
 
     onAuthStateChanged(auth, async (user) => {
       if (!user) { window.location.href = '../login.html'; return; }
       const tok = await user.getIdTokenResult();
       if (tok.claims.role !== 'admin') { window.location.href = '../login.html'; return; }
-      document.getElementById('navSlot').outerHTML = renderNav('reports', tok.claims.adminRole);
-      document.getElementById('loadingGate').classList.add('hidden');
-      document.getElementById('app').classList.remove('hidden');
+      $('navSlot').outerHTML = renderNav('reports', tok.claims.adminRole);
+      $('loadingGate').classList.add('hidden');
+      $('app').classList.remove('hidden');
       window.doLogout = async () => { await signOut(auth); window.location.href = '../login.html'; };
 
       const today = new Date();
       const monthAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
-      document.getElementById('startDate').value = monthAgo.toISOString().slice(0, 10);
-      document.getElementById('endDate').value = today.toISOString().slice(0, 10);
-      await loadReport();
+      $('startDate').value = monthAgo.toISOString().slice(0, 10);
+      $('endDate').value = today.toISOString().slice(0, 10);
+      $('expDate').value = today.toISOString().slice(0, 10);
+
+      $('btnLoad').addEventListener('click', refresh);
+      $('btnAddExpense').addEventListener('click', addExpense);
+      document.querySelectorAll('[data-export]').forEach((b) => b.addEventListener('click', () => exportReport(b.dataset.export)));
+
+      await refresh();
     });
 
-    window.loadReport = async function loadReport() {
-      const startDateStr = document.getElementById('startDate').value;
-      const endDateStr = document.getElementById('endDate').value;
+    async function refresh() {
+      await Promise.all([loadReport(), loadExpenses()]);
+    }
+
+    async function loadReport() {
+      const startDateStr = $('startDate').value;
+      const endDateStr = $('endDate').value;
       let report;
       try {
         report = await callServer('getRevenueReport', { startDateStr, endDateStr });
@@ -92,39 +137,176 @@
         return;
       }
 
-      document.getElementById('summary').innerHTML = `
+      renderOverrideBanner(report.overriddenDays || []);
+
+      $('summary').innerHTML = `
         <div class="panel rounded-2xl p-5"><p class="text-[10px] uppercase tracking-widest text-gray-500 mb-1">รายรับรวม</p><p class="text-2xl font-black">${baht(report.totals.grandTotal)}</p></div>
         <div class="panel rounded-2xl p-5"><p class="text-[10px] uppercase tracking-widest text-gray-500 mb-1">รายจ่าย</p><p class="text-2xl font-black text-red-400">${baht(report.totals.expenses)}</p></div>
         <div class="panel rounded-2xl p-5"><p class="text-[10px] uppercase tracking-widest text-gray-500 mb-1">กำไรสุทธิ</p><p class="text-2xl font-black text-green-400">${baht(report.totals.netProfit)}</p></div>
-        <div class="panel rounded-2xl p-5"><p class="text-[10px] uppercase tracking-widest text-gray-500 mb-1">เงินสด / โอน</p><p class="text-lg font-black">${baht(report.totals.cash)} / ${baht(report.totals.transfer)}</p></div>
-      `;
+        <div class="panel rounded-2xl p-5"><p class="text-[10px] uppercase tracking-widest text-gray-500 mb-1">เงินสด / โอน</p><p class="text-lg font-black">${baht(report.totals.cash)} / ${baht(report.totals.transfer)}</p></div>`;
 
-      document.getElementById('topProducts').innerHTML = report.topProducts.length
+      $('topProducts').innerHTML = report.topProducts.length
         ? report.topProducts.slice(0, 10).map((p) => `<div class="flex justify-between border-b border-gray-900 pb-1"><span>${escapeHtml(p.name)} (${p.qty})</span><span class="text-gray-400">${baht(p.revenue)}</span></div>`).join('')
         : '<p class="text-gray-600 text-xs">ไม่มีข้อมูล</p>';
 
-      document.getElementById('trainerFees').innerHTML = report.trainerFees.breakdown.length
+      $('trainerFees').innerHTML = report.trainerFees.breakdown.length
         ? report.trainerFees.breakdown.map((t) => `<div class="flex justify-between border-b border-gray-900 pb-1"><span>${escapeHtml(t.name)}</span><span class="text-gray-400">${baht(t.amount)}</span></div>`).join('')
         : '<p class="text-gray-600 text-xs">ไม่มีข้อมูล</p>';
 
-      const tbody = document.getElementById('rows');
-      tbody.innerHTML = report.breakdown.map((d) => `
-        <tr>
-          <td class="text-gray-400">${d.date}</td>
-          <td class="text-gray-400">${baht(d.membership)}</td>
-          <td class="text-gray-400">${baht(d.dayPass)}</td>
-          <td class="text-gray-400">${baht(d.products)}</td>
-          <td class="font-medium">${baht(d.membership + d.dayPass + d.products)}</td>
-        </tr>`).join('');
-    };
+      renderBreakdown(report.breakdown);
+    }
 
-    window.exportReport = async function exportReport(fnName) {
+    function renderOverrideBanner(days) {
+      $('overrideBanner').classList.toggle('hidden', !days.length);
+      if (!days.length) return;
+
+      $('overrideList').innerHTML = days.map((d, i) => {
+        const diff = d.shownTotal - d.autoTotal;
+        const diffLabel = diff === 0
+          ? '<span class="text-gray-400">ตรงกับบิลจริง</span>'
+          : `<span class="text-orange-400 font-bold">${diff < 0 ? 'ต่ำกว่า' : 'สูงกว่า'}บิลจริง ${baht(Math.abs(diff))} บาท</span>`;
+        return `
+          <div class="bg-black/40 border border-yellow-800/60 rounded-xl p-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+            <span class="font-mono font-bold text-yellow-500">${escapeHtml(d.date)}</span>
+            <span class="text-gray-400">แสดง <b class="text-white">${baht(d.shownTotal)}</b> / บิลจริง <b class="text-white">${baht(d.autoTotal)}</b></span>
+            ${diffLabel}
+            <span class="text-gray-600">แก้โดย ${escapeHtml(d.updatedBy || '-')}${d.updatedAt ? ' • ' + escapeHtml(d.updatedAt) : ''}</span>
+            <button data-revert="${i}" class="ml-auto bg-yellow-700 hover:bg-yellow-600 text-white px-3 py-1.5 rounded-lg font-bold">
+              <i class="fa-solid fa-rotate-left mr-1"></i>ใช้ยอดจริง
+            </button>
+          </div>`;
+      }).join('');
+
+      $('overrideList').querySelectorAll('[data-revert]').forEach((btn) => {
+        const d = days[parseInt(btn.dataset.revert, 10)];
+        btn.addEventListener('click', () => revertOverride(d.date));
+      });
+    }
+
+    async function revertOverride(dateStr) {
+      if (!confirm(`กลับไปใช้ยอดที่คำนวณจากบิลจริงของวันที่ ${dateStr}?\n\nตัวเลขที่พิมพ์เองไว้จะถูกลบทิ้ง`)) return;
+      const res = await callServer('clearDailyRevenueOverride', { dateStr });
+      alert(res.message);
+      if (res.success) await loadReport();
+    }
+
+    function renderBreakdown(breakdown) {
+      $('rows').innerHTML = breakdown.map((d, i) => `
+        <tr data-row="${i}" class="${d.cashTransferOverridden ? 'edited' : ''}">
+          <td class="text-gray-400 font-mono whitespace-nowrap">
+            ${escapeHtml(d.date)}
+            ${d.cashTransferOverridden ? '<i class="fa-solid fa-pen text-yellow-600 text-[10px] ml-1" title="ยอดวันนี้ถูกแก้ด้วยมือ"></i>' : ''}
+          </td>
+          <td class="text-right text-gray-400" data-f="membership">${baht(d.membership)}</td>
+          <td class="text-right text-gray-400" data-f="dayPass">${baht(d.dayPass)}</td>
+          <td class="text-right text-gray-400" data-f="products">${baht(d.products)}</td>
+          <td class="text-right ${d.expenses ? 'text-red-400' : 'text-gray-600'}">${d.expenses ? '-' + baht(d.expenses) : '0'}</td>
+          <td class="text-right text-gray-400" data-f="cash">${baht(d.cash)}</td>
+          <td class="text-right text-blue-400" data-f="transfer">${baht(d.transfer)}</td>
+          <td class="text-right font-bold text-red-400">${baht(d.membership + d.dayPass + d.products)}</td>
+          <td class="text-right"><button data-edit="${i}" class="text-blue-400 hover:text-blue-300 px-2" title="แก้ไขยอดวันนี้"><i class="fa-solid fa-pen"></i></button></td>
+        </tr>`).join('');
+
+      $('rows').querySelectorAll('[data-edit]').forEach((btn) => {
+        btn.addEventListener('click', () => startEdit(breakdown[parseInt(btn.dataset.edit, 10)], parseInt(btn.dataset.edit, 10)));
+      });
+    }
+
+    // Turns one row into inputs. Saving writes a manual override for that whole
+    // day, which the report then uses in place of the computed bill totals.
+    function startEdit(day, idx) {
+      const tr = $('rows').querySelector(`tr[data-row="${idx}"]`);
+      if (!tr || tr.dataset.editing === '1') return;
+      tr.dataset.editing = '1';
+
+      for (const f of ['membership', 'dayPass', 'products', 'cash', 'transfer']) {
+        const td = tr.querySelector(`[data-f="${f}"]`);
+        td.innerHTML = `<input class="cell-edit" data-in="${f}" type="number" min="0" step="0.01" value="${day[f] || 0}">`;
+      }
+      tr.lastElementChild.innerHTML = `
+        <button data-save class="text-green-400 hover:text-green-300 px-1.5" title="บันทึก"><i class="fa-solid fa-check"></i></button>
+        <button data-cancel class="text-gray-500 hover:text-gray-300 px-1.5" title="ยกเลิก"><i class="fa-solid fa-xmark"></i></button>`;
+
+      tr.querySelector('[data-cancel]').addEventListener('click', loadReport);
+      tr.querySelector('[data-save]').addEventListener('click', async () => {
+        const val = (f) => parseFloat(tr.querySelector(`[data-in="${f}"]`).value) || 0;
+        const payload = {
+          dateStr: day.date,
+          membership: val('membership'), dayPass: val('dayPass'), products: val('products'),
+          cash: val('cash'), transfer: val('transfer')
+        };
+        const res = await callServer('setDailyRevenueOverride', payload);
+        alert(res.message);
+        if (res.success) await loadReport();
+      });
+    }
+
+    async function loadExpenses() {
+      let list = [];
+      try {
+        list = await callServer('getExpenseList', { startDateStr: $('startDate').value, endDateStr: $('endDate').value });
+      } catch (e) { /* leave empty */ }
+
+      $('expenseList').innerHTML = list.length ? list.map((e, i) => {
+        const isTransfer = e.paymentMethod === 'โอนเงิน';
+        return `
+          <div class="bg-black/40 border border-gray-800 rounded-xl p-3 flex items-center gap-3">
+            <div class="flex-1 min-w-0">
+              <p class="font-bold text-sm truncate">${escapeHtml(e.description)}</p>
+              <p class="text-gray-600 text-[11px] font-mono">${escapeHtml(e.date)} • บันทึกโดย ${escapeHtml(e.addedBy || '-')}</p>
+            </div>
+            <span class="text-[10px] px-2 py-1 rounded-full font-bold shrink-0 ${isTransfer ? 'bg-blue-950 text-blue-300 border border-blue-800' : 'bg-green-950 text-green-300 border border-green-800'}">
+              ${isTransfer ? '📱 เงินโอน' : '💵 เงินสด'}
+            </span>
+            <span class="font-mono font-bold text-sm shrink-0">${baht(e.amount)} บาท</span>
+            <button data-del="${i}" class="text-gray-600 hover:text-red-400 shrink-0"><i class="fa-solid fa-trash"></i></button>
+          </div>`;
+      }).join('') : '<p class="text-gray-600 text-xs text-center py-6">ยังไม่มีรายจ่ายในช่วงวันที่นี้</p>';
+
+      $('expenseList').querySelectorAll('[data-del]').forEach((btn) => {
+        const e = list[parseInt(btn.dataset.del, 10)];
+        btn.addEventListener('click', () => deleteExpense(e));
+      });
+    }
+
+    async function addExpense() {
+      const payload = {
+        dateStr: $('expDate').value,
+        description: $('expDesc').value.trim(),
+        amount: $('expAmount').value,
+        paymentMethod: $('expMethod').value
+      };
+      if (!payload.description || !payload.amount) { alert('กรุณากรอกรายการและจำนวนเงิน'); return; }
+
+      const btn = $('btnAddExpense');
+      btn.disabled = true;
+      try {
+        const res = await callServer('addExpense', payload);
+        alert(res.message);
+        if (res.success) {
+          $('expDesc').value = '';
+          $('expAmount').value = '';
+          await refresh();
+        }
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    async function deleteExpense(e) {
+      if (!confirm(`ลบรายจ่าย "${e.description}" (${baht(e.amount)} บาท)?`)) return;
+      const res = await callServer('deleteExpense', { docId: e.docId });
+      alert(res.message);
+      if (res.success) await refresh();
+    }
+
+    async function exportReport(fnName) {
       const res = await callServer(fnName);
       if (!res.success) { alert(res.message || 'Export ไม่สำเร็จ'); return; }
       const w = window.open('', '_blank');
       w.document.write(res.html);
       w.document.close();
-    };
+    }
   </script>
 </body>
 </html>

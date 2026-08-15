@@ -87,6 +87,8 @@ exports.processRenewalPayment = onCall(async (request) => {
       await applyCouponUsage_(couponResult.docId);
     }
 
+    const { clearRevenueOverrideForDate_ } = require('./09_dailypos');
+    await clearRevenueOverrideForDate_(new Date().toISOString().slice(0, 10), authCtx.token.adminRole || authCtx.uid, `ต่ออายุสมาชิก ใบเสร็จ ${receiptNo}`);
     await logAudit_(authCtx.token.adminRole || authCtx.uid, 'RENEW_PAYMENT', member.fullName,
       `ต่ออายุสำเร็จ: ${data.package} หมดอายุ ${newExpiryStr} (ใบเสร็จ: ${receiptNo})${discountNote}`);
 
@@ -163,6 +165,8 @@ exports.updatePaymentMethod = onCall(async (request) => {
     if (snap.empty) return { success: false, message: `ไม่พบใบเสร็จเลขที่ ${receiptNo}` };
     const doc = snap.docs[0];
     await doc.ref.update({ paymentMethod: method });
+    const { clearRevenueOverrideForDate_, toOverrideDateKey_ } = require('./09_dailypos');
+    await clearRevenueOverrideForDate_(toOverrideDateKey_(doc.data().timestamp), authCtx.token.adminRole || authCtx.uid, `แก้วิธีชำระเงินใบเสร็จ ${receiptNo}`);
     await logAudit_(authCtx.token.adminRole || authCtx.uid, 'EDIT_PAYMENT_METHOD', doc.data().memberName, `แก้ไขวิธีชำระเงินใบเสร็จ ${receiptNo} เป็น ${method}`);
     return { success: true, message: `🟢 แก้ไขวิธีชำระเงินเป็น "${method}" แล้ว` };
   } catch (e) {
@@ -181,6 +185,8 @@ exports.voidMembershipPayment = onCall(async (request) => {
     const p = doc.data();
     if (p.refundStatus === 'Refunded') return { success: false, message: 'ใบเสร็จนี้ถูกยกเลิก/คืนเงินไปแล้ว' };
     await doc.ref.update({ refundStatus: 'Refunded', refundReason: reason || '', refundedBy: authCtx.token.adminRole || authCtx.uid, refundedAt: FieldValue.serverTimestamp() });
+    const { clearRevenueOverrideForDate_, toOverrideDateKey_ } = require('./09_dailypos');
+    await clearRevenueOverrideForDate_(toOverrideDateKey_(p.timestamp), authCtx.token.adminRole || authCtx.uid, `ยกเลิก/คืนเงินใบเสร็จ ${receiptNo}`);
     await logAudit_(authCtx.token.adminRole || authCtx.uid, 'VOID_MEMBERSHIP_PAYMENT', p.memberName, `ยกเลิก/คืนเงินใบเสร็จ ${receiptNo} ยอด ${p.amount} บาท เหตุผล: ${reason || '-'}`);
     return { success: true, message: `🟢 ยกเลิก/คืนเงินใบเสร็จ ${receiptNo} เรียบร้อยแล้ว` };
   } catch (e) {

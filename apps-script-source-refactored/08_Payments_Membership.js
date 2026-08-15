@@ -105,8 +105,10 @@ function processRenewalPayment(data, token) {
     var receiptNo = getNextReceiptNumber_();
 
     var renewalPaymentMethod = (data.paymentMethod === 'transfer') ? 'โอนเงิน' : 'เงินสด';
-    paymentSheet.appendRow([new Date(), data.memberName, data.package, inputQrData, newExpiryStr, receiptNo, paidAmount, '', '', '', '', renewalPaymentMethod]);
+    var renewalDate = new Date();
+    paymentSheet.appendRow([renewalDate, data.memberName, data.package, inputQrData, newExpiryStr, receiptNo, paidAmount, '', '', '', '', renewalPaymentMethod]);
     if (couponResult) applyCouponUsage_(couponResult.rowNumber);
+    clearRevenueOverrideForDate_(toOverrideDateKey_(renewalDate), session.user, 'ต่ออายุสมาชิก ใบเสร็จ ' + receiptNo);
     logAudit_(session.user, 'RENEW_PAYMENT', data.memberName, 'ต่ออายุสำเร็จ: ' + data.package + ' หมดอายุ ' + newExpiryStr + ' (ใบเสร็จ: ' + receiptNo + ')' + discountNote);
     return {
       success: true,
@@ -202,6 +204,7 @@ function updatePaymentMethod(receiptNo, paymentMethod, token) {
     for (var i = 0; i < rows.length; i++) {
       if ((rows[i][5] || '').toString() === receiptNo.toString()) {
         sheet.getRange(i + 2, 12).setValue(method);
+        clearRevenueOverrideForDate_(toOverrideDateKey_(rows[i][0]), session.user, 'แก้วิธีชำระเงินใบเสร็จ ' + receiptNo);
         logAudit_(session.user, 'EDIT_PAYMENT_METHOD', rows[i][1], 'แก้ไขวิธีชำระเงินใบเสร็จ ' + receiptNo + ' เป็น ' + method);
         return { success: true, message: '🟢 แก้ไขวิธีชำระเงินเป็น "' + method + '" แล้ว' };
       }
@@ -228,6 +231,7 @@ function voidMembershipPayment(token, receiptNo, reason) {
         sheet.getRange(row, 9).setValue(reason || '');
         sheet.getRange(row, 10).setValue(session.user);
         sheet.getRange(row, 11).setValue(new Date());
+        clearRevenueOverrideForDate_(toOverrideDateKey_(rows[i][0]), session.user, 'ยกเลิก/คืนเงินใบเสร็จ ' + receiptNo);
         logAudit_(session.user, 'VOID_MEMBERSHIP_PAYMENT', rows[i][1], 'ยกเลิก/คืนเงินใบเสร็จ ' + receiptNo + ' ยอด ' + rows[i][6] + ' บาท เหตุผล: ' + (reason || '-'));
         return { success: true, message: '🟢 ยกเลิก/คืนเงินใบเสร็จ ' + receiptNo + ' เรียบร้อยแล้ว' };
       }

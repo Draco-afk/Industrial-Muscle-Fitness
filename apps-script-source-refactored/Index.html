@@ -786,6 +786,18 @@
         </div>
       </div>
 
+      <!-- ⚠️ เตือนเมื่อยอดของบางวันถูกแอดมินพิมพ์ทับไว้ (ไม่ได้มาจากบิลจริง) -->
+      <div id="reportOverrideWarning" class="hidden max-w-6xl mb-6 rounded-2xl border border-yellow-600/50 bg-yellow-500/[0.07] p-4 md:p-5">
+        <div class="flex items-start gap-3">
+          <i class="fa-solid fa-triangle-exclamation text-yellow-400 text-lg mt-0.5"></i>
+          <div class="flex-1 min-w-0">
+            <p class="text-yellow-300 font-bold text-sm mb-1">ยอดบางวันถูกแก้ด้วยมือ — ไม่ได้มาจากบิลจริง</p>
+            <p class="text-yellow-200/60 text-xs mb-3">วันที่อยู่ในรายการนี้ ระบบจะไม่นับบิลที่รับเข้ามาจริง แต่ใช้ตัวเลขที่แอดมินพิมพ์ไว้แทนทั้งวัน กดปุ่ม "ใช้ยอดจริง" เพื่อกลับไปคิดจากบิลตามปกติ</p>
+            <div id="reportOverrideList" class="space-y-2"></div>
+          </div>
+        </div>
+      </div>
+
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 mb-6 max-w-6xl">
         <div class="glass-card p-5 rounded-2xl">
           <p class="text-gray-500 text-[10px] uppercase font-bold tracking-widest mb-2">สมาชิกรายเดือน</p>
@@ -844,13 +856,14 @@
         <div class="lg:col-span-2 glass-card p-4 md:p-6 rounded-3xl overflow-x-auto">
           <h3 class="text-gray-300 font-bold text-xs uppercase tracking-wider mb-4"><i class="fa-solid fa-table-list mr-2 text-red-500"></i>สรุปรายวัน</h3>
           <div class="overflow-x-auto custom-scroll max-h-[320px]">
-            <table class="w-full text-left text-xs min-w-[720px]">
+            <table class="w-full text-left text-xs min-w-[800px]">
               <thead>
                 <tr class="border-b border-gray-800 text-gray-500 font-bold uppercase">
                   <th class="pb-3 pl-2">วันที่</th>
                   <th class="pb-3 text-right">สมาชิก</th>
                   <th class="pb-3 text-right">รายวัน</th>
                   <th class="pb-3 text-right">สินค้า</th>
+                  <th class="pb-3 text-right">รายจ่าย</th>
                   <th class="pb-3 text-right">เงินสด</th>
                   <th class="pb-3 text-right">เงินโอน</th>
                   <th class="pb-3 text-right">รวม</th>
@@ -858,7 +871,7 @@
                 </tr>
               </thead>
               <tbody id="reportBreakdownTableBody" class="text-gray-300 divide-y divide-gray-900">
-                <tr><td colspan="8" class="text-center py-6 text-gray-600">เลือกช่วงวันที่แล้วกด "ดูรายงาน"</td></tr>
+                <tr><td colspan="9" class="text-center py-6 text-gray-600">เลือกช่วงวันที่แล้วกด "ดูรายงาน"</td></tr>
               </tbody>
             </table>
           </div>
@@ -876,11 +889,15 @@
         <div class="flex items-center justify-between mb-4">
           <h3 class="text-orange-400 font-bold text-xs uppercase tracking-wider"><i class="fa-solid fa-cart-shopping mr-2"></i>บันทึกรายจ่าย</h3>
         </div>
-        <p class="text-gray-500 text-xs mb-4">กรอกรายการที่ซื้อในแต่ละวัน จะถูกหักออกจากรายรับอัตโนมัติในสรุปยอดด้านบน</p>
-        <div class="grid grid-cols-1 sm:grid-cols-4 gap-3 mb-4">
+        <p class="text-gray-500 text-xs mb-4">กรอกรายการที่ซื้อในแต่ละวัน จะถูกหักออกจากรายรับอัตโนมัติในสรุปยอดด้านบน และหักออกจากช่องทางที่จ่ายจริง (เงินสด หรือ เงินโอน)</p>
+        <div class="grid grid-cols-1 sm:grid-cols-5 gap-3 mb-4">
           <input type="date" id="expenseDate" class="bg-black border border-gray-800 rounded-xl p-3 text-white text-sm outline-none">
           <input type="text" id="expenseDescription" placeholder="ซื้ออะไร เช่น น้ำยาถูพื้น" class="sm:col-span-2 bg-black border border-gray-800 rounded-xl p-3 text-white text-sm outline-none">
           <input type="number" id="expenseAmount" min="0" step="0.01" placeholder="จำนวนเงิน" class="bg-black border border-gray-800 rounded-xl p-3 text-white text-sm outline-none">
+          <select id="expensePaymentMethod" class="bg-black border border-gray-800 rounded-xl p-3 text-white text-sm outline-none cursor-pointer">
+            <option value="cash">💵 จ่ายด้วยเงินสด</option>
+            <option value="transfer">📱 จ่ายด้วยเงินโอน</option>
+          </select>
         </div>
         <button onclick="addExpenseUI()" class="w-full sm:w-auto bg-orange-950 hover:bg-orange-900 text-orange-400 border border-orange-800 font-bold py-3 px-6 rounded-xl text-xs uppercase cursor-pointer mb-5">
           <i class="fa-solid fa-plus mr-1"></i>บันทึกรายจ่าย

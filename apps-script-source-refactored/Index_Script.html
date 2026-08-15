@@ -771,6 +771,7 @@
           const topProducts = report.topProducts || [];
 
           // แยก try/catch แต่ละส่วน กันไม่ให้ส่วนหนึ่งพังแล้วทำให้ส่วนอื่นไม่แสดงผลตามไปด้วย
+          try { renderOverrideWarning(report.overriddenDays); } catch (err) { console.error('renderOverrideWarning error:', err); }
           try { renderRevenueChart(breakdown); } catch (err) { console.error('renderRevenueChart error:', err); }
           try { renderRevenueBreakdownTable(breakdown); } catch (err) { console.error('renderRevenueBreakdownTable error:', err); }
           try { renderTopProducts(topProducts); } catch (err) { console.error('renderTopProducts error:', err); }
@@ -808,6 +809,7 @@
       const dateVal = document.getElementById('expenseDate').value;
       const description = document.getElementById('expenseDescription').value.trim();
       const amount = document.getElementById('expenseAmount').value;
+      const method = document.getElementById('expensePaymentMethod')?.value || 'cash';
 
       if (!dateVal) { alert('กรุณาเลือกวันที่'); return; }
       if (!description) { alert('กรุณากรอกรายการที่ซื้อ'); return; }
@@ -823,7 +825,7 @@
           }
         })
         .withFailureHandler(goToLoginIfExpired)
-        .addExpense(dateVal, description, amount, SESSION_TOKEN);
+        .addExpense(dateVal, description, amount, SESSION_TOKEN, method);
     }
 
     function loadExpenseList() {
@@ -838,18 +840,25 @@
             container.innerHTML = '<p class="text-gray-600 text-xs text-center py-4">ยังไม่มีข้อมูลในช่วงที่เลือก</p>';
             return;
           }
-          container.innerHTML = list.map(e => `
+          container.innerHTML = list.map(e => {
+            const isTransfer = e.paymentMethod === 'โอนเงิน';
+            const badge = isTransfer
+              ? '<span class="text-[9px] bg-blue-950 text-blue-400 border border-blue-800 px-2 py-0.5 rounded-full font-bold whitespace-nowrap">📱 เงินโอน</span>'
+              : '<span class="text-[9px] bg-gray-900 text-gray-400 border border-gray-700 px-2 py-0.5 rounded-full font-bold whitespace-nowrap">💵 เงินสด</span>';
+            return `
             <div class="flex justify-between items-center bg-black/40 border border-gray-900 rounded-xl p-3">
               <div class="min-w-0">
                 <p class="text-white text-xs font-bold truncate">${e.description}</p>
                 <p class="text-gray-500 text-[10px] font-mono">${e.date} • บันทึกโดย ${e.addedBy}</p>
               </div>
               <div class="flex items-center gap-3 shrink-0 ml-2">
+                ${badge}
                 <span class="text-orange-400 font-mono font-bold text-xs">${Number(e.amount).toLocaleString('th-TH')} บาท</span>
                 <button onclick="deleteExpenseUI(${e.rowNumber})" class="text-gray-600 hover:text-red-400 cursor-pointer"><i class="fa-solid fa-trash-can"></i></button>
               </div>
             </div>
-          `).join('');
+          `;
+          }).join('');
         })
         .withFailureHandler(goToLoginIfExpired)
         .getExpenseList(SESSION_TOKEN, startDate, endDate);
@@ -903,24 +912,26 @@
     function renderRevenueBreakdownTable(breakdown) {
       const tbody = document.getElementById('reportBreakdownTableBody');
       if (!breakdown || breakdown.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="8" class="text-center py-6 text-gray-600">ไม่มีข้อมูลในช่วงที่เลือก</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="9" class="text-center py-6 text-gray-600">ไม่มีข้อมูลในช่วงที่เลือก</td></tr>';
         return;
       }
       tbody.innerHTML = '';
       breakdown.forEach(d => {
         const mem = d.membership || 0, dp = d.dayPass || 0, prod = d.products || 0;
-        const cash = d.cash || 0, transfer = d.transfer || 0;
+        const cash = d.cash || 0, transfer = d.transfer || 0, exp = d.expenses || 0;
         const dayTotal = mem + dp + prod;
         const safeDate = d.date || '';
         const tr = document.createElement('tr');
         tr.className = 'hover:bg-white/[0.02]';
         tr.id = 'reportRow_' + safeDate;
+        tr.dataset.expenses = exp; // ใช้ตอนแก้ไขยอด เพื่อเช็คว่า เงินสด+เงินโอน = รวม − รายจ่าย
         const overriddenMark = d.cashTransferOverridden ? ' <i class="fa-solid fa-pen text-yellow-500 text-[9px]" title="แก้ไขด้วยตนเอง"></i>' : '';
         tr.innerHTML =
           '<td class="py-3 pl-2 font-mono text-gray-400">' + (safeDate || '-') + overriddenMark + '</td>' +
           '<td class="py-3 text-right text-gray-300" id="memDisplay_' + safeDate + '">' + Number(mem).toLocaleString('th-TH') + '</td>' +
           '<td class="py-3 text-right text-gray-300" id="dpDisplay_' + safeDate + '">' + Number(dp).toLocaleString('th-TH') + '</td>' +
           '<td class="py-3 text-right text-gray-300" id="prodDisplay_' + safeDate + '">' + Number(prod).toLocaleString('th-TH') + '</td>' +
+          '<td class="py-3 text-right text-orange-400">' + (exp ? '−' + Number(exp).toLocaleString('th-TH') : '0') + '</td>' +
           '<td class="py-3 text-right text-gray-400" id="cashDisplay_' + safeDate + '">' + Number(cash).toLocaleString('th-TH') + '</td>' +
           '<td class="py-3 text-right text-blue-400" id="transferDisplay_' + safeDate + '">' + Number(transfer).toLocaleString('th-TH') + '</td>' +
           '<td class="py-3 text-right text-red-400 font-bold" id="totalDisplay_' + safeDate + '">' + Number(dayTotal).toLocaleString('th-TH') + '</td>' +
@@ -942,21 +953,57 @@
       memCell.innerHTML = '<input type="number" min="0" step="0.01" id="memInput_' + dateStr + '" value="' + curMem + '" class="' + inputCls + '" oninput="updateEditTotalPreview(\'' + dateStr + '\')">';
       dpCell.innerHTML = '<input type="number" min="0" step="0.01" id="dpInput_' + dateStr + '" value="' + curDp + '" class="' + inputCls + '" oninput="updateEditTotalPreview(\'' + dateStr + '\')">';
       prodCell.innerHTML = '<input type="number" min="0" step="0.01" id="prodInput_' + dateStr + '" value="' + curProd + '" class="' + inputCls + '" oninput="updateEditTotalPreview(\'' + dateStr + '\')">';
-      cashCell.innerHTML = '<input type="number" min="0" step="0.01" id="cashInput_' + dateStr + '" value="' + curCash + '" class="' + inputCls + '">';
-      transferCell.innerHTML = '<input type="number" min="0" step="0.01" id="transferInput_' + dateStr + '" value="' + curTransfer + '" class="' + inputCls + '">';
+      cashCell.innerHTML = '<input type="number" min="0" step="0.01" id="cashInput_' + dateStr + '" value="' + curCash + '" class="' + inputCls + '" oninput="updateEditTotalPreview(\'' + dateStr + '\', \'cash\')">';
+      transferCell.innerHTML = '<input type="number" min="0" step="0.01" id="transferInput_' + dateStr + '" value="' + curTransfer + '" class="' + inputCls + '" oninput="updateEditTotalPreview(\'' + dateStr + '\', \'transfer\')">';
       actionCell.innerHTML =
         '<button onclick="saveRevenueRowEdit(\'' + dateStr + '\')" class="text-green-500 hover:text-green-400 cursor-pointer mr-2" title="บันทึก"><i class="fa-solid fa-check"></i></button>' +
         '<button onclick="resetRevenueRowUI(\'' + dateStr + '\')" class="text-orange-500 hover:text-orange-400 cursor-pointer mr-2" title="รีเซ็ตกลับเป็นค่าคำนวณอัตโนมัติ"><i class="fa-solid fa-rotate-left"></i></button>' +
         '<button onclick="loadRevenueReport()" class="text-gray-500 hover:text-red-400 cursor-pointer" title="ยกเลิก"><i class="fa-solid fa-xmark"></i></button>';
+
+      // แสดงสถานะสมดุลตั้งแต่เปิดช่องแก้ไข เผื่อยอดเดิมที่บันทึกไว้ไม่ตรงกันอยู่ก่อนแล้ว
+      renderEditBalanceHint_(dateStr, curMem + curDp + curProd, curCash + curTransfer);
+    }
+
+    // รายจ่ายของวันนั้น (เก็บไว้ตอนวาดตาราง) - เงินสด/เงินโอนที่แสดงคือยอดหลังหักรายจ่ายไปแล้ว
+    function dayExpenseOf_(dateStr) {
+      const row = document.getElementById('reportRow_' + dateStr);
+      return parseFloat(row?.dataset.expenses) || 0;
     }
 
     // อัปเดตช่อง "รวม" ให้เห็นทันทีขณะพิมพ์ (แค่พรีวิว ยังไม่บันทึกจนกว่าจะกดติ๊กถูก)
-    function updateEditTotalPreview(dateStr) {
-      const mem = parseFloat(document.getElementById('memInput_' + dateStr)?.value) || 0;
-      const dp = parseFloat(document.getElementById('dpInput_' + dateStr)?.value) || 0;
-      const prod = parseFloat(document.getElementById('prodInput_' + dateStr)?.value) || 0;
+    // พร้อมปรับเงินสด/เงินโอนให้สมดุลตามอัตโนมัติ ตามกฎ เงินสด + เงินโอน = ยอดรวม − รายจ่าย
+    // (เงินสด/เงินโอน คือเงินที่เหลืออยู่จริงหลังจ่ายรายจ่ายออกไปแล้ว)
+    function updateEditTotalPreview(dateStr, source) {
+      const num = key => parseFloat(document.getElementById(key + 'Input_' + dateStr)?.value) || 0;
+      const cashEl = document.getElementById('cashInput_' + dateStr);
+      const transferEl = document.getElementById('transferInput_' + dateStr);
+      if (!cashEl || !transferEl) return;
+
+      const round2 = n => Math.round(n * 100) / 100;
+      const total = round2(num('mem') + num('dp') + num('prod'));
+      const target = round2(total - dayExpenseOf_(dateStr)); // ยอดที่เงินสด+เงินโอน ต้องรวมกันได้
+
+      // แก้ช่องเงินโอน -> ให้เงินสดวิ่งตาม / แก้ช่องอื่น (สมาชิก, รายวัน, สินค้า, เงินสด) -> ให้เงินโอนวิ่งตาม
+      if (source === 'transfer') {
+        cashEl.value = round2(Math.max(0, target - num('transfer')));
+      } else {
+        transferEl.value = round2(Math.max(0, target - num('cash')));
+      }
+
+      renderEditBalanceHint_(dateStr, total, num('cash') + num('transfer'));
+    }
+
+    // เขียนยอดรวมลงช่อง "รวม" พร้อมเตือนถ้าเงินสด+โอน ยังไม่เท่ากับ ยอดรวม − รายจ่าย
+    // (เกิดได้เมื่อกรอกเงินสดมากกว่ายอดที่ควรเหลือ จนเงินโอนถูกบีบเหลือ 0)
+    function renderEditBalanceHint_(dateStr, total, paidTotal) {
       const totalCell = document.getElementById('totalDisplay_' + dateStr);
-      if (totalCell) totalCell.innerText = (mem + dp + prod).toLocaleString('th-TH');
+      if (!totalCell) return;
+      const exp = dayExpenseOf_(dateStr);
+      const diff = Math.round((paidTotal - (total - exp)) * 100) / 100;
+      totalCell.innerHTML = Number(total).toLocaleString('th-TH') +
+        (diff === 0 ? '' :
+          '<div class="text-[9px] font-normal text-yellow-400 mt-0.5 whitespace-nowrap">เงินสด+โอน ' +
+          (diff > 0 ? 'เกิน ' : 'ขาด ') + Math.abs(diff).toLocaleString('th-TH') + '</div>');
     }
 
     function saveRevenueRowEdit(dateStr) {
@@ -966,6 +1013,20 @@
       const cashVal = document.getElementById('cashInput_' + dateStr)?.value;
       const transferVal = document.getElementById('transferInput_' + dateStr)?.value;
       if ([memVal, dpVal, prodVal, cashVal, transferVal].some(v => v === undefined)) return;
+
+      // กันบันทึกยอดที่ขัดกันเองโดยไม่รู้ตัว
+      const n = v => parseFloat(v) || 0;
+      const exp = dayExpenseOf_(dateStr);
+      const totalSum = Math.round((n(memVal) + n(dpVal) + n(prodVal)) * 100) / 100;
+      const targetSum = Math.round((totalSum - exp) * 100) / 100;
+      const paidSum = Math.round((n(cashVal) + n(transferVal)) * 100) / 100;
+      if (targetSum !== paidSum) {
+        const ok = confirm('⚠️ เงินสด + เงินโอน = ' + paidSum.toLocaleString('th-TH') + ' บาท\n' +
+          'แต่ยอดที่ควรเหลือ = ' + totalSum.toLocaleString('th-TH') + ' (รวมรายรับ) − ' +
+          exp.toLocaleString('th-TH') + ' (รายจ่าย) = ' + targetSum.toLocaleString('th-TH') + ' บาท\n\n' +
+          'สองยอดนี้ควรเท่ากัน ถ้าบันทึกต่อ การ์ดสรุปด้านบนจะแสดงตัวเลขที่ขัดกันเอง\n\nยืนยันบันทึกต่อไหม?');
+        if (!ok) return;
+      }
 
       google.script.run
         .withSuccessHandler(res => {
@@ -985,6 +1046,41 @@
         })
         .withFailureHandler(goToLoginIfExpired)
         .clearDailyRevenueOverride(dateStr, SESSION_TOKEN);
+    }
+
+    // ⚠️ แสดงรายการวันที่ยอดถูกพิมพ์ทับไว้ พร้อมเทียบกับยอดจริงจากบิล และปุ่มกดกลับไปใช้ยอดจริง
+    function renderOverrideWarning(overriddenDays) {
+      const box = document.getElementById('reportOverrideWarning');
+      const list = document.getElementById('reportOverrideList');
+      if (!box || !list) return;
+
+      if (!overriddenDays || overriddenDays.length === 0) {
+        box.classList.add('hidden');
+        list.innerHTML = '';
+        return;
+      }
+
+      const fmt = n => Number(n || 0).toLocaleString('th-TH');
+      list.innerHTML = '';
+      overriddenDays.forEach(d => {
+        const diff = (d.shownTotal || 0) - (d.autoTotal || 0);
+        const diffTxt = diff === 0
+          ? 'ตรงกับบิลจริง'
+          : (diff > 0 ? 'สูงกว่าบิลจริง ' : 'ต่ำกว่าบิลจริง ') + fmt(Math.abs(diff)) + ' บาท';
+        const by = d.updatedBy ? ('แก้โดย ' + d.updatedBy + (d.updatedAt ? ' • ' + d.updatedAt : '')) : '';
+
+        const row = document.createElement('div');
+        row.className = 'flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs bg-black/40 border border-yellow-900/40 rounded-xl p-2.5';
+        row.innerHTML =
+          '<span class="font-mono font-bold text-yellow-300">' + (d.date || '-') + '</span>' +
+          '<span class="text-gray-400">แสดง <b class="text-white">' + fmt(d.shownTotal) + '</b> / บิลจริง <b class="text-white">' + fmt(d.autoTotal) + '</b></span>' +
+          '<span class="' + (diff === 0 ? 'text-gray-500' : 'text-yellow-400 font-bold') + '">' + diffTxt + '</span>' +
+          (by ? '<span class="text-gray-600">' + by + '</span>' : '') +
+          '<button data-override-date="' + (d.date || '') + '" class="ml-auto bg-yellow-600 hover:bg-yellow-500 text-black font-bold px-3 py-1.5 rounded-lg cursor-pointer whitespace-nowrap"><i class="fa-solid fa-rotate-left mr-1"></i>ใช้ยอดจริง</button>';
+        row.querySelector('button').addEventListener('click', () => resetRevenueRowUI(d.date));
+        list.appendChild(row);
+      });
+      box.classList.remove('hidden');
     }
 
     function renderTopProducts(topProducts) {

@@ -197,7 +197,8 @@ function getRevenueReport(token, startDateStr, endDateStr) {
     var expenseSheet = ensureExpenseSheet_();
     var eLastRow = expenseSheet.getLastRow();
     if (eLastRow > 1) {
-      var eRows = expenseSheet.getRange(2, 1, eLastRow - 1, 5).getValues();
+      var eNumCols = Math.max(expenseSheet.getLastColumn(), 6);
+      var eRows = expenseSheet.getRange(2, 1, eLastRow - 1, eNumCols).getValues();
       for (var k = 0; k < eRows.length; k++) {
         var eDateRaw = eRows[k][1];
         var eKey = eDateRaw instanceof Date ? Utilities.formatDate(eDateRaw, tz, "yyyy-MM-dd") : (eDateRaw || '').toString();
@@ -205,10 +206,20 @@ function getRevenueReport(token, startDateStr, endDateStr) {
         var eAmount = eRows[k][3] || 0;
         totalExpenses += eAmount;
         if (dailyBuckets[eKey]) dailyBuckets[eKey].expenses += eAmount;
+
+        // 💸 หักรายจ่ายออกจากช่องทางที่จ่ายจริง เพื่อให้ เงินสด + เงินโอน = เงินที่เหลืออยู่จริง (= กำไรสุทธิ)
+        if (expensePaymentMethod_(eRows[k][5]) === 'โอนเงิน') {
+          totalTransfer -= eAmount;
+          if (dailyBuckets[eKey]) dailyBuckets[eKey].transfer -= eAmount;
+        } else {
+          totalCash -= eAmount;
+          if (dailyBuckets[eKey]) dailyBuckets[eKey].cash -= eAmount;
+        }
       }
     }
 
     // 4) ยอดที่แอดมินแก้ไขเองในรายงาน (ถ้ามี) - ใช้แทนที่ยอดที่คำนวณอัตโนมัติของวันนั้นๆ ทั้งแถว (สมาชิก/รายวัน/สินค้า/เงินสด/เงินโอน)
+    var overriddenDays = []; // ⚠️ วันที่ยอดไม่ได้มาจากบิลจริง - ส่งไปเตือนบนหน้ารายงาน
     var overrideSheet = ensureCashTransferOverrideSheet_();
     var oLastRow = overrideSheet.getLastRow();
     if (oLastRow > 1) {
@@ -218,6 +229,13 @@ function getRevenueReport(token, startDateStr, endDateStr) {
         var oKey = oRows[m][0] instanceof Date ? Utilities.formatDate(oRows[m][0], tz, "yyyy-MM-dd") : (oRows[m][0] || '').toString();
         if (oKey < startDateStr || oKey > endDateStr) continue;
         if (!dailyBuckets[oKey]) continue;
+
+        // เก็บยอดจริงที่คำนวณจากบิลไว้ก่อน เพื่อเอาไปเทียบให้แอดมินเห็นว่ายอดที่พิมพ์เองต่างจากของจริงเท่าไร
+        var autoMembership = dailyBuckets[oKey].membership;
+        var autoDayPass = dailyBuckets[oKey].dayPass;
+        var autoProducts = dailyBuckets[oKey].products;
+        var autoCash = dailyBuckets[oKey].cash;
+        var autoTransfer = dailyBuckets[oKey].transfer;
 
         // หักยอดเดิมที่คำนวณอัตโนมัติของวันนั้นออกจากยอดรวมก่อน แล้วค่อยบวกยอดที่แก้ไขใหม่เข้าไปแทน
         totalCash -= dailyBuckets[oKey].cash;
@@ -244,8 +262,21 @@ function getRevenueReport(token, startDateStr, endDateStr) {
         totalMembership += dailyBuckets[oKey].membership;
         totalDayPass += dailyBuckets[oKey].dayPass;
         totalProducts += dailyBuckets[oKey].products;
+
+        overriddenDays.push({
+          date: oKey,
+          autoTotal: autoMembership + autoDayPass + autoProducts,
+          autoCash: autoCash,
+          autoTransfer: autoTransfer,
+          shownTotal: dailyBuckets[oKey].membership + dailyBuckets[oKey].dayPass + dailyBuckets[oKey].products,
+          shownCash: dailyBuckets[oKey].cash,
+          shownTransfer: dailyBuckets[oKey].transfer,
+          updatedBy: (oRows[m][3] || '').toString(),
+          updatedAt: oRows[m][4] instanceof Date ? Utilities.formatDate(oRows[m][4], tz, "yyyy-MM-dd HH:mm") : ''
+        });
       }
     }
+    overriddenDays.sort(function (a, b) { return a.date < b.date ? -1 : 1; });
 
     var breakdown = orderedKeys.map(function (k) { return dailyBuckets[k]; });
     var topProducts = Object.keys(productRevenueMap).map(function (name) {
@@ -268,9 +299,11 @@ function getRevenueReport(token, startDateStr, endDateStr) {
         expenses: totalExpenses,
         netProfit: (totalMembership + totalDayPass + totalProducts) - totalExpenses,
         cash: totalCash,
-        transfer: totalTransfer
+        transfer: totalTransfer,
+        hasOverrides: overriddenDays.length > 0
       },
       breakdown: breakdown,
+      overriddenDays: overriddenDays,
       topProducts: topProducts,
       trainerFees: {
         total: totalTrainerFees,

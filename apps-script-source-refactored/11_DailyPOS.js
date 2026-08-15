@@ -23,9 +23,20 @@ function ensureExpenseSheet_() {
   var sheet = ss.getSheetByName('Expenses');
   if (!sheet) {
     sheet = ss.insertSheet('Expenses');
-    sheet.appendRow(["Timestamp", "Date", "Description", "Amount", "Added By"]);
+    sheet.appendRow(["Timestamp", "Date", "Description", "Amount", "Added By", "Payment Method"]);
   }
+  // เผื่อชีทเดิมที่สร้างไว้ก่อนหน้านี้ยังไม่มีคอลัมน์วิธีจ่าย ให้เพิ่มหัวคอลัมน์ให้อัตโนมัติ
+  var headerRow = sheet.getRange(1, 1, 1, Math.max(sheet.getLastColumn(), 6)).getValues()[0];
+  if (!headerRow[5]) sheet.getRange(1, 6).setValue("Payment Method");
   return sheet;
+}
+
+// วิธีจ่ายของรายการรายจ่าย ใช้ตัดสินว่าจะหักเงินออกจากช่องทางไหน
+// รายการเก่าที่บันทึกไว้ก่อนมีคอลัมน์นี้ (ค่าว่าง) ให้ถือเป็นเงินโอน
+function expensePaymentMethod_(rawValue) {
+  var v = (rawValue || '').toString().trim();
+  if (!v) return 'โอนเงิน';
+  return v === 'โอนเงิน' ? 'โอนเงิน' : 'เงินสด';
 }
 
 function ensureCashTransferOverrideSheet_() {
@@ -99,7 +110,37 @@ function clearDailyRevenueOverride(dateStr, token) {
   } catch (e) { return { success: false, message: e.toString() }; }
 }
 
-function addExpense(dateStr, description, amount, token) {
+// 🔓 ปลดล็อกยอดที่แอดมินเคยแก้เองของวันนั้น เมื่อมีเงินเข้า/ออกจริงเกิดขึ้นใหม่
+// ถ้าไม่ปลดล็อก บิลใหม่จะถูกยอดที่พิมพ์ค้างไว้บังทั้งวัน ทำให้รายงานไม่ขยับตามที่บันทึกจริง
+function clearRevenueOverrideForDate_(dateStr, user, note) {
+  try {
+    if (!dateStr) return false;
+    var sheet = ensureCashTransferOverrideSheet_();
+    var lastRow = sheet.getLastRow();
+    if (lastRow <= 1) return false;
+    var tz = Session.getScriptTimeZone();
+    var rows = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
+    for (var i = 0; i < rows.length; i++) {
+      var rDate = rows[i][0] instanceof Date ? Utilities.formatDate(rows[i][0], tz, "yyyy-MM-dd") : (rows[i][0] || '').toString();
+      if (rDate !== dateStr) continue;
+      sheet.deleteRow(i + 2);
+      logAudit_(user || 'system', 'AUTO_CLEAR_REVENUE_OVERRIDE', dateStr, 'ยกเลิกยอดที่แก้เองของวันที่ ' + dateStr + ' อัตโนมัติ เพราะมีรายการใหม่: ' + (note || '-'));
+      return true;
+    }
+    return false;
+  } catch (e) { return false; } // ห้ามให้การปลดล็อกที่ล้มเหลว ไปทำให้การรับเงิน/คืนเงินพังตามไปด้วย
+}
+
+// แปลงค่าวันที่จากชีท (Date หรือข้อความ) เป็น yyyy-MM-dd เพื่อใช้จับคู่กับชีท DailyPaymentOverrides
+function toOverrideDateKey_(value) {
+  if (!value) return '';
+  var d = value instanceof Date ? value : new Date(value);
+  if (isNaN(d.getTime())) return '';
+  return Utilities.formatDate(d, Session.getScriptTimeZone(), "yyyy-MM-dd");
+}
+
+// paymentMethod ต่อท้ายพารามิเตอร์เดิม เผื่อหน้าเว็บที่ค้าง cache อยู่ยังเรียกแบบ 4 ตัวได้ (จะกลายเป็นเงินสดตามค่าเริ่มต้น)
+function addExpense(dateStr, description, amount, token, paymentMethod) {
   var session = validateSession(token);
   if (!session) return { success: false, message: 'Session หมดอายุ กรุณา Login ใหม่' };
   try {
@@ -109,10 +150,12 @@ function addExpense(dateStr, description, amount, token) {
     if (isNaN(amt) || amt <= 0) return { success: false, message: 'กรุณากรอกจำนวนเงินให้ถูกต้อง' };
     if (!dateStr) return { success: false, message: 'กรุณาเลือกวันที่' };
 
+    var method = (paymentMethod === 'transfer' || paymentMethod === 'โอนเงิน') ? 'โอนเงิน' : 'เงินสด';
     var sheet = ensureExpenseSheet_();
-    sheet.appendRow([new Date(), dateStr, desc, amt, session.user]);
-    logAudit_(session.user, 'ADD_EXPENSE', desc, 'บันทึกรายจ่ายวันที่ ' + dateStr + ' จำนวน ' + amt.toLocaleString('th-TH') + ' บาท');
-    return { success: true, message: '🟢 บันทึกรายจ่ายสำเร็จแล้ว!' };
+    sheet.appendRow([new Date(), dateStr, desc, amt, session.user, method]);
+    clearRevenueOverrideForDate_(dateStr, session.user, 'บันทึกรายจ่าย ' + desc);
+    logAudit_(session.user, 'ADD_EXPENSE', desc, 'บันทึกรายจ่ายวันที่ ' + dateStr + ' จำนวน ' + amt.toLocaleString('th-TH') + ' บาท (' + method + ')');
+    return { success: true, message: '🟢 บันทึกรายจ่ายสำเร็จแล้ว! (' + method + ')' };
   } catch (e) { return { success: false, message: e.toString() }; }
 }
 
@@ -123,7 +166,8 @@ function getExpenseList(token, startDateStr, endDateStr) {
     var sheet = ensureExpenseSheet_();
     var lastRow = sheet.getLastRow();
     if (lastRow <= 1) return [];
-    var rows = sheet.getRange(2, 1, lastRow - 1, 5).getValues();
+    var numCols = Math.max(sheet.getLastColumn(), 6);
+    var rows = sheet.getRange(2, 1, lastRow - 1, numCols).getValues();
     var list = [];
     for (var i = 0; i < rows.length; i++) {
       var dateStr = rows[i][1] instanceof Date ? Utilities.formatDate(rows[i][1], Session.getScriptTimeZone(), "yyyy-MM-dd") : (rows[i][1] || '').toString();
@@ -134,7 +178,8 @@ function getExpenseList(token, startDateStr, endDateStr) {
         date: dateStr,
         description: rows[i][2],
         amount: rows[i][3] || 0,
-        addedBy: rows[i][4] || ''
+        addedBy: rows[i][4] || '',
+        paymentMethod: expensePaymentMethod_(rows[i][5])
       });
     }
     list.sort(function (a, b) { return a.date < b.date ? 1 : (a.date > b.date ? -1 : 0); });
@@ -149,7 +194,9 @@ function deleteExpense(rowNumber, token) {
     var sheet = ensureExpenseSheet_();
     var row = parseInt(rowNumber);
     var desc = sheet.getRange(row, 3).getValue();
+    var expenseDate = toOverrideDateKey_(sheet.getRange(row, 2).getValue());
     sheet.deleteRow(row);
+    clearRevenueOverrideForDate_(expenseDate, session.user, 'ลบรายจ่าย ' + desc);
     logAudit_(session.user, 'DELETE_EXPENSE', desc, 'ลบรายการรายจ่ายออกจากระบบ');
     return { success: true, message: 'ลบรายการ "' + desc + '" ออกจากระบบสำเร็จ' };
   } catch (e) { return { success: false, message: e.toString() }; }
@@ -258,8 +305,10 @@ function processDailyPayment(data, token) {
     var phone = (data.phone || '').toString().trim();
 
     var paymentMethod = (data.paymentMethod === 'transfer') ? 'โอนเงิน' : 'เงินสด';
-    sheet.appendRow([new Date(), name, "'" + phone, totalAmount, receiptNo, JSON.stringify(items), '', '', '', '', paymentMethod]);
+    var billDate = new Date();
+    sheet.appendRow([billDate, name, "'" + phone, totalAmount, receiptNo, JSON.stringify(items), '', '', '', '', paymentMethod]);
     if (couponResult) applyCouponUsage_(couponResult.rowNumber);
+    clearRevenueOverrideForDate_(toOverrideDateKey_(billDate), session.user, 'รับชำระเงินรายวัน ใบเสร็จ ' + receiptNo);
 
     // ตัดสต็อกสินค้าหลังบันทึกการขายสำเร็จ
     stockDeductions.forEach(function (d) {
@@ -320,6 +369,7 @@ function updateDailyPaymentMethod(receiptNo, paymentMethod, token) {
     for (var i = 0; i < rows.length; i++) {
       if ((rows[i][4] || '').toString() === receiptNo.toString()) {
         sheet.getRange(i + 2, 11).setValue(method);
+        clearRevenueOverrideForDate_(toOverrideDateKey_(rows[i][0]), session.user, 'แก้วิธีชำระเงินใบเสร็จ ' + receiptNo);
         logAudit_(session.user, 'EDIT_PAYMENT_METHOD', rows[i][1], 'แก้ไขวิธีชำระเงินใบเสร็จ ' + receiptNo + ' เป็น ' + method);
         return { success: true, message: '🟢 แก้ไขวิธีชำระเงินเป็น "' + method + '" แล้ว' };
       }
@@ -370,6 +420,7 @@ function voidDailyPayment(token, receiptNo, reason) {
           }
         } catch (e3) { /* ไม่ต้องหยุดการคืนเงินถ้าคืนสต็อกไม่สำเร็จ */ }
 
+        clearRevenueOverrideForDate_(toOverrideDateKey_(rows[i][0]), session.user, 'ยกเลิก/คืนเงินใบเสร็จ ' + receiptNo);
         logAudit_(session.user, 'VOID_DAILY_PAYMENT', rows[i][1], 'ยกเลิก/คืนเงินใบเสร็จ ' + receiptNo + ' ยอด ' + rows[i][3] + ' บาท เหตุผล: ' + (reason || '-'));
         return { success: true, message: '🟢 ยกเลิก/คืนเงินใบเสร็จ ' + receiptNo + ' เรียบร้อยแล้ว' };
       }
@@ -389,7 +440,9 @@ function deleteDailyPaymentLog(receiptNo, token) {
     for (var i = 0; i < rows.length; i++) {
       if ((rows[i][4] || '').toString() === receiptNo) {
         var custName = rows[i][1];
+        var deletedBillDate = toOverrideDateKey_(rows[i][0]);
         sheet.deleteRow(i + 2);
+        clearRevenueOverrideForDate_(deletedBillDate, session.user, 'ลบบิลรายวัน ใบเสร็จ ' + receiptNo);
         logAudit_(session.user, 'DELETE_DAILY_PAYMENT', custName, 'ลบรายการชำระเงินรายวัน ใบเสร็จ: ' + receiptNo);
         return { success: true, message: 'ลบรายการเรียบร้อยแล้ว' };
       }

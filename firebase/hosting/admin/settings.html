@@ -130,12 +130,12 @@
         <h3 class="text-xs uppercase tracking-widest text-gray-500 mb-1">ส่วนลดวันเกิด</h3>
         <p class="text-gray-500 text-[11px] mb-3">ใช้อัตโนมัติตอนสมัคร/ต่ออายุ ถ้าเดือนเกิดตรงกับเดือนปัจจุบัน</p>
         <div class="flex gap-2">
-          <select id="bd_type" class="fld w-28 cursor-pointer">
+          <select id="bd_type" class="fld fld-sm cursor-pointer">
             <option value="Percent">%</option>
             <option value="Fixed">บาท</option>
           </select>
-          <input id="bd_value" type="number" min="0" step="0.01" class="fld flex-1">
-          <button id="btnSaveBirthday" class="btn-primary px-4 rounded-xl text-sm font-bold">บันทึก</button>
+          <input id="bd_value" type="number" min="0" step="0.01" class="fld fld-grow">
+          <button id="btnSaveBirthday" class="btn-primary shrink-0 px-4 rounded-xl text-sm font-bold">บันทึก</button>
         </div>
       </div>
 
@@ -156,8 +156,8 @@
       <h3 class="text-xs uppercase tracking-widest text-gray-500 mb-1">เครื่องสแกนลายนิ้วมือหน้าประตู</h3>
       <p class="text-gray-500 text-[11px] mb-3">API Key ที่โปรแกรมตัวกลางของเครื่องสแกนต้องใช้ส่งข้อมูลเข้าระบบ (ตั้งใหม่ได้ตลอด ตัวเก่าจะใช้ไม่ได้ทันที)</p>
       <div class="flex gap-2">
-        <input id="fp_apiKey" placeholder="API Key ใหม่ (เว้นว่าง = ไม่เปลี่ยน)" class="fld flex-1">
-        <button id="btnSaveApiKey" class="btn-primary px-5 rounded-xl text-sm font-bold">บันทึก</button>
+        <input id="fp_apiKey" placeholder="API Key ใหม่ (เว้นว่าง = ไม่เปลี่ยน)" class="fld fld-grow">
+        <button id="btnSaveApiKey" class="btn-primary shrink-0 px-5 rounded-xl text-sm font-bold">บันทึก</button>
       </div>
       <p class="text-gray-600 text-[11px] mt-2">Webhook URL: <span class="font-mono text-gray-500">https://us-central1-industrial-muscle-fitness.cloudfunctions.net/fingerprintWebhook</span></p>
     </div>
@@ -176,8 +176,8 @@
         ระบบจะสำรองข้อมูลให้อัตโนมัติก่อนลบเสมอ
       </p>
       <div class="flex gap-2">
-        <input id="clearPhrase" placeholder='พิมพ์ ลบข้อมูลถาวร เพื่อยืนยัน' class="fld flex-1">
-        <button id="btnClearData" class="bg-red-800 hover:bg-red-700 border border-red-700 px-5 rounded-xl text-sm font-bold">ล้างข้อมูล</button>
+        <input id="clearPhrase" placeholder='พิมพ์ ลบข้อมูลถาวร เพื่อยืนยัน' class="fld fld-grow">
+        <button id="btnClearData" class="shrink-0 bg-red-800 hover:bg-red-700 border border-red-700 px-5 rounded-xl text-sm font-bold">ล้างข้อมูล</button>
       </div>
     </div>
   </div>

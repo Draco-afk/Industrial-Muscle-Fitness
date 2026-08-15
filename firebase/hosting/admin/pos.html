@@ -9,9 +9,6 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
   <link rel="stylesheet" href="../shared/admin-nav.css">
   <style>
-    .fld { width: 100%; background: #000; border: 1px solid #1f2937; border-radius: 12px; padding: 12px; font-size: 13px; color: #fff; outline: none; }
-    .fld:focus { border-color: #ef4444; }
-    .lbl { display: block; font-size: 10px; text-transform: uppercase; font-weight: 700; color: #6b7280; letter-spacing: 0.1em; margin-bottom: 6px; }
     .stepBtn { width: 34px; height: 34px; border-radius: 10px; background: #1f2937; color: #fff; font-weight: 700; }
     .stepBtn:hover { background: #374151; }
     .prodTile { background: rgba(0,0,0,0.5); border: 1px solid #1f2937; border-radius: 14px; padding: 12px; text-align: left; transition: all .15s; }
@@ -88,16 +85,16 @@
         <div class="panel rounded-2xl p-5">
           <p class="text-sm font-bold mb-1"><i class="fa-solid fa-tag text-red-500 mr-2"></i>ส่วนลดพิเศษ (ไม่ต้องมีโค้ด) — ใช้ได้กับค่าเข้ายิมเท่านั้น</p>
           <div class="flex gap-2 mt-3">
-            <select id="manualDiscType" class="fld w-24 cursor-pointer">
+            <select id="manualDiscType" class="fld fld-sm cursor-pointer">
               <option value="Percent">%</option>
               <option value="Fixed">บาท</option>
             </select>
-            <input id="manualDiscValue" type="number" min="0" step="0.01" placeholder="0" class="fld flex-1">
-            <button id="btnApplyManual" class="px-5 rounded-xl bg-gray-800 hover:bg-gray-700 text-xs font-bold">ใช้</button>
+            <input id="manualDiscValue" type="number" min="0" step="0.01" placeholder="0" class="fld fld-grow">
+            <button id="btnApplyManual" class="shrink-0 px-5 rounded-xl bg-gray-800 hover:bg-gray-700 text-xs font-bold">ใช้</button>
           </div>
           <div class="flex gap-2 mt-3">
-            <input id="couponCode" type="text" placeholder="โค้ดคูปอง (ถ้ามี)" class="fld flex-1">
-            <button id="btnApplyCoupon" class="px-5 rounded-xl bg-gray-800 hover:bg-gray-700 text-xs font-bold">ใช้โค้ด</button>
+            <input id="couponCode" type="text" placeholder="โค้ดคูปอง (ถ้ามี)" class="fld fld-grow">
+            <button id="btnApplyCoupon" class="shrink-0 px-5 rounded-xl bg-gray-800 hover:bg-gray-700 text-xs font-bold">ใช้โค้ด</button>
           </div>
         </div>
 
@@ -106,9 +103,9 @@
           <p class="text-sm font-bold"><i class="fa-solid fa-person-running text-blue-400 mr-2"></i>ค่าเทรนเนอร์ (ฟรีแลนซ์)</p>
           <p class="text-gray-500 text-[11px] mt-1 mb-3">เก็บเงินแทนให้เทรนเนอร์ในบิลเดียวกัน — ยอดนี้ไม่ถูกนับเป็นรายรับของยิมในรายงาน แยกออกไปต่างหากเสมอ</p>
           <div class="flex gap-2">
-            <input id="tfName" type="text" placeholder="ชื่อเทรนเนอร์" class="fld flex-1">
-            <input id="tfAmount" type="number" min="0" placeholder="จำนวนเงิน" class="fld w-32">
-            <button id="btnAddTrainerFee" class="px-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-xs font-bold">+เพิ่ม</button>
+            <input id="tfName" type="text" placeholder="ชื่อเทรนเนอร์" class="fld fld-grow">
+            <input id="tfAmount" type="number" min="0" placeholder="จำนวนเงิน" class="fld fld-md">
+            <button id="btnAddTrainerFee" class="shrink-0 px-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-xs font-bold">+เพิ่ม</button>
           </div>
         </div>
 
@@ -252,7 +249,7 @@
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
           <input type="text" data-ci="${i}" data-f="name" class="fld" placeholder="ชื่อ-นามสกุล" value="${escapeHtml(c.name)}">
           <div class="flex gap-2">
-            <input type="tel" data-ci="${i}" data-f="phone" class="fld flex-1" placeholder="08xxxxxxxx (ถ้ามี)" value="${escapeHtml(c.phone)}">
+            <input type="tel" data-ci="${i}" data-f="phone" class="fld fld-grow" placeholder="08xxxxxxxx (ถ้ามี)" value="${escapeHtml(c.phone)}">
             <button data-rm="${i}" class="shrink-0 w-11 rounded-xl bg-gray-800 hover:bg-red-900 text-gray-400 hover:text-red-400"><i class="fa-solid fa-xmark"></i></button>
           </div>
         </div>`).join('');

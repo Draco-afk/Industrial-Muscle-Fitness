@@ -15,6 +15,9 @@
     .panel { background: rgba(15,15,15,0.9); border: 1px solid #222; }
     .fld { width: 100%; background: #000; border: 1px solid #1f2937; border-radius: 12px; padding: 12px; font-size: 13px; color: #fff; outline: none; }
     .fld:focus { border-color: #3b82f6; }
+    /* Sizing for .fld in a flex row — see shared/admin-nav.css for why these
+       exist instead of Tailwind's w-* / flex-1 utilities. */
+    .fld-grow { flex: 1 1 0%; width: auto; min-width: 0; }
     .lbl { display: block; font-size: 10px; text-transform: uppercase; font-weight: 700; color: #6b7280; letter-spacing: 0.1em; margin-bottom: 6px; }
     .tab { flex: 1; padding: 10px; font-size: 12px; font-weight: 700; color: #6b7280; border-bottom: 2px solid transparent; }
     .tab.active { color: #fff; border-bottom-color: #3b82f6; }
@@ -72,7 +75,7 @@
       <div class="panel rounded-2xl p-5">
         <h3 class="text-xs uppercase tracking-widest text-gray-500 mb-3">รูปโปรไฟล์</h3>
         <div class="flex items-center gap-3">
-          <input id="photoFile" type="file" accept="image/*" class="fld flex-1">
+          <input id="photoFile" type="file" accept="image/*" class="fld fld-grow">
           <button id="btnUploadPhoto" class="bg-blue-600 hover:bg-blue-500 px-4 py-2.5 rounded-xl text-sm font-bold shrink-0">อัปโหลด</button>
         </div>
         <button id="btnDeletePhoto" class="text-red-400 hover:text-red-300 text-xs mt-2">ลบรูปโปรไฟล์</button>

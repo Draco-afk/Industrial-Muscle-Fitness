@@ -25,4 +25,14 @@ table td { padding: 10px 12px; border-top: 1px solid #1f1f1f; font-size: 13px; }
 /* Shared form controls */
 .fld { width: 100%; background: #000; border: 1px solid #1f2937; border-radius: 12px; padding: 12px; font-size: 13px; color: #fff; outline: none; }
 .fld:focus { border-color: #ef4444; }
+
+/* Sizing for .fld inside a flex row.
+   Don't use Tailwind's w-* / flex-1 on a .fld — .fld sets width:100%, and
+   which of the two wins depends on stylesheet order, which collapsed some
+   fields to nothing. These live in the same file as .fld and come after it,
+   so they always win. min-width:0 is what actually lets a flex child shrink
+   below its content width instead of pushing its neighbours out. */
+.fld-grow { flex: 1 1 0%; width: auto; min-width: 0; }
+.fld-sm { flex: 0 0 6.5rem; width: 6.5rem; min-width: 0; }
+.fld-md { flex: 0 0 9rem; width: 9rem; min-width: 0; }
 .lbl { display: block; font-size: 10px; text-transform: uppercase; font-weight: 700; color: #6b7280; letter-spacing: 0.1em; margin-bottom: 6px; }

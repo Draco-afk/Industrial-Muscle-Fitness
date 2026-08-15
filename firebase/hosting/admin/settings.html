@@ -37,13 +37,41 @@
 
     <!-- Payment QR -->
     <div class="panel rounded-2xl p-5">
-      <h3 class="text-xs uppercase tracking-widest text-gray-500 mb-3">QR รับเงิน (PromptPay)</h3>
-      <div id="qrPreview" class="mb-3"></div>
-      <input id="qrFile" type="file" accept="image/*" class="text-xs text-gray-400 mb-2">
-      <input id="qrCaption" placeholder="คำอธิบาย QR" class="w-full bg-black border border-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-red-500 mb-2">
-      <div class="flex gap-2">
-        <button onclick="uploadQr()" class="bg-gray-900 hover:bg-gray-800 border border-gray-800 rounded-lg px-4 py-2 text-sm">อัปโหลด QR ใหม่</button>
-        <button onclick="saveQrCaption()" class="bg-gray-900 hover:bg-gray-800 border border-gray-800 rounded-lg px-4 py-2 text-sm">บันทึกคำอธิบาย</button>
+      <h3 class="text-xs uppercase tracking-widest text-gray-500 mb-1">QR รับเงิน (PromptPay)</h3>
+      <p class="text-gray-500 text-[11px] mb-4">รูปนี้จะขึ้นเมื่อกดปุ่ม "แสดง QR รับเงิน" ในหน้า POS, ต่ออายุ และสมัครสมาชิก</p>
+
+      <div class="grid md:grid-cols-2 gap-4 items-start">
+        <div>
+          <p class="lbl">QR ที่ใช้อยู่ตอนนี้</p>
+          <div id="qrPreview" class="bg-black/40 border border-gray-800 rounded-2xl p-3 min-h-[12rem] flex items-center justify-center"></div>
+        </div>
+
+        <div>
+          <p class="lbl">อัปโหลดรูปใหม่</p>
+          <!-- The native file input renders as an unreadable light-grey control
+               on this dark theme, so it's hidden behind a styled drop zone. -->
+          <div id="qrDrop" class="border-2 border-dashed border-gray-700 hover:border-red-500 rounded-2xl p-6 text-center cursor-pointer transition-colors">
+            <i id="qrDropIcon" class="fa-solid fa-cloud-arrow-up text-3xl text-gray-600"></i>
+            <p id="qrDropText" class="text-sm text-gray-400 mt-2">คลิกเพื่อเลือกรูป หรือลากรูปมาวางตรงนี้</p>
+            <p class="text-gray-600 text-[10px] mt-1">รองรับ PNG / JPG — แคปหน้าจอ QR จากแอปธนาคารได้เลย</p>
+            <input id="qrFile" type="file" accept="image/*" class="hidden">
+          </div>
+          <div id="qrPending" class="hidden mt-3">
+            <img id="qrPendingImg" class="w-full max-h-56 object-contain rounded-xl bg-white p-2" alt="">
+            <button id="btnUploadQr" class="w-full btn-primary mt-2 py-2.5 rounded-xl text-sm font-bold">
+              <i class="fa-solid fa-check mr-1"></i>ยืนยันใช้รูปนี้
+            </button>
+            <button id="btnCancelQr" class="w-full text-gray-500 hover:text-red-400 text-xs mt-1 py-1">เลือกรูปอื่น</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-4">
+        <label class="lbl">คำอธิบายใต้ QR (ไม่บังคับ)</label>
+        <div class="flex gap-2">
+          <input id="qrCaption" placeholder="เช่น สแกนแล้วแจ้งพนักงานด้วยครับ" class="fld fld-grow">
+          <button id="btnSaveCaption" class="shrink-0 bg-gray-900 hover:bg-gray-800 border border-gray-800 rounded-xl px-5 text-sm">บันทึกคำอธิบาย</button>
+        </div>
       </div>
     </div>
 
@@ -236,7 +264,9 @@
       document.getElementById('lineStatus').textContent = line.hasToken ? '✅ ตั้งค่า Token แล้ว' : '⚠️ ยังไม่ได้ตั้งค่า Channel Access Token';
       document.getElementById('lineAddFriendUrl').value = line.addFriendUrl;
 
-      if (qr.url) document.getElementById('qrPreview').innerHTML = `<img src="${qr.url}" class="w-32 h-32 object-contain bg-white rounded-lg p-2">`;
+      document.getElementById('qrPreview').innerHTML = qr.url
+        ? `<img src="${qr.url}" class="w-full max-h-56 object-contain bg-white rounded-xl p-2" alt="QR รับเงิน">`
+        : '<p class="text-gray-600 text-xs text-center">ยังไม่ได้อัปโหลดรูป QR<br>หน้ารับเงินจะยังไม่มี QR ให้ลูกค้าสแกน</p>';
       document.getElementById('qrCaption').value = qr.caption;
 
       document.getElementById('graceDays').value = autoExpire.graceDays;
@@ -269,22 +299,81 @@
       if (res.success) { document.getElementById('lineToken').value = ''; await loadAll(); }
     };
 
-    window.uploadQr = async function uploadQr() {
-      const file = document.getElementById('qrFile').files[0];
-      if (!file) return alert('กรุณาเลือกไฟล์รูป QR ก่อน');
+    // ---------- Payment QR ----------
+    // Picked file is previewed first and only uploaded on confirm, so a wrong
+    // screenshot can't silently replace the QR the whole gym scans.
+    let pendingQrFile = null;
+
+    function showPendingQr(file) {
+      if (!file) return;
+      if (!file.type.startsWith('image/')) { alert('กรุณาเลือกไฟล์รูปภาพ'); return; }
+      pendingQrFile = file;
       const reader = new FileReader();
-      reader.onload = async () => {
-        const res = await callServer('uploadPaymentQR', { base64Data: reader.result, mimeType: file.type, fileName: file.name });
-        alert(res.success ? 'อัปโหลดสำเร็จ!' : res.message);
-        if (res.success) { clearPaymentQrCache(); await loadAll(); }
+      reader.onload = () => {
+        document.getElementById('qrPendingImg').src = reader.result;
+        document.getElementById('qrPending').classList.remove('hidden');
+        document.getElementById('qrDropText').textContent = file.name;
+        document.getElementById('qrDropIcon').className = 'fa-solid fa-circle-check text-3xl text-green-500';
       };
       reader.readAsDataURL(file);
-    };
+    }
 
-    window.saveQrCaption = async function saveQrCaption() {
+    function resetQrPicker() {
+      pendingQrFile = null;
+      document.getElementById('qrFile').value = '';
+      document.getElementById('qrPending').classList.add('hidden');
+      document.getElementById('qrDropText').textContent = 'คลิกเพื่อเลือกรูป หรือลากรูปมาวางตรงนี้';
+      document.getElementById('qrDropIcon').className = 'fa-solid fa-cloud-arrow-up text-3xl text-gray-600';
+    }
+
+    async function uploadQr() {
+      if (!pendingQrFile) return alert('กรุณาเลือกรูป QR ก่อน');
+      const btn = document.getElementById('btnUploadQr');
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i>';
+      try {
+        const base64Data = await new Promise((resolve, reject) => {
+          const r = new FileReader();
+          r.onload = () => resolve(r.result);
+          r.onerror = () => reject(new Error('อ่านไฟล์ไม่สำเร็จ'));
+          r.readAsDataURL(pendingQrFile);
+        });
+        const res = await callServer('uploadPaymentQR', { base64Data, mimeType: pendingQrFile.type, fileName: pendingQrFile.name });
+        if (!res.success) { alert(res.message || 'อัปโหลดไม่สำเร็จ'); return; }
+        alert('อัปโหลด QR สำเร็จ! ตอนนี้หน้ารับเงินจะแสดงรูปนี้แล้ว');
+        clearPaymentQrCache();
+        resetQrPicker();
+        await loadAll();
+      } catch (e) {
+        alert(e.message || 'อัปโหลดไม่สำเร็จ');
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-check mr-1"></i>ยืนยันใช้รูปนี้';
+      }
+    }
+
+    async function saveQrCaption() {
       const res = await callServer('updatePaymentQRCaption', { caption: document.getElementById('qrCaption').value.trim() });
       alert(res.message);
-    };
+      clearPaymentQrCache();
+    }
+
+    (function wireQrPicker() {
+      const drop = document.getElementById('qrDrop');
+      const input = document.getElementById('qrFile');
+      drop.addEventListener('click', () => input.click());
+      input.addEventListener('change', (e) => showPendingQr(e.target.files[0]));
+      drop.addEventListener('dragover', (e) => { e.preventDefault(); drop.classList.add('border-red-500'); });
+      drop.addEventListener('dragleave', () => drop.classList.remove('border-red-500'));
+      drop.addEventListener('drop', (e) => {
+        e.preventDefault();
+        drop.classList.remove('border-red-500');
+        showPendingQr(e.dataTransfer.files[0]);
+      });
+      document.getElementById('btnUploadQr').addEventListener('click', uploadQr);
+      document.getElementById('btnCancelQr').addEventListener('click', resetQrPicker);
+      document.getElementById('btnSaveCaption').addEventListener('click', saveQrCaption);
+    })();
 
     window.backupNow = async function backupNow() {
       const res = await callServer('createFullBackup');

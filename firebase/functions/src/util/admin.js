@@ -13,6 +13,12 @@ if (!admin.apps.length) {
 
 const db = getFirestore();
 const auth = getAuth();
-const bucket = getStorage().bucket();
+
+// This project never had Firebase Storage provisioned, so there is no
+// <project>.firebasestorage.app default bucket to fall back on — asking for
+// the default one fails with "The specified bucket does not exist". Uploads
+// go to a bucket created explicitly for them instead.
+const UPLOAD_BUCKET = process.env.UPLOAD_BUCKET || 'industrial-muscle-fitness-uploads';
+const bucket = getStorage().bucket(UPLOAD_BUCKET);
 
 module.exports = { admin, db, auth, bucket, FieldValue, Timestamp };

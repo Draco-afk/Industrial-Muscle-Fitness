@@ -13,6 +13,12 @@ const config = require('./00_config');
 function isDayPassItemName_(n) { return (n || '').toString().indexOf('ค่าเข้าใช้บริการฟิตเนสรายวัน') !== -1; }
 function isMembershipItemName_(n) { return (n || '').toString().indexOf('สมัครสมาชิกรายเดือน') !== -1; }
 function isTrainerFeeItemName_(n) { return (n || '').toString().indexOf('ค่าเทรนเนอร์:') !== -1; }
+// Coupon / manual discounts are stored as negative-price line items. They only
+// ever apply to the day-pass subtotal (enforced in processDailyPayment), so
+// they have to be booked against day-pass revenue. Without this they fall into
+// the products catch-all below and show up as negative product revenue — and
+// as bogus entries in the top-products list.
+function isDiscountItemName_(n) { return (n || '').toString().indexOf('ส่วนลด') !== -1; }
 
 exports.getMonthlyStats = onCall(async (request) => {
   requireAuth(request, 'admin');
@@ -128,8 +134,8 @@ async function getRevenueReportCore_(startDateStr, endDateStr) {
         const trainerName = it.name.replace('ค่าเทรนเนอร์: ', '');
         trainerFeeMap[trainerName] = (trainerFeeMap[trainerName] || 0) + lineTotal;
         dTrainerFeeAmount += lineTotal;
-      } else if (isDayPassItemName_(it.name)) {
-        totalDayPass += lineTotal;
+      } else if (isDayPassItemName_(it.name) || isDiscountItemName_(it.name)) {
+        totalDayPass += lineTotal; // discounts carry a negative price
         if (dailyBuckets[dKey]) dailyBuckets[dKey].dayPass += lineTotal;
       } else if (isMembershipItemName_(it.name)) {
         totalMembership += lineTotal;

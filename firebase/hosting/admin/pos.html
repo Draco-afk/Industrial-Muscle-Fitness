@@ -9,8 +9,17 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
   <link rel="stylesheet" href="../shared/admin-nav.css">
   <style>
-    .badge-Booked, .badge-normal { background: rgba(59,130,246,0.15); color: #60a5fa; }
-    .badge-Refunded { background: rgba(107,114,128,0.15); color: #9ca3af; }
+    .fld { width: 100%; background: #000; border: 1px solid #1f2937; border-radius: 12px; padding: 12px; font-size: 13px; color: #fff; outline: none; }
+    .fld:focus { border-color: #ef4444; }
+    .lbl { display: block; font-size: 10px; text-transform: uppercase; font-weight: 700; color: #6b7280; letter-spacing: 0.1em; margin-bottom: 6px; }
+    .stepBtn { width: 34px; height: 34px; border-radius: 10px; background: #1f2937; color: #fff; font-weight: 700; }
+    .stepBtn:hover { background: #374151; }
+    .prodTile { background: rgba(0,0,0,0.5); border: 1px solid #1f2937; border-radius: 14px; padding: 12px; text-align: left; transition: all .15s; }
+    .prodTile:hover { border-color: #ef4444; background: rgba(239,68,68,0.08); }
+    .prodTile:disabled { opacity: .4; cursor: not-allowed; }
+    .prodTile:disabled:hover { border-color: #1f2937; background: rgba(0,0,0,0.5); }
+    .payTab { flex: 1; padding: 10px; border-radius: 12px; font-size: 12px; font-weight: 700; border: 1px solid #1f2937; background: #000; color: #9ca3af; }
+    .payTab.active { background: linear-gradient(to right, #dc2626, #b91c1c); color: #fff; border-color: transparent; }
   </style>
 </head>
 <body class="min-h-screen">
@@ -19,50 +28,123 @@
   </div>
   <div id="navSlot"></div>
 
-  <div id="app" class="hidden md:ml-64 p-4 md:p-8 pt-24 md:pt-8 max-w-6xl">
+  <div id="app" class="hidden md:ml-64 p-4 md:p-8 pt-24 md:pt-8 max-w-7xl">
+    <h2 class="text-2xl md:text-3xl font-black font-['Urbanist'] mb-6">
+      <i class="fa-solid fa-cash-register text-red-500 mr-2"></i>รับชำระเงิน — ลูกค้ารายวัน / ขายสินค้าหน้ายิม
+    </h2>
 
-    <div class="grid md:grid-cols-2 gap-6 mb-6">
-      <div class="panel rounded-2xl p-5">
-        <h3 class="text-xs uppercase tracking-widest text-gray-500 mb-3">รับชำระเงินลูกค้ารายวัน</h3>
-        <input id="custName" placeholder="ชื่อลูกค้า" class="w-full bg-black border border-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-red-500 mb-2">
-        <input id="custPhone" placeholder="เบอร์โทร (ถ้ามี)" class="w-full bg-black border border-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-red-500 mb-3">
+    <div class="grid grid-cols-1 xl:grid-cols-3 gap-6 items-start">
+      <div class="xl:col-span-2 space-y-5">
 
-        <p class="text-[10px] uppercase tracking-widest text-gray-500 mb-2">ค่าเข้ายิมรายวัน</p>
-        <div class="grid grid-cols-2 gap-2 mb-3">
-          <div class="flex items-center gap-2 bg-black border border-gray-800 rounded-lg px-3 py-2">
-            <label class="text-xs flex-1">นักเรียน/นักศึกษา</label>
-            <input id="qtyStudent" type="number" min="0" value="0" class="w-14 bg-transparent text-sm outline-none text-right">
+        <div id="pendingMembershipBanner" class="hidden bg-green-600/10 border border-green-500/30 rounded-xl p-3 text-xs text-green-400 font-bold">
+          <i class="fa-solid fa-circle-check mr-2"></i>มีแพ็กเกจสมัครสมาชิกรออยู่ในบิลนี้ — ตรวจสอบรายการแล้วกดรับชำระเงินด้านล่าง
+        </div>
+
+        <button id="btnAddMembership" class="w-full bg-black border-2 border-dashed border-red-800 hover:border-red-500 hover:bg-red-950/20 rounded-2xl py-3.5 text-sm font-bold text-red-400">
+          <i class="fa-solid fa-user-plus mr-2"></i>สมัครสมาชิกรายเดือนใหม่ (เพิ่มเป็นแพ็กเกจเสริมในบิลนี้)
+        </button>
+
+        <!-- Customers -->
+        <div class="panel rounded-2xl p-5">
+          <div class="flex justify-between items-center mb-3">
+            <label class="lbl mb-0">ลูกค้า (เพิ่มได้เวลามาหลายคน)</label>
+            <button id="btnAddCustomer" class="text-red-400 hover:text-red-300 text-xs font-bold"><i class="fa-solid fa-circle-plus mr-1"></i>เพิ่มคน</button>
           </div>
-          <div class="flex items-center gap-2 bg-black border border-gray-800 rounded-lg px-3 py-2">
-            <label class="text-xs flex-1">ผู้ใหญ่</label>
-            <input id="qtyAdult" type="number" min="0" value="0" class="w-14 bg-transparent text-sm outline-none text-right">
+          <div id="customersList" class="space-y-2"></div>
+        </div>
+
+        <!-- Day pass -->
+        <div class="panel rounded-2xl p-5">
+          <p class="text-sm font-bold mb-3"><i class="fa-solid fa-person-walking text-red-500 mr-2"></i>ค่าเข้ายิมวันนี้ (Day Pass)</p>
+          <div class="space-y-2">
+            <div class="bg-black/40 border border-gray-800 rounded-xl p-3 flex items-center gap-3">
+              <div class="flex-1 min-w-0">
+                <p class="text-xs font-bold">นักเรียน/นักศึกษา</p>
+                <div class="flex items-center gap-2 mt-1">
+                  <span class="text-[10px] text-gray-500">ราคา/คน</span>
+                  <input id="priceStudent" type="number" min="0" class="w-20 bg-black border border-gray-800 rounded-lg px-2 py-1 text-xs font-mono outline-none focus:border-red-500">
+                </div>
+              </div>
+              <button class="stepBtn" data-dp="student" data-delta="-1">−</button>
+              <span id="qtyStudent" class="w-6 text-center font-bold">0</span>
+              <button class="stepBtn" data-dp="student" data-delta="1">+</button>
+            </div>
+            <div class="bg-black/40 border border-gray-800 rounded-xl p-3 flex items-center gap-3">
+              <div class="flex-1 min-w-0">
+                <p class="text-xs font-bold">ผู้ใหญ่</p>
+                <div class="flex items-center gap-2 mt-1">
+                  <span class="text-[10px] text-gray-500">ราคา/คน</span>
+                  <input id="priceAdult" type="number" min="0" class="w-20 bg-black border border-gray-800 rounded-lg px-2 py-1 text-xs font-mono outline-none focus:border-red-500">
+                </div>
+              </div>
+              <button class="stepBtn" data-dp="adult" data-delta="-1">−</button>
+              <span id="qtyAdult" class="w-6 text-center font-bold">0</span>
+              <button class="stepBtn" data-dp="adult" data-delta="1">+</button>
+            </div>
           </div>
         </div>
 
-        <p class="text-[10px] uppercase tracking-widest text-gray-500 mb-2">สินค้า</p>
-        <div id="productPicker" class="grid grid-cols-2 gap-2 mb-3 max-h-32 overflow-y-auto"></div>
-
-        <p class="text-[10px] uppercase tracking-widest text-gray-500 mb-2">ค่าเทรนเนอร์ (เก็บแทนให้ ไม่ใช่รายรับยิม)</p>
-        <div class="flex gap-2 mb-3">
-          <input id="trainerFeeName" placeholder="ชื่อเทรนเนอร์" class="flex-1 bg-black border border-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-red-500">
-          <input id="trainerFeeAmount" type="number" placeholder="บาท" class="w-24 bg-black border border-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-red-500">
+        <!-- Discounts -->
+        <div class="panel rounded-2xl p-5">
+          <p class="text-sm font-bold mb-1"><i class="fa-solid fa-tag text-red-500 mr-2"></i>ส่วนลดพิเศษ (ไม่ต้องมีโค้ด) — ใช้ได้กับค่าเข้ายิมเท่านั้น</p>
+          <div class="flex gap-2 mt-3">
+            <select id="manualDiscType" class="fld w-24 cursor-pointer">
+              <option value="Percent">%</option>
+              <option value="Fixed">บาท</option>
+            </select>
+            <input id="manualDiscValue" type="number" min="0" step="0.01" placeholder="0" class="fld flex-1">
+            <button id="btnApplyManual" class="px-5 rounded-xl bg-gray-800 hover:bg-gray-700 text-xs font-bold">ใช้</button>
+          </div>
+          <div class="flex gap-2 mt-3">
+            <input id="couponCode" type="text" placeholder="โค้ดคูปอง (ถ้ามี)" class="fld flex-1">
+            <button id="btnApplyCoupon" class="px-5 rounded-xl bg-gray-800 hover:bg-gray-700 text-xs font-bold">ใช้โค้ด</button>
+          </div>
         </div>
 
-        <div class="flex gap-2 mb-3">
-          <select id="payMethod" class="flex-1 bg-black border border-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-red-500">
-            <option value="cash">เงินสด</option>
-            <option value="transfer">โอนเงิน</option>
-          </select>
-          <input id="couponCode" placeholder="โค้ดคูปอง (ถ้ามี)" class="flex-1 bg-black border border-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-red-500">
+        <!-- Trainer fees -->
+        <div class="panel rounded-2xl p-5">
+          <p class="text-sm font-bold"><i class="fa-solid fa-person-running text-blue-400 mr-2"></i>ค่าเทรนเนอร์ (ฟรีแลนซ์)</p>
+          <p class="text-gray-500 text-[11px] mt-1 mb-3">เก็บเงินแทนให้เทรนเนอร์ในบิลเดียวกัน — ยอดนี้ไม่ถูกนับเป็นรายรับของยิมในรายงาน แยกออกไปต่างหากเสมอ</p>
+          <div class="flex gap-2">
+            <input id="tfName" type="text" placeholder="ชื่อเทรนเนอร์" class="fld flex-1">
+            <input id="tfAmount" type="number" min="0" placeholder="จำนวนเงิน" class="fld w-32">
+            <button id="btnAddTrainerFee" class="px-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-xs font-bold">+เพิ่ม</button>
+          </div>
         </div>
 
-        <button onclick="submitPayment()" id="payBtn" class="w-full btn-primary py-3 rounded-xl text-sm font-bold uppercase tracking-wider">รับชำระเงิน</button>
-        <p id="payErr" class="hidden text-red-400 text-xs bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2 mt-2"></p>
+        <!-- Products -->
+        <div class="panel rounded-2xl p-5">
+          <div class="flex justify-between items-center mb-3">
+            <p class="text-sm font-bold">เลือกสินค้า (แตะเพื่อเพิ่มลงตะกร้า)</p>
+            <a href="products.html" class="text-red-400 hover:text-red-300 text-xs font-bold"><i class="fa-solid fa-gear mr-1"></i>จัดการสินค้า</a>
+          </div>
+          <div id="productGrid" class="grid grid-cols-2 sm:grid-cols-3 gap-2"></div>
+        </div>
       </div>
 
-      <div class="panel rounded-2xl p-5">
-        <h3 class="text-xs uppercase tracking-widest text-gray-500 mb-3">รายการล่าสุด</h3>
-        <div id="logList" class="space-y-2 text-sm max-h-[32rem] overflow-y-auto"></div>
+      <!-- ---------- Cart ---------- -->
+      <div class="panel rounded-2xl p-5 xl:sticky xl:top-8">
+        <h3 class="text-xs uppercase tracking-widest text-gray-500 mb-3"><i class="fa-solid fa-receipt mr-1"></i>รายการในบิล</h3>
+        <div id="cartList" class="space-y-2 max-h-96 overflow-y-auto mb-4"></div>
+
+        <div class="border-t border-gray-800 pt-3 mb-4 flex justify-between items-center">
+          <span class="text-xs uppercase tracking-widest text-gray-500">ยอดรวม</span>
+          <span id="totalDisplay" class="text-2xl font-black text-red-500 font-mono">0 บาท</span>
+        </div>
+
+        <div class="flex gap-2 mb-3">
+          <button class="payTab active" data-pm="cash"><i class="fa-solid fa-money-bill mr-1"></i>เงินสด</button>
+          <button class="payTab" data-pm="transfer"><i class="fa-solid fa-qrcode mr-1"></i>โอนเงิน</button>
+        </div>
+
+        <button id="btnSubmit" class="w-full btn-primary py-3.5 rounded-xl text-sm font-black uppercase tracking-wider">รับชำระเงิน &amp; ออกใบเสร็จ</button>
+        <button id="btnClear" class="w-full mt-2 text-gray-500 hover:text-red-400 text-xs py-2">ล้างบิลทั้งหมด</button>
+        <p id="posErr" class="hidden text-red-400 text-xs bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2 mt-2"></p>
+
+        <div class="mt-6 border-t border-gray-800 pt-4">
+          <h3 class="text-xs uppercase tracking-widest text-gray-500 mb-3">รายการล่าสุด</h3>
+          <div id="logList" class="space-y-2 text-sm max-h-72 overflow-y-auto"></div>
+        </div>
       </div>
     </div>
   </div>
@@ -70,97 +152,348 @@
   <script type="module">
     import { callServer, auth, onAuthStateChanged, signOut } from '../shared/firebase-init.js';
     import { renderNav } from '../shared/admin-nav.js';
+    import { loadPosState, savePosState, clearPosState, emptyPosState } from '../shared/pos-state.js';
 
     let products = [];
+    let st = emptyPosState();
+    let dayPassPrices = { student: 0, adult: 0 };
 
-    function escapeHtml(s) {
-      return (s || '').toString().replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-    }
+    const $ = (id) => document.getElementById(id);
+    const escapeHtml = (s) => (s || '').toString().replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const baht = (n) => Math.round(n * 100) / 100;
 
     onAuthStateChanged(auth, async (user) => {
       if (!user) { window.location.href = '../login.html'; return; }
       const tok = await user.getIdTokenResult();
       if (tok.claims.role !== 'admin') { window.location.href = '../login.html'; return; }
-      document.getElementById('navSlot').outerHTML = renderNav('pos', tok.claims.adminRole);
-      document.getElementById('loadingGate').classList.add('hidden');
-      document.getElementById('app').classList.remove('hidden');
+      $('navSlot').outerHTML = renderNav('pos', tok.claims.adminRole);
+      $('loadingGate').classList.add('hidden');
+      $('app').classList.remove('hidden');
       window.doLogout = async () => { await signOut(auth); window.location.href = '../login.html'; };
-      await Promise.all([loadProducts(), loadLogs()]);
+
+      st = loadPosState();
+      wireEvents();
+      await Promise.all([loadDayPassPrices(), loadProducts(), loadLogs()]);
+      renderCustomers();
+      renderAll();
     });
+
+    function wireEvents() {
+      $('btnAddCustomer').addEventListener('click', () => { st.customers.push({ name: '', phone: '' }); persist(); renderCustomers(); });
+      $('btnAddMembership').addEventListener('click', goRegisterMembership);
+      $('btnAddTrainerFee').addEventListener('click', addTrainerFee);
+      $('btnApplyManual').addEventListener('click', applyManualDiscount);
+      $('btnApplyCoupon').addEventListener('click', applyCoupon);
+      $('btnSubmit').addEventListener('click', submitPayment);
+      $('btnClear').addEventListener('click', () => {
+        if (!confirm('ล้างรายการทั้งหมดในบิลนี้?')) return;
+        st = emptyPosState(); clearPosState(); renderCustomers(); renderAll();
+      });
+      $('priceStudent').addEventListener('input', renderAll);
+      $('priceAdult').addEventListener('input', renderAll);
+
+      document.querySelectorAll('[data-dp]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const key = btn.dataset.dp;
+          st.dayPass[key] = Math.max(0, st.dayPass[key] + parseInt(btn.dataset.delta, 10));
+          persist(); renderAll();
+        });
+      });
+      document.querySelectorAll('.payTab').forEach((tab) => {
+        tab.addEventListener('click', () => {
+          st.paymentMethod = tab.dataset.pm;
+          document.querySelectorAll('.payTab').forEach((t) => t.classList.toggle('active', t === tab));
+          persist();
+        });
+      });
+    }
+
+    function persist() { savePosState(st); }
+
+    async function loadDayPassPrices() {
+      try { dayPassPrices = await callServer('getDailyPassPrices'); } catch (e) { /* defaults */ }
+      $('priceStudent').value = dayPassPrices.student;
+      $('priceAdult').value = dayPassPrices.adult;
+    }
 
     async function loadProducts() {
       products = await callServer('getProductList');
-      const picker = document.getElementById('productPicker');
-      picker.innerHTML = products.filter((p) => p.status === 'Active').map((p) => `
-        <div class="flex items-center gap-2 bg-black border border-gray-800 rounded-lg px-3 py-2">
-          <label class="text-xs flex-1 truncate" title="${escapeHtml(p.name)}">${escapeHtml(p.name)} (${p.price}฿)</label>
-          <input type="number" min="0" value="0" data-product="${escapeHtml(p.name)}" data-price="${p.price}" class="prodQty w-12 bg-transparent text-sm outline-none text-right">
-        </div>`).join('') || '<p class="text-gray-600 text-xs col-span-2">ยังไม่มีสินค้าในระบบ</p>';
+      const active = products.filter((p) => p.status !== 'Inactive');
+      const grid = $('productGrid');
+      if (!active.length) { grid.innerHTML = '<p class="text-gray-600 text-xs col-span-3 text-center py-4">ยังไม่มีสินค้าในระบบ</p>'; return; }
+
+      grid.innerHTML = active.map((p, i) => {
+        const tracked = p.stock !== '' && p.stock !== null && typeof p.stock !== 'undefined';
+        const out = tracked && p.stock <= 0;
+        return `
+          <button class="prodTile" data-i="${i}" ${out ? 'disabled' : ''}>
+            <p class="text-xs font-bold truncate">${escapeHtml(p.name)}</p>
+            <p class="text-red-400 font-mono text-sm font-bold mt-1">${p.price.toLocaleString('th-TH')} ฿</p>
+            <p class="text-[10px] ${out ? 'text-red-500' : 'text-gray-600'} mt-0.5">${tracked ? (out ? 'สินค้าหมด' : 'คงเหลือ ' + p.stock) : 'ไม่ติดตามสต็อก'}</p>
+          </button>`;
+      }).join('');
+
+      grid.querySelectorAll('.prodTile').forEach((tile) => {
+        tile.addEventListener('click', () => addToCart(active[parseInt(tile.dataset.i, 10)]));
+      });
     }
 
-    window.submitPayment = async function submitPayment() {
-      const dayPassItems = [
-        { type: 'student', qty: parseInt(document.getElementById('qtyStudent').value, 10) || 0 },
-        { type: 'adult', qty: parseInt(document.getElementById('qtyAdult').value, 10) || 0 }
-      ];
-      const items = Array.from(document.querySelectorAll('.prodQty'))
-        .filter((el) => parseInt(el.value, 10) > 0)
-        .map((el) => ({ name: el.dataset.product, price: parseFloat(el.dataset.price), qty: parseInt(el.value, 10) }));
-      const trainerFeeName = document.getElementById('trainerFeeName').value.trim();
-      const trainerFeeAmount = parseFloat(document.getElementById('trainerFeeAmount').value) || 0;
-      const trainerFees = trainerFeeName && trainerFeeAmount > 0 ? [{ name: trainerFeeName, amount: trainerFeeAmount }] : [];
+    function addToCart(p) {
+      const existing = st.cart.find((it) => it.name === p.name);
+      if (existing) existing.qty += 1;
+      else st.cart.push({ name: p.name, price: p.price, qty: 1 });
+      persist(); renderAll();
+    }
 
-      const payload = {
-        customerName: document.getElementById('custName').value.trim(),
-        phone: document.getElementById('custPhone').value.trim(),
-        dayPassItems, items, trainerFees,
-        paymentMethod: document.getElementById('payMethod').value,
-        couponCode: document.getElementById('couponCode').value.trim()
-      };
+    function renderCustomers() {
+      const box = $('customersList');
+      box.innerHTML = st.customers.map((c, i) => `
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <input type="text" data-ci="${i}" data-f="name" class="fld" placeholder="ชื่อ-นามสกุล" value="${escapeHtml(c.name)}">
+          <div class="flex gap-2">
+            <input type="tel" data-ci="${i}" data-f="phone" class="fld flex-1" placeholder="08xxxxxxxx (ถ้ามี)" value="${escapeHtml(c.phone)}">
+            <button data-rm="${i}" class="shrink-0 w-11 rounded-xl bg-gray-800 hover:bg-red-900 text-gray-400 hover:text-red-400"><i class="fa-solid fa-xmark"></i></button>
+          </div>
+        </div>`).join('');
 
-      const btn = document.getElementById('payBtn');
-      btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i>';
+      box.querySelectorAll('input[data-ci]').forEach((inp) => {
+        inp.addEventListener('input', () => {
+          st.customers[parseInt(inp.dataset.ci, 10)][inp.dataset.f] = inp.value;
+          persist();
+        });
+      });
+      box.querySelectorAll('button[data-rm]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          if (st.customers.length <= 1) { alert('ต้องมีลูกค้าอย่างน้อย 1 คน'); return; }
+          st.customers.splice(parseInt(btn.dataset.rm, 10), 1);
+          persist(); renderCustomers();
+        });
+      });
+    }
+
+    function dayPassSubtotal() {
+      const sp = parseFloat($('priceStudent').value) || 0;
+      const ap = parseFloat($('priceAdult').value) || 0;
+      return sp * st.dayPass.student + ap * st.dayPass.adult;
+    }
+
+    function addTrainerFee() {
+      const name = $('tfName').value.trim();
+      const amount = parseFloat($('tfAmount').value) || 0;
+      if (!name || amount <= 0) { alert('กรุณากรอกชื่อเทรนเนอร์และจำนวนเงิน'); return; }
+      st.trainerFees.push({ name, amount });
+      $('tfName').value = ''; $('tfAmount').value = '';
+      persist(); renderAll();
+    }
+
+    function applyManualDiscount() {
+      const type = $('manualDiscType').value;
+      const value = parseFloat($('manualDiscValue').value) || 0;
+      if (value <= 0) { alert('กรุณากรอกจำนวนส่วนลด'); return; }
+      if (dayPassSubtotal() <= 0) { alert('ส่วนลดใช้ได้กับค่าเข้ายิมเท่านั้น — กรุณาเพิ่มค่าเข้ายิมก่อน'); return; }
+      st.manualDiscount = { type, value };
+      $('manualDiscValue').value = '';
+      persist(); renderAll();
+    }
+
+    async function applyCoupon() {
+      const code = $('couponCode').value.trim();
+      const dpSub = dayPassSubtotal();
+      if (!code) { alert('กรุณากรอกโค้ดคูปอง'); return; }
+      if (dpSub <= 0) { alert('คูปองใช้ได้กับค่าเข้ายิมเท่านั้น — กรุณาเพิ่มค่าเข้ายิมก่อน'); return; }
+      const res = await callServer('previewCouponDiscount', { code, amount: dpSub, scope: 'daily' });
+      if (!res.valid) { alert(res.message); return; }
+      st.coupon = { code: res.code, discountType: res.discountType, discountValue: res.discountValue };
+      $('couponCode').value = '';
+      alert(res.message);
+      persist(); renderAll();
+    }
+
+    // Discounts apply to the day-pass subtotal only, coupon first and the
+    // manual discount on what's left — same order processDailyPayment uses,
+    // so the previewed total matches what actually gets charged.
+    function computeDiscount(rule, base) {
+      if (!rule || base <= 0) return 0;
+      const type = rule.discountType || rule.type;
+      const value = rule.discountValue != null ? rule.discountValue : rule.value;
+      const amount = type === 'Fixed' ? value : baht(base * (value / 100));
+      return Math.min(amount, base);
+    }
+
+    function renderAll() {
+      $('qtyStudent').textContent = st.dayPass.student;
+      $('qtyAdult').textContent = st.dayPass.adult;
+      $('pendingMembershipBanner').classList.toggle('hidden', !st.pendingMembership);
+
+      const sp = parseFloat($('priceStudent').value) || 0;
+      const ap = parseFloat($('priceAdult').value) || 0;
+      let total = 0;
+      let html = '';
+
+      if (st.dayPass.student > 0) {
+        const line = sp * st.dayPass.student; total += line;
+        html += lineRow(`ค่าเข้ายิมวันนี้ (นักเรียน/นักศึกษา) x${st.dayPass.student}`, line);
+      }
+      if (st.dayPass.adult > 0) {
+        const line = ap * st.dayPass.adult; total += line;
+        html += lineRow(`ค่าเข้ายิมวันนี้ (ผู้ใหญ่) x${st.dayPass.adult}`, line);
+      }
+
+      st.cart.forEach((it, idx) => {
+        const line = it.price * it.qty; total += line;
+        html += `
+          <div class="flex items-center gap-2 bg-black/40 border border-gray-800 rounded-xl p-2.5">
+            <div class="flex-1 min-w-0">
+              <p class="text-xs font-bold truncate">${escapeHtml(it.name)}</p>
+              <p class="text-gray-500 text-[10px] font-mono">${it.price.toLocaleString('th-TH')} บาท/ชิ้น</p>
+            </div>
+            <button class="stepBtn !w-6 !h-6 text-xs" data-cq="${idx}" data-delta="-1">−</button>
+            <span class="w-4 text-center text-xs font-bold">${it.qty}</span>
+            <button class="stepBtn !w-6 !h-6 text-xs" data-cq="${idx}" data-delta="1">+</button>
+            <span class="text-red-400 font-mono font-bold text-xs w-16 text-right">${line.toLocaleString('th-TH')}</span>
+            <button class="text-gray-600 hover:text-red-400" data-crm="${idx}"><i class="fa-solid fa-xmark"></i></button>
+          </div>`;
+      });
+
+      let dpRemaining = dayPassSubtotal();
+      if (st.coupon) {
+        const amt = computeDiscount(st.coupon, dpRemaining);
+        dpRemaining = baht(dpRemaining - amt);
+        total -= amt;
+        html += discountRow(`ส่วนลดคูปอง (${escapeHtml(st.coupon.code)})`, amt,
+          'bg-green-950/30 border-green-800', 'text-green-400', 'coupon');
+      }
+      if (st.manualDiscount) {
+        const amt = computeDiscount(st.manualDiscount, dpRemaining);
+        total -= amt;
+        const label = st.manualDiscount.type === 'Fixed'
+          ? st.manualDiscount.value.toLocaleString('th-TH') + ' บาท'
+          : st.manualDiscount.value + '%';
+        html += discountRow(`ส่วนลดพิเศษ (${label})`, amt,
+          'bg-blue-950/30 border-blue-800', 'text-blue-400', 'manual');
+      }
+
+      st.trainerFees.forEach((tf, idx) => {
+        total += tf.amount;
+        html += `
+          <div class="flex items-center gap-2 bg-black/40 border border-blue-900/50 rounded-xl p-2.5">
+            <span class="flex-1 text-xs font-bold text-blue-300 truncate"><i class="fa-solid fa-person-running mr-1"></i>ค่าเทรนเนอร์: ${escapeHtml(tf.name)}</span>
+            <span class="text-blue-300 font-mono font-bold text-xs">${tf.amount.toLocaleString('th-TH')}</span>
+            <button class="text-gray-600 hover:text-red-400" data-tfrm="${idx}"><i class="fa-solid fa-xmark"></i></button>
+          </div>`;
+      });
+
+      $('cartList').innerHTML = html || '<p class="text-gray-600 text-xs text-center py-6">ยังไม่มีรายการ เลือกค่าเข้ายิมหรือสินค้าด้านซ้าย</p>';
+      $('totalDisplay').textContent = Math.max(0, baht(total)).toLocaleString('th-TH') + ' บาท';
+
+      $('cartList').querySelectorAll('[data-cq]').forEach((b) => b.addEventListener('click', () => {
+        const i = parseInt(b.dataset.cq, 10);
+        st.cart[i].qty += parseInt(b.dataset.delta, 10);
+        if (st.cart[i].qty <= 0) st.cart.splice(i, 1);
+        persist(); renderAll();
+      }));
+      $('cartList').querySelectorAll('[data-crm]').forEach((b) => b.addEventListener('click', () => {
+        const removed = st.cart.splice(parseInt(b.dataset.crm, 10), 1)[0];
+        if (removed && removed.name.startsWith('สมัครสมาชิกรายเดือน')) st.pendingMembership = false;
+        persist(); renderAll();
+      }));
+      $('cartList').querySelectorAll('[data-tfrm]').forEach((b) => b.addEventListener('click', () => {
+        st.trainerFees.splice(parseInt(b.dataset.tfrm, 10), 1); persist(); renderAll();
+      }));
+      $('cartList').querySelectorAll('[data-drm]').forEach((b) => b.addEventListener('click', () => {
+        if (b.dataset.drm === 'coupon') st.coupon = null; else st.manualDiscount = null;
+        persist(); renderAll();
+      }));
+    }
+
+    function lineRow(label, amount) {
+      return `
+        <div class="flex justify-between items-center bg-black/40 border border-gray-800 rounded-xl p-2.5">
+          <span class="text-xs font-bold"><i class="fa-solid fa-person-walking mr-1.5 text-red-500"></i>${escapeHtml(label)}</span>
+          <span class="text-red-400 font-mono font-bold text-xs">${amount.toLocaleString('th-TH')}</span>
+        </div>`;
+    }
+
+    function discountRow(label, amount, boxClasses, textClass, kind) {
+      return `
+        <div class="flex justify-between items-center border rounded-xl p-2.5 ${boxClasses}">
+          <span class="${textClass} text-xs font-bold"><i class="fa-solid fa-ticket mr-1.5"></i>${label}</span>
+          <span class="${textClass} font-mono font-bold text-xs">-${amount.toLocaleString('th-TH')}</span>
+          <button class="text-gray-600 hover:text-red-400 ml-2" data-drm="${kind}"><i class="fa-solid fa-xmark"></i></button>
+        </div>`;
+    }
+
+    // Park the open ticket, then go register the member; members.html brings us
+    // back with the package added as a line item.
+    function goRegisterMembership() {
+      persist();
+      window.location.href = 'members.html?addon=1';
+    }
+
+    async function submitPayment() {
+      const names = st.customers.map((c) => c.name.trim()).filter(Boolean);
+      const phones = st.customers.map((c) => c.phone.trim()).filter(Boolean);
+      if (!names.length) return showErr('กรุณากรอกชื่อลูกค้าอย่างน้อย 1 คน');
+
+      const hasDayPass = st.dayPass.student > 0 || st.dayPass.adult > 0;
+      if (!hasDayPass && !st.cart.length && !st.trainerFees.length) {
+        return showErr('กรุณาเลือกค่าเข้ายิม สินค้า หรือค่าเทรนเนอร์อย่างน้อย 1 รายการ');
+      }
+
+      const dayPassItems = [];
+      if (st.dayPass.student > 0) dayPassItems.push({ type: 'student', qty: st.dayPass.student, price: parseFloat($('priceStudent').value) || 0 });
+      if (st.dayPass.adult > 0) dayPassItems.push({ type: 'adult', qty: st.dayPass.adult, price: parseFloat($('priceAdult').value) || 0 });
+
+      const btn = $('btnSubmit');
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i>';
       try {
-        const res = await callServer('processDailyPayment', payload);
-        if (res.success) {
-          alert(res.message);
-          document.getElementById('custName').value = '';
-          document.getElementById('custPhone').value = '';
-          document.getElementById('qtyStudent').value = '0';
-          document.getElementById('qtyAdult').value = '0';
-          document.getElementById('trainerFeeName').value = '';
-          document.getElementById('trainerFeeAmount').value = '';
-          document.getElementById('couponCode').value = '';
-          document.querySelectorAll('.prodQty').forEach((el) => el.value = '0');
-          document.getElementById('payErr').classList.add('hidden');
-          await loadLogs();
-        } else {
-          showErr(res.message);
-        }
+        const res = await callServer('processDailyPayment', {
+          customerName: names.join(', '),
+          phone: phones.join(', '),
+          dayPassItems,
+          items: st.cart,
+          trainerFees: st.trainerFees,
+          couponCode: st.coupon ? st.coupon.code : '',
+          manualDiscountType: st.manualDiscount ? st.manualDiscount.type : '',
+          manualDiscountValue: st.manualDiscount ? st.manualDiscount.value : 0,
+          paymentMethod: st.paymentMethod
+        });
+        if (!res.success) return showErr(res.message);
+
+        alert(res.message);
+        st = emptyPosState();
+        clearPosState();
+        $('posErr').classList.add('hidden');
+        document.querySelectorAll('.payTab').forEach((t) => t.classList.toggle('active', t.dataset.pm === 'cash'));
+        renderCustomers();
+        renderAll();
+        await Promise.all([loadProducts(), loadLogs()]);
       } catch (e) {
         showErr(e.message || 'เกิดข้อผิดพลาด');
       } finally {
-        btn.disabled = false; btn.innerHTML = 'รับชำระเงิน';
+        btn.disabled = false;
+        btn.innerHTML = 'รับชำระเงิน &amp; ออกใบเสร็จ';
       }
-    };
+    }
 
     function showErr(msg) {
-      const el = document.getElementById('payErr');
-      el.textContent = msg; el.classList.remove('hidden');
+      const el = $('posErr');
+      el.textContent = msg;
+      el.classList.remove('hidden');
     }
 
     async function loadLogs() {
       const logs = await callServer('getDailyPaymentLogs');
-      const list = document.getElementById('logList');
-      list.innerHTML = logs.length ? logs.map((l) => `
+      $('logList').innerHTML = logs.length ? logs.map((l) => `
         <div class="border-b border-gray-900 pb-2">
           <div class="flex justify-between">
-            <span class="font-medium">${escapeHtml(l.customerName)}</span>
-            <span class="text-gray-400">${l.amount.toLocaleString('th-TH')} บาท</span>
+            <span class="font-medium text-xs truncate">${escapeHtml(l.customerName)}</span>
+            <span class="text-gray-400 text-xs shrink-0">${l.amount.toLocaleString('th-TH')} บาท</span>
           </div>
-          <div class="flex justify-between text-xs text-gray-500">
-            <span>${escapeHtml(l.itemSummary)}</span>
-            <span>${escapeHtml(l.receiptNo)} ${l.refundStatus === 'Refunded' ? '(คืนเงินแล้ว)' : ''}</span>
+          <div class="flex justify-between text-[10px] text-gray-500">
+            <span class="truncate">${escapeHtml(l.itemSummary)}</span>
+            <span class="shrink-0 ml-2">${escapeHtml(l.receiptNo)}${l.refundStatus === 'Refunded' ? ' (คืนเงิน)' : ''}</span>
           </div>
         </div>`).join('') : '<p class="text-gray-600 text-xs text-center py-4">ยังไม่มีรายการวันนี้</p>';
     }

@@ -12,6 +12,9 @@
     .badge-active { background: rgba(34,197,94,0.15); color: #4ade80; }
     .badge-suspended { background: rgba(234,179,8,0.15); color: #facc15; }
     .badge-other { background: rgba(107,114,128,0.15); color: #9ca3af; }
+    .fld { width: 100%; background: #000; border: 1px solid #1f2937; border-radius: 12px; padding: 12px; font-size: 13px; color: #fff; outline: none; }
+    .fld:focus { border-color: #ef4444; }
+    .lbl { display: block; font-size: 10px; text-transform: uppercase; font-weight: 700; color: #6b7280; letter-spacing: 0.1em; margin-bottom: 6px; }
   </style>
 </head>
 <body class="min-h-screen">
@@ -20,87 +23,116 @@
   </div>
   <div id="navSlot"></div>
 
-  <div id="app" class="hidden md:ml-64 p-4 md:p-8 pt-24 md:pt-8 max-w-6xl">
+  <div id="app" class="hidden md:ml-64 p-4 md:p-8 pt-24 md:pt-8 max-w-7xl">
+    <h2 class="text-2xl md:text-3xl font-black font-['Urbanist'] mb-6">MEMBER MANAGEMENT</h2>
 
-    <div class="flex items-center justify-between mb-4">
-      <div class="flex gap-4 text-xs text-gray-400">
-        <span>ทั้งหมด: <b id="statTotal" class="text-white">-</b></span>
-        <span>Active: <b id="statActive" class="text-green-400">-</b></span>
-      </div>
-      <button onclick="openAddModal()" class="bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-400 text-white text-xs font-bold uppercase tracking-wider px-5 py-2.5 rounded-xl shadow-lg hover:shadow-red-600/20">
-        <i class="fa-solid fa-plus mr-1"></i> เพิ่มสมาชิก
-      </button>
-    </div>
+    <div class="grid grid-cols-1 xl:grid-cols-3 gap-6 items-start">
+      <!-- ---------- Form ---------- -->
+      <div class="xl:col-span-2 panel rounded-2xl p-5 md:p-6">
 
-    <div class="panel rounded-2xl overflow-hidden overflow-x-auto">
-      <table class="w-full">
-        <thead>
-          <tr>
-            <th>ชื่อ-นามสกุล</th>
-            <th>เบอร์โทร</th>
-            <th>แพ็กเกจ</th>
-            <th>หมดอายุ</th>
-            <th>สถานะ</th>
-            <th>เช็คอิน</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody id="memberRows"></tbody>
-      </table>
-      <p id="emptyState" class="hidden text-center text-gray-600 text-sm py-10">ยังไม่มีสมาชิกในระบบ</p>
-    </div>
-  </div>
+        <div id="editModeIndicator" class="hidden bg-red-600/10 border border-red-500/30 rounded-xl p-3 mb-5 flex justify-between items-center text-xs">
+          <span class="text-red-400 font-bold"><i class="fa-solid fa-pen-to-square mr-2"></i>กำลังแก้ไขข้อมูลสมาชิก</span>
+          <button id="btnCancelEdit" class="bg-gray-800 hover:bg-gray-700 px-3 py-1 rounded-md">ยกเลิกแก้ไข</button>
+        </div>
 
-  <!-- Add / Edit modal -->
-  <div id="memberModal" class="hidden fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-40">
-    <div class="panel rounded-2xl p-6 max-w-md w-full space-y-4">
-      <h2 id="modalTitle" class="text-lg font-bold">เพิ่มสมาชิกใหม่</h2>
-      <input type="hidden" id="f_docId">
-      <div>
-        <label class="block text-[10px] uppercase tracking-widest text-gray-500 mb-1">ชื่อ-นามสกุล</label>
-        <input id="f_fullName" class="w-full bg-black border border-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-red-500">
+        <div id="addOnBanner" class="hidden bg-green-600/10 border border-green-500/30 rounded-xl p-3 mb-5 flex justify-between items-center text-xs">
+          <span class="text-green-400 font-bold"><i class="fa-solid fa-cart-plus mr-2"></i>กำลังสมัครสมาชิกเพื่อรวมบิลกับรายการรายวัน (ยังไม่เก็บเงินที่นี่)</span>
+          <button id="btnCancelAddOn" class="bg-gray-800 hover:bg-gray-700 px-3 py-1 rounded-md">ยกเลิก</button>
+        </div>
+
+        <h3 id="formTitle" class="text-xs font-bold text-gray-400 uppercase tracking-widest mb-5">Add New Gym Member</h3>
+
+        <input type="hidden" id="f_docId">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-5">
+          <div>
+            <label class="lbl">Full Name</label>
+            <input id="f_fullName" type="text" class="fld">
+          </div>
+          <div>
+            <label class="lbl">Phone Number</label>
+            <input id="f_phone" type="tel" class="fld">
+          </div>
+          <div>
+            <label class="lbl">Email Address</label>
+            <input id="f_email" type="email" class="fld">
+          </div>
+          <div>
+            <label class="lbl">วันเดือนปีเกิด <span class="text-gray-600 normal-case">(ไม่บังคับ — รับส่วนลด <span id="bdLabel1">5%</span> ตอนต่ออายุในเดือนเกิด)</span></label>
+            <input id="f_dob" type="date" class="fld">
+          </div>
+          <div>
+            <label class="lbl">Package</label>
+            <select id="f_package" class="fld cursor-pointer"><option value="">กำลังโหลดแพ็กเกจ...</option></select>
+          </div>
+          <div>
+            <label class="lbl">Start Date</label>
+            <input id="f_startDate" type="date" class="fld">
+          </div>
+          <div>
+            <label class="lbl">Expiry Date (Auto)</label>
+            <input id="f_expiryDate" type="date" class="fld bg-gray-900 text-gray-500">
+          </div>
+          <div>
+            <label class="lbl">Membership Status</label>
+            <select id="f_status" class="fld cursor-pointer">
+              <option value="Active">🟢 Active (ใช้งานได้ปกติ)</option>
+              <option value="Suspended">🟡 Suspended (Freeze บัตรชั่วคราว)</option>
+              <option value="Inactive">🔴 Inactive (ยกเลิกการใช้งาน)</option>
+            </select>
+          </div>
+          <div>
+            <label class="lbl">Check-in PIN (4 Digits)</label>
+            <span class="block text-[9px] text-gray-600 mb-1.5">รหัส 4 หลักสำหรับเช็คอิน (เว้นว่าง = 1234)</span>
+            <input id="f_pin" type="password" maxlength="4" inputmode="numeric" placeholder="••••"
+                   class="fld tracking-[0.6em] text-center font-bold">
+          </div>
+        </div>
+
+        <div class="bg-black/50 border border-gray-800 rounded-2xl p-4 mb-5 text-center">
+          <p class="text-red-500 font-bold uppercase tracking-widest text-[10px] mb-2"><i class="fa-solid fa-fingerprint mr-1"></i> Fingerprint Enrollment</p>
+          <input id="f_fingerprintId" type="text" placeholder="สแกนลายนิ้วมือที่เครื่องอ่าน..." class="w-full bg-transparent text-center text-lg font-mono text-red-500 outline-none">
+          <p class="text-gray-600 text-[10px] mt-2">รหัสลายนิ้วมือจากเครื่องสแกนจะถูกกรอกที่นี่โดยอัตโนมัติ (เว้นว่างได้)</p>
+        </div>
+
+        <div id="paymentSection" class="bg-black/50 border border-red-900/40 rounded-2xl p-4 mb-5">
+          <p class="text-red-500 font-bold uppercase tracking-widest text-[10px] mb-3"><i class="fa-solid fa-money-bill-wave mr-1"></i>ชำระเงินตอนสมัคร</p>
+          <div id="bdBadge" class="hidden bg-yellow-950/40 border border-yellow-700 rounded-xl p-2.5 mb-3 text-center">
+            <p class="text-yellow-300 text-xs font-bold">🎂 เดือนเกิดของลูกค้า! ใช้ส่วนลด <span id="bdLabel2">5%</span> ให้อัตโนมัติแล้ว</p>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label class="lbl">ยอดชำระ (บาท)</label>
+              <input id="f_amount" type="number" min="0" step="0.01" class="fld font-mono">
+            </div>
+            <div>
+              <label class="lbl">วิธีชำระเงิน</label>
+              <select id="f_payMethod" class="fld cursor-pointer">
+                <option value="cash">เงินสด</option>
+                <option value="transfer">โอนเงิน</option>
+              </select>
+            </div>
+            <div class="sm:col-span-2">
+              <label class="lbl">โค้ดคูปอง (ถ้ามี)</label>
+              <input id="f_coupon" type="text" class="fld" placeholder="เว้นว่างได้">
+            </div>
+          </div>
+        </div>
+
+        <p id="formErr" class="hidden text-red-400 text-xs bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2 mb-3"></p>
+        <button id="btnSubmit" class="w-full btn-primary py-3.5 rounded-xl text-sm font-black uppercase tracking-wider">Register &amp; Link Fingerprint</button>
       </div>
-      <div class="grid grid-cols-2 gap-3">
-        <div>
-          <label class="block text-[10px] uppercase tracking-widest text-gray-500 mb-1">เบอร์โทร</label>
-          <input id="f_phone" class="w-full bg-black border border-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-red-500">
+
+      <!-- ---------- Member list ---------- -->
+      <div class="panel rounded-2xl p-5">
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="text-xs uppercase tracking-widest text-gray-500">รายชื่อสมาชิก</h3>
+          <span class="text-xs text-gray-400">ทั้งหมด <b id="statTotal" class="text-white">-</b> / Active <b id="statActive" class="text-green-400">-</b></span>
         </div>
-        <div>
-          <label class="block text-[10px] uppercase tracking-widest text-gray-500 mb-1">อีเมล</label>
-          <input id="f_email" class="w-full bg-black border border-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-red-500">
+        <div class="flex items-center bg-black border border-gray-800 rounded-xl px-3 py-2 mb-3 focus-within:border-red-500/50">
+          <i class="fa-solid fa-magnifying-glass text-gray-600 mr-2 text-xs"></i>
+          <input id="memberSearch" type="text" placeholder="ค้นหาชื่อ / เบอร์โทร..." class="bg-transparent w-full outline-none text-sm">
         </div>
-      </div>
-      <div class="grid grid-cols-2 gap-3">
-        <div>
-          <label class="block text-[10px] uppercase tracking-widest text-gray-500 mb-1">แพ็กเกจ</label>
-          <input id="f_package" class="w-full bg-black border border-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-red-500" placeholder="Standard Monthly">
-        </div>
-        <div>
-          <label class="block text-[10px] uppercase tracking-widest text-gray-500 mb-1">สถานะ</label>
-          <select id="f_status" class="w-full bg-black border border-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-red-500">
-            <option value="Active">Active</option>
-            <option value="Suspended">Suspended</option>
-          </select>
-        </div>
-      </div>
-      <div class="grid grid-cols-2 gap-3">
-        <div>
-          <label class="block text-[10px] uppercase tracking-widest text-gray-500 mb-1">วันเริ่ม</label>
-          <input id="f_startDate" type="date" class="w-full bg-black border border-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-red-500">
-        </div>
-        <div>
-          <label class="block text-[10px] uppercase tracking-widest text-gray-500 mb-1">วันหมดอายุ</label>
-          <input id="f_expiryDate" type="date" class="w-full bg-black border border-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-red-500">
-        </div>
-      </div>
-      <div id="pinRow">
-        <label class="block text-[10px] uppercase tracking-widest text-gray-500 mb-1">PIN (4 หลัก, เว้นว่าง = 1234)</label>
-        <input id="f_pin" maxlength="4" class="w-full bg-black border border-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-red-500 font-mono">
-      </div>
-      <p id="modalErr" class="hidden text-red-400 text-xs bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2"></p>
-      <div class="flex gap-3 pt-2">
-        <button onclick="closeModal()" class="flex-1 bg-gray-900 hover:bg-gray-800 border border-gray-800 py-2.5 rounded-xl text-sm">ยกเลิก</button>
-        <button onclick="submitMember()" id="submitBtn" class="flex-1 bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-400 py-2.5 rounded-xl text-sm font-bold">บันทึก</button>
+        <div id="memberList" class="space-y-2 max-h-[36rem] overflow-y-auto pr-1"></div>
       </div>
     </div>
   </div>
@@ -108,27 +140,88 @@
   <script type="module">
     import { callServer, auth, onAuthStateChanged, signOut } from '../shared/firebase-init.js';
     import { renderNav } from '../shared/admin-nav.js';
+    import { loadPosState, savePosState } from '../shared/pos-state.js';
 
     let members = [];
+    let packages = [];
+    let bdSettings = { type: 'Percent', value: 5 };
+    let addOnMode = new URLSearchParams(location.search).get('addon') === '1';
+
+    const $ = (id) => document.getElementById(id);
+    const escapeHtml = (s) => (s || '').toString().replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
     onAuthStateChanged(auth, async (user) => {
       if (!user) { window.location.href = '../login.html'; return; }
       const tok = await user.getIdTokenResult();
       if (tok.claims.role !== 'admin') { window.location.href = '../login.html'; return; }
-      document.getElementById('navSlot').outerHTML = renderNav('members', tok.claims.adminRole);
-      document.getElementById('loadingGate').classList.add('hidden');
-      document.getElementById('app').classList.remove('hidden');
+      $('navSlot').outerHTML = renderNav('members', tok.claims.adminRole);
+      $('loadingGate').classList.add('hidden');
+      $('app').classList.remove('hidden');
       window.doLogout = async () => { await signOut(auth); window.location.href = '../login.html'; };
-      await loadMembers();
+
+      $('f_startDate').value = new Date().toISOString().slice(0, 10);
+      wireEvents();
+      await Promise.all([loadPackages(), loadBirthdaySettings(), loadMembers()]);
+      recalcExpiryAndPrice();
+      if (addOnMode) enterAddOnMode();
     });
 
-    async function loadMembers() {
+    function wireEvents() {
+      $('f_package').addEventListener('change', recalcExpiryAndPrice);
+      $('f_startDate').addEventListener('change', recalcExpiryAndPrice);
+      $('f_dob').addEventListener('change', recalcExpiryAndPrice);
+      $('f_pin').addEventListener('input', (e) => { e.target.value = e.target.value.replace(/[^0-9]/g, ''); });
+      $('memberSearch').addEventListener('input', renderMembers);
+      $('btnSubmit').addEventListener('click', submitForm);
+      $('btnCancelEdit').addEventListener('click', resetForm);
+      $('btnCancelAddOn').addEventListener('click', () => { window.location.href = 'pos.html'; });
+    }
+
+    async function loadPackages() {
+      packages = await callServer('getPackageList');
+      const active = packages.filter((p) => p.status !== 'Inactive');
+      $('f_package').innerHTML = active.length
+        ? active.map((p) => `<option value="${escapeHtml(p.name)}">${escapeHtml(p.name)} (${p.durationMonths} เดือน - ${p.price.toLocaleString('th-TH')} บาท)</option>`).join('')
+        : '<option value="">ยังไม่มีแพ็กเกจ — เพิ่มที่หน้าตั้งค่า</option>';
+    }
+
+    async function loadBirthdaySettings() {
       try {
-        members = await callServer('getMemberList');
-      } catch (e) {
-        alert('โหลดรายชื่อสมาชิกไม่สำเร็จ: ' + (e.message || e));
-        members = [];
+        bdSettings = await callServer('getBirthdayDiscountSettings');
+        const label = bdSettings.type === 'Fixed' ? bdSettings.value.toLocaleString('th-TH') + ' บาท' : bdSettings.value + '%';
+        $('bdLabel1').textContent = label;
+        $('bdLabel2').textContent = label;
+      } catch (e) { /* keep defaults */ }
+    }
+
+    // Mirrors the original calculateExpiryDate(): expiry = start + package duration,
+    // and for NEW members the charge auto-fills from package price with the
+    // birthday discount already applied when the DOB falls in the current month.
+    function recalcExpiryAndPrice() {
+      const start = $('f_startDate').value;
+      const pkgInfo = packages.find((p) => p.name === $('f_package').value);
+      if (start) {
+        const d = new Date(start);
+        d.setMonth(d.getMonth() + (pkgInfo ? pkgInfo.durationMonths : 1));
+        $('f_expiryDate').value = d.toISOString().slice(0, 10);
       }
+
+      if ($('f_docId').value) return; // editing: never touch the charge amount
+      let price = pkgInfo ? pkgInfo.price : 0;
+      const dob = $('f_dob').value;
+      const isBirthdayMonth = dob && new Date(dob).getMonth() === new Date().getMonth();
+      if (isBirthdayMonth) {
+        price = bdSettings.type === 'Fixed'
+          ? Math.max(0, price - bdSettings.value)
+          : Math.round(price * (1 - bdSettings.value / 100) * 100) / 100;
+      }
+      $('bdBadge').classList.toggle('hidden', !isBirthdayMonth);
+      $('f_amount').value = price;
+    }
+
+    async function loadMembers() {
+      try { members = await callServer('getMemberList'); }
+      catch (e) { alert('โหลดรายชื่อสมาชิกไม่สำเร็จ: ' + (e.message || e)); members = []; }
       renderMembers();
     }
 
@@ -139,35 +232,45 @@
     }
 
     function renderMembers() {
-      const tbody = document.getElementById('memberRows');
-      tbody.innerHTML = '';
-      document.getElementById('statTotal').textContent = members.length;
-      document.getElementById('statActive').textContent = members.filter((m) => m.status === 'Active').length;
-      document.getElementById('emptyState').classList.toggle('hidden', members.length > 0);
+      const term = ($('memberSearch').value || '').trim().toLowerCase();
+      const filtered = term
+        ? members.filter((m) => (m.fullName || '').toLowerCase().includes(term) || (m.phone || '').includes(term))
+        : members;
 
-      for (const m of members) {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td class="font-medium">${escapeHtml(m.fullName)}${m.isBirthdayMonth ? ' <i class="fa-solid fa-cake-candles text-yellow-500 text-xs" title="เดือนเกิด"></i>' : ''}</td>
-          <td class="text-gray-400 font-mono">${escapeHtml(m.phone)}</td>
-          <td class="text-gray-400">${escapeHtml(m.package || '')}</td>
-          <td class="text-gray-400">${escapeHtml(m.expiryDate || '')}</td>
-          <td><span class="${badgeClass(m.status)}">${escapeHtml(m.status)}</span></td>
-          <td class="text-gray-400">${m.checkInCount || 0}</td>
-          <td class="text-right whitespace-nowrap">
-            <button data-act="checkin" class="text-green-400 hover:text-green-300 px-2" title="เช็คอิน"><i class="fa-solid fa-right-to-bracket"></i></button>
-            <button data-act="edit" class="text-blue-400 hover:text-blue-300 px-2" title="แก้ไข"><i class="fa-solid fa-pen"></i></button>
-            <button data-act="delete" class="text-red-400 hover:text-red-300 px-2" title="ลบ"><i class="fa-solid fa-trash"></i></button>
-          </td>`;
-        tr.querySelector('[data-act="checkin"]').onclick = () => checkInMember(m);
-        tr.querySelector('[data-act="edit"]').onclick = () => openEditModal(m);
-        tr.querySelector('[data-act="delete"]').onclick = () => deleteMember(m);
-        tbody.appendChild(tr);
+      $('statTotal').textContent = members.length;
+      $('statActive').textContent = members.filter((m) => m.status === 'Active').length;
+
+      const list = $('memberList');
+      if (!filtered.length) {
+        list.innerHTML = '<p class="text-gray-600 text-xs text-center py-8">ไม่พบสมาชิก</p>';
+        return;
       }
-    }
 
-    function escapeHtml(s) {
-      return (s || '').toString().replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+      list.innerHTML = filtered.map((m, i) => `
+        <div class="bg-black/40 border border-gray-800 rounded-xl p-3">
+          <div class="flex justify-between items-start gap-2">
+            <div class="min-w-0">
+              <p class="font-bold text-sm truncate">${escapeHtml(m.fullName)}${m.isBirthdayMonth ? ' <i class="fa-solid fa-cake-candles text-yellow-500 text-xs"></i>' : ''}</p>
+              <p class="text-gray-500 text-[11px]">${escapeHtml(m.package || '')} • ${escapeHtml(m.phone || '')}</p>
+              <p class="text-gray-600 text-[10px] mt-0.5"><i class="fa-solid fa-calendar-days mr-1"></i>หมดอายุ ${escapeHtml(m.expiryDate || '-')} • <i class="fa-solid fa-dumbbell mr-1"></i>${m.checkInCount || 0} ครั้ง</p>
+            </div>
+            <span class="${badgeClass(m.status)} shrink-0">${escapeHtml(m.status)}</span>
+          </div>
+          <div class="flex gap-1 mt-2 border-t border-gray-900 pt-2">
+            <button data-act="checkin" data-i="${i}" class="text-green-400 hover:text-green-300 text-[11px] px-2 py-1"><i class="fa-solid fa-right-to-bracket mr-1"></i>เช็คอิน</button>
+            <button data-act="edit" data-i="${i}" class="text-blue-400 hover:text-blue-300 text-[11px] px-2 py-1"><i class="fa-solid fa-pen mr-1"></i>แก้ไข</button>
+            <button data-act="delete" data-i="${i}" class="text-red-400 hover:text-red-300 text-[11px] px-2 py-1 ml-auto"><i class="fa-solid fa-trash"></i></button>
+          </div>
+        </div>`).join('');
+
+      list.querySelectorAll('button[data-act]').forEach((btn) => {
+        const m = filtered[parseInt(btn.dataset.i, 10)];
+        btn.onclick = () => {
+          if (btn.dataset.act === 'checkin') return checkInMember(m);
+          if (btn.dataset.act === 'edit') return openEdit(m);
+          return deleteMember(m);
+        };
+      });
     }
 
     async function checkInMember(m) {
@@ -183,80 +286,116 @@
       if (res.success) await loadMembers();
     }
 
-    window.openAddModal = function openAddModal() {
-      document.getElementById('modalTitle').textContent = 'เพิ่มสมาชิกใหม่';
-      document.getElementById('f_docId').value = '';
-      ['f_fullName', 'f_phone', 'f_email', 'f_package', 'f_startDate', 'f_expiryDate', 'f_pin'].forEach((id) => document.getElementById(id).value = '');
-      document.getElementById('f_status').value = 'Active';
-      document.getElementById('pinRow').classList.remove('hidden');
-      document.getElementById('modalErr').classList.add('hidden');
-      document.getElementById('memberModal').classList.remove('hidden');
-    };
-
-    window.openEditModal = openEditModal;
-    function openEditModal(m) {
-      document.getElementById('modalTitle').textContent = 'แก้ไขข้อมูลสมาชิก';
-      document.getElementById('f_docId').value = m.docId;
-      document.getElementById('f_fullName').value = m.fullName || '';
-      document.getElementById('f_phone').value = m.phone || '';
-      document.getElementById('f_email').value = m.email || '';
-      document.getElementById('f_package').value = m.package || '';
-      document.getElementById('f_status').value = m.status || 'Active';
-      document.getElementById('f_startDate').value = m.startDate || '';
-      document.getElementById('f_expiryDate').value = m.expiryDate || '';
-      document.getElementById('f_pin').value = '';
-      document.getElementById('pinRow').classList.remove('hidden');
-      document.getElementById('modalErr').classList.add('hidden');
-      document.getElementById('memberModal').classList.remove('hidden');
+    function openEdit(m) {
+      $('f_docId').value = m.docId;
+      $('f_fullName').value = m.fullName || '';
+      $('f_phone').value = m.phone || '';
+      $('f_email').value = m.email || '';
+      $('f_dob').value = m.dob || '';
+      $('f_package').value = m.package || '';
+      $('f_startDate').value = m.startDate || '';
+      $('f_expiryDate').value = m.expiryDate || '';
+      $('f_status').value = m.status || 'Active';
+      $('f_fingerprintId').value = m.fingerprintId || '';
+      $('f_pin').value = '';
+      $('formTitle').textContent = 'Edit Member — ' + m.fullName;
+      $('editModeIndicator').classList.remove('hidden');
+      $('paymentSection').classList.add('hidden');
+      $('btnSubmit').textContent = 'บันทึกการแก้ไข';
+      $('formErr').classList.add('hidden');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
-    window.closeModal = function closeModal() {
-      document.getElementById('memberModal').classList.add('hidden');
-    };
+    function resetForm() {
+      ['f_docId', 'f_fullName', 'f_phone', 'f_email', 'f_dob', 'f_pin', 'f_fingerprintId', 'f_coupon'].forEach((id) => { $(id).value = ''; });
+      $('f_status').value = 'Active';
+      $('f_payMethod').value = 'cash';
+      $('f_startDate').value = new Date().toISOString().slice(0, 10);
+      $('formTitle').textContent = 'Add New Gym Member';
+      $('editModeIndicator').classList.add('hidden');
+      $('paymentSection').classList.remove('hidden');
+      $('btnSubmit').textContent = 'Register & Link Fingerprint';
+      $('formErr').classList.add('hidden');
+      recalcExpiryAndPrice();
+    }
 
-    window.submitMember = async function submitMember() {
-      const docId = document.getElementById('f_docId').value;
+    // ---- membership-as-part-of-a-daily-bill mode (arrived here from the POS page) ----
+    function enterAddOnMode() {
+      const st = loadPosState();
+      const firstCustomer = (st.customers || []).find((c) => c.name);
+      if (firstCustomer) {
+        $('f_fullName').value = firstCustomer.name || '';
+        $('f_phone').value = firstCustomer.phone || '';
+      }
+      $('addOnBanner').classList.remove('hidden');
+      $('paymentSection').classList.add('hidden'); // charged on the POS bill instead
+      $('btnSubmit').textContent = 'สมัครสมาชิก แล้วกลับไปรวมบิล';
+      $('btnSubmit').classList.add('!bg-green-600');
+    }
+
+    async function submitForm() {
+      const docId = $('f_docId').value;
       const payload = {
-        fullName: document.getElementById('f_fullName').value.trim(),
-        phone: document.getElementById('f_phone').value.trim(),
-        email: document.getElementById('f_email').value.trim(),
-        package: document.getElementById('f_package').value.trim(),
-        status: document.getElementById('f_status').value,
-        startDate: document.getElementById('f_startDate').value,
-        expiryDate: document.getElementById('f_expiryDate').value
+        fullName: $('f_fullName').value.trim(),
+        phone: $('f_phone').value.trim(),
+        email: $('f_email').value.trim(),
+        dob: $('f_dob').value,
+        package: $('f_package').value,
+        startDate: $('f_startDate').value,
+        expiryDate: $('f_expiryDate').value,
+        status: $('f_status').value,
+        fingerprintId: $('f_fingerprintId').value.trim()
       };
-      const pin = document.getElementById('f_pin').value.trim();
+      const pin = $('f_pin').value.trim();
       if (pin) payload.pin = pin;
 
-      if (!payload.fullName || !payload.phone || !payload.startDate || !payload.expiryDate) {
-        return showModalErr('กรุณากรอกชื่อ เบอร์โทร วันเริ่ม และวันหมดอายุให้ครบ');
+      if (!payload.fullName || !payload.phone || !payload.package || !payload.startDate || !payload.expiryDate) {
+        return showErr('กรุณากรอกชื่อ เบอร์โทร แพ็กเกจ วันเริ่ม และวันหมดอายุให้ครบ');
       }
+      if (pin && pin.length !== 4) return showErr('PIN ต้องเป็นตัวเลข 4 หลัก');
 
-      const btn = document.getElementById('submitBtn');
+      const btn = $('btnSubmit');
+      const originalText = btn.textContent;
       btn.disabled = true;
       btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i>';
 
       try {
-        const res = docId
-          ? await callServer('updateMemberData', { ...payload, docId })
-          : await callServer('saveMemberData', payload);
-        if (res.success) {
-          window.closeModal();
-          await loadMembers();
-          if (!docId) alert(res.message);
+        if (docId) {
+          const res = await callServer('updateMemberData', { ...payload, docId });
+          alert(res.message);
+          if (res.success) { resetForm(); await loadMembers(); }
+        } else if (addOnMode) {
+          // Register now, but bill the package on the open POS ticket.
+          const res = await callServer('saveMemberData', { ...payload, deferPayment: true });
+          if (!res.success) return showErr(res.message);
+          const price = typeof res.chargeAmount === 'number' ? res.chargeAmount : 0;
+          const st = loadPosState();
+          st.cart.push({ name: `สมัครสมาชิกรายเดือน - ${payload.package} (${payload.fullName})`, price, qty: 1 });
+          st.pendingMembership = true;
+          savePosState(st);
+          alert(`เพิ่มแพ็กเกจสมัครสมาชิกของ "${payload.fullName}" ลงในบิลแล้ว! กำลังกลับไปหน้ารับชำระเงิน`);
+          window.location.href = 'pos.html';
+          return;
         } else {
-          showModalErr(res.message);
+          payload.amount = $('f_amount').value;
+          payload.couponCode = $('f_coupon').value.trim();
+          payload.paymentMethod = $('f_payMethod').value;
+          const res = await callServer('saveMemberData', payload);
+          if (!res.success) return showErr(res.message);
+          alert(res.message);
+          resetForm();
+          await loadMembers();
         }
       } catch (e) {
-        showModalErr(e.message || 'เกิดข้อผิดพลาด');
+        showErr(e.message || 'เกิดข้อผิดพลาด');
       } finally {
         btn.disabled = false;
-        btn.innerHTML = 'บันทึก';
+        btn.textContent = originalText;
       }
-    };
+    }
 
-    function showModalErr(msg) {
-      const el = document.getElementById('modalErr');
+    function showErr(msg) {
+      const el = $('formErr');
       el.textContent = msg;
       el.classList.remove('hidden');
     }

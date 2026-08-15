@@ -153,6 +153,7 @@
     import { callServer, auth, onAuthStateChanged, signOut } from '../shared/firebase-init.js';
     import { renderNav } from '../shared/admin-nav.js';
     import { loadPosState, savePosState, clearPosState, emptyPosState } from '../shared/pos-state.js';
+    import { openReceiptWindow, offerReceiptPrint } from '../shared/receipt.js';
 
     let products = [];
     let st = emptyPosState();
@@ -469,6 +470,7 @@
         renderCustomers();
         renderAll();
         await Promise.all([loadProducts(), loadLogs()]);
+        await offerReceiptPrint(callServer, 'generateDailyReceiptPDF', res.receiptNo);
       } catch (e) {
         showErr(e.message || 'เกิดข้อผิดพลาด');
       } finally {
@@ -485,17 +487,64 @@
 
     async function loadLogs() {
       const logs = await callServer('getDailyPaymentLogs');
-      $('logList').innerHTML = logs.length ? logs.map((l) => `
-        <div class="border-b border-gray-900 pb-2">
+      $('logList').innerHTML = logs.length ? logs.map((l, i) => {
+        const voided = l.refundStatus === 'Refunded';
+        return `
+        <div class="border-b border-gray-900 pb-2 ${voided ? 'opacity-50' : ''}">
           <div class="flex justify-between">
             <span class="font-medium text-xs truncate">${escapeHtml(l.customerName)}</span>
             <span class="text-gray-400 text-xs shrink-0">${l.amount.toLocaleString('th-TH')} บาท</span>
           </div>
           <div class="flex justify-between text-[10px] text-gray-500">
             <span class="truncate">${escapeHtml(l.itemSummary)}</span>
-            <span class="shrink-0 ml-2">${escapeHtml(l.receiptNo)}${l.refundStatus === 'Refunded' ? ' (คืนเงิน)' : ''}</span>
+            <span class="shrink-0 ml-2">${escapeHtml(l.receiptNo)}</span>
           </div>
-        </div>`).join('') : '<p class="text-gray-600 text-xs text-center py-4">ยังไม่มีรายการวันนี้</p>';
+          <div class="flex items-center gap-2 mt-1 text-[10px]">
+            <span class="${l.paymentMethod === 'โอนเงิน' ? 'text-blue-400' : 'text-green-400'}">${escapeHtml(l.paymentMethod)}</span>
+            ${voided ? '<span class="text-red-400 font-bold">คืนเงินแล้ว</span>' : ''}
+            <button data-print="${i}" class="ml-auto text-gray-400 hover:text-white" title="พิมพ์ใบเสร็จ"><i class="fa-solid fa-print"></i></button>
+            ${voided ? '' : `
+              <button data-method="${i}" class="text-blue-400 hover:text-blue-300" title="แก้วิธีชำระเงิน"><i class="fa-solid fa-right-left"></i></button>
+              <button data-void="${i}" class="text-yellow-500 hover:text-yellow-400" title="ยกเลิก/คืนเงิน"><i class="fa-solid fa-rotate-left"></i></button>`}
+            <button data-del="${i}" class="text-red-400 hover:text-red-300" title="ลบบิลถาวร"><i class="fa-solid fa-trash"></i></button>
+          </div>
+        </div>`;
+      }).join('') : '<p class="text-gray-600 text-xs text-center py-4">ยังไม่มีรายการวันนี้</p>';
+
+      $('logList').querySelectorAll('[data-print]').forEach((b) => b.onclick = () => printReceipt(logs[+b.dataset.print].receiptNo));
+      $('logList').querySelectorAll('[data-method]').forEach((b) => b.onclick = () => changeMethod(logs[+b.dataset.method]));
+      $('logList').querySelectorAll('[data-void]').forEach((b) => b.onclick = () => voidBill(logs[+b.dataset.void]));
+      $('logList').querySelectorAll('[data-del]').forEach((b) => b.onclick = () => deleteBill(logs[+b.dataset.del]));
+    }
+
+    async function printReceipt(receiptNo) {
+      const res = await callServer('generateDailyReceiptPDF', { receiptNo });
+      if (!res.success) return alert(res.message);
+      openReceiptWindow(res.html);
+    }
+
+    async function changeMethod(l) {
+      const next = l.paymentMethod === 'โอนเงิน' ? 'cash' : 'transfer';
+      const label = next === 'cash' ? 'เงินสด' : 'โอนเงิน';
+      if (!confirm(`เปลี่ยนวิธีชำระเงินของใบเสร็จ ${l.receiptNo} เป็น "${label}"?`)) return;
+      const res = await callServer('updateDailyPaymentMethod', { receiptNo: l.receiptNo, paymentMethod: next });
+      alert(res.message);
+      if (res.success) await loadLogs();
+    }
+
+    async function voidBill(l) {
+      const reason = prompt(`ยกเลิก/คืนเงินใบเสร็จ ${l.receiptNo} (${l.amount.toLocaleString('th-TH')} บาท)\n\nกรอกเหตุผล:`);
+      if (reason === null) return;
+      const res = await callServer('voidDailyPayment', { receiptNo: l.receiptNo, reason });
+      alert(res.message);
+      if (res.success) await Promise.all([loadProducts(), loadLogs()]); // stock is restored on void
+    }
+
+    async function deleteBill(l) {
+      if (!confirm(`ลบบิล ${l.receiptNo} ออกจากระบบถาวร?\n\nยอดนี้จะหายจากรายงานด้วย ถ้าต้องการเก็บประวัติไว้ให้ใช้ "ยกเลิก/คืนเงิน" แทน`)) return;
+      const res = await callServer('deleteDailyPaymentLog', { receiptNo: l.receiptNo });
+      alert(res.message);
+      if (res.success) await loadLogs();
     }
   </script>
 </body>

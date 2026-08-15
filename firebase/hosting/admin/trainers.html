@@ -146,13 +146,19 @@
           <td class="text-gray-400 font-mono">${t.startHour}-${t.endHour}</td>
           <td><span class="badge ${t.busyStatus === 'Busy' ? 'badge-busy' : 'badge-available'}">${t.busyStatus === 'Busy' ? 'ติดลูกค้า' : 'ว่าง'}</span></td>
           <td class="text-right whitespace-nowrap">
-            <button data-act="toggle" class="text-yellow-400 hover:text-yellow-300 px-2" title="สลับสถานะว่าง/ไม่ว่าง"><i class="fa-solid fa-toggle-on"></i></button>
-            <button data-act="edit" class="text-blue-400 hover:text-blue-300 px-2" title="แก้ไข"><i class="fa-solid fa-pen"></i></button>
-            <button data-act="delete" class="text-red-400 hover:text-red-300 px-2" title="ลบ"><i class="fa-solid fa-trash"></i></button>
+            <button data-act="schedule" class="text-gray-400 hover:text-white px-1.5" title="ดูตารางคิว"><i class="fa-solid fa-calendar-day"></i></button>
+            <button data-act="line" class="text-green-400 hover:text-green-300 px-1.5" title="เชื่อม/ทดสอบ LINE"><i class="fa-brands fa-line"></i></button>
+            <button data-act="pin" class="text-orange-400 hover:text-orange-300 px-1.5" title="รีเซ็ต PIN"><i class="fa-solid fa-key"></i></button>
+            <button data-act="toggle" class="text-yellow-400 hover:text-yellow-300 px-1.5" title="สลับสถานะว่าง/ไม่ว่าง"><i class="fa-solid fa-toggle-on"></i></button>
+            <button data-act="edit" class="text-blue-400 hover:text-blue-300 px-1.5" title="แก้ไข"><i class="fa-solid fa-pen"></i></button>
+            <button data-act="delete" class="text-red-400 hover:text-red-300 px-1.5" title="ลบ"><i class="fa-solid fa-trash"></i></button>
           </td>`;
         tr.querySelector('[data-act="toggle"]').onclick = () => toggleBusy(t);
         tr.querySelector('[data-act="edit"]').onclick = () => openEditModal(t);
         tr.querySelector('[data-act="delete"]').onclick = () => deleteTrainer(t);
+        tr.querySelector('[data-act="schedule"]').onclick = () => viewSchedule(t);
+        tr.querySelector('[data-act="line"]').onclick = () => trainerLineMenu(t);
+        tr.querySelector('[data-act="pin"]').onclick = () => resetPin(t);
         tbody.appendChild(tr);
       }
     }
@@ -160,6 +166,36 @@
     async function toggleBusy(t) {
       const res = await callServer('adminSetTrainerBusyStatus', { docId: t.docId, isBusy: t.busyStatus !== 'Busy' });
       if (res.success) await loadTrainers(); else alert(res.message);
+    }
+
+    async function viewSchedule(t) {
+      const dateStr = prompt(`ดูตารางคิวของ "${t.fullName}" วันที่ไหน? (YYYY-MM-DD)`, new Date().toISOString().slice(0, 10));
+      if (!dateStr) return;
+      const list = await callServer('getTrainerScheduleByDate', { trainerId: t.trainerId, dateStr });
+      if (!list.length) { alert(`${t.fullName} — ${dateStr}\n\nไม่มีคิวในวันนี้`); return; }
+      const lines = list.map((b) => `${b.timeSlot}  ${b.memberName}${b.memberPhone ? ' (' + b.memberPhone + ')' : ''}  [${b.status}]`);
+      alert(`ตารางคิว ${t.fullName} — ${dateStr}\n\n${lines.join('\n')}`);
+    }
+
+    async function resetPin(t) {
+      if (!confirm(`รีเซ็ต PIN ของ "${t.fullName}" กลับเป็น 1234?\n\nเทรนเนอร์จะต้องใช้ 1234 เข้าระบบครั้งถัดไป และควรเปลี่ยนเองทันที`)) return;
+      const res = await callServer('resetTrainerPin', { trainerDocId: t.docId });
+      alert(res.message);
+    }
+
+    // Admin-side LINE helper: hand the trainer a link code, or fire a test
+    // message to check the connection actually works.
+    async function trainerLineMenu(t) {
+      const choice = prompt(
+        `LINE ของ "${t.fullName}"\n\nพิมพ์ 1 = ขอรหัสเชื่อม LINE ให้เทรนเนอร์\nพิมพ์ 2 = ส่งข้อความทดสอบ`, '1');
+      if (choice === '1') {
+        const res = await callServer('generateTrainerLineLinkCode', { docId: t.docId });
+        if (!res.success) return alert(res.message);
+        alert(`รหัสเชื่อม LINE ของ "${t.fullName}" คือ:\n\n${res.code}\n\nให้เทรนเนอร์เพิ่มเพื่อน LINE OA ของยิม แล้วส่งรหัสนี้ทางแชท`);
+      } else if (choice === '2') {
+        const res = await callServer('testSendLineMessageToTrainer', { docId: t.docId });
+        alert(res.message);
+      }
     }
 
     async function deleteTrainer(t) {

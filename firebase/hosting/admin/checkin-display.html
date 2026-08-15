@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Industrial Muscle - Check-in Display</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Urbanist:wght@700;900&family=Prompt:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <style>
+    body {
+      background-color: #050505; color: #F3F4F6; font-family: 'Prompt', sans-serif;
+      background-image: radial-gradient(ellipse at center, rgba(220,38,38,0.10), transparent 60%);
+      overflow: hidden;
+    }
+    @keyframes popIn { from { transform: scale(0.94); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+    .pop { animation: popIn .35s ease-out; }
+  </style>
+</head>
+<body class="min-h-screen flex items-center justify-center p-6">
+
+  <!-- Idle: waiting for the door scanner -->
+  <div id="idleView" class="text-center">
+    <h1 class="text-5xl md:text-7xl font-black tracking-tighter font-['Urbanist'] mb-2">INDUSTRIAL</h1>
+    <p class="text-red-500 font-bold tracking-[0.4em] text-lg uppercase mb-14">Muscle</p>
+    <i class="fa-solid fa-fingerprint text-7xl text-gray-800 mb-6"></i>
+    <p class="text-gray-500 text-xl">กรุณาสแกนลายนิ้วมือเพื่อเข้าใช้บริการ</p>
+    <p id="idleClock" class="text-gray-700 font-mono text-sm mt-10"></p>
+  </div>
+
+  <!-- Result of the most recent scan -->
+  <div id="resultView" class="hidden text-center max-w-2xl w-full">
+    <div id="resultCard" class="rounded-3xl p-10 md:p-14 border pop">
+      <i id="resultIcon" class="text-7xl mb-6"></i>
+      <p id="resultLabel" class="text-lg uppercase tracking-[0.3em] mb-3"></p>
+      <h2 id="resultName" class="text-4xl md:text-6xl font-black font-['Urbanist'] mb-6 break-words"></h2>
+      <div id="resultMeta" class="grid grid-cols-2 gap-6 text-left max-w-md mx-auto"></div>
+      <p id="resultDetails" class="text-gray-400 mt-6"></p>
+    </div>
+  </div>
+
+  <div id="gate" class="fixed inset-0 bg-black flex items-center justify-center z-50">
+    <i class="fa-solid fa-circle-notch fa-spin text-3xl text-red-500"></i>
+  </div>
+
+  <script type="module">
+    import { callServer, auth, onAuthStateChanged } from '../shared/firebase-init.js';
+
+    const $ = (id) => document.getElementById(id);
+    const escapeHtml = (s) => (s || '').toString().replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+    // How long a scan result stays on screen before going back to idle.
+    const SHOW_MS = 8000;
+    const POLL_MS = 3000;
+
+    let lastLogId = null;
+    let hideTimer = null;
+
+    onAuthStateChanged(auth, async (user) => {
+      if (!user) { window.location.href = '../login.html'; return; }
+      const tok = await user.getIdTokenResult();
+      if (tok.claims.role !== 'admin') { window.location.href = '../login.html'; return; }
+      $('gate').classList.add('hidden');
+      tickClock();
+      setInterval(tickClock, 1000);
+      poll();
+      setInterval(poll, POLL_MS);
+    });
+
+    function tickClock() {
+      $('idleClock').textContent = new Date().toLocaleString('th-TH');
+    }
+
+    async function poll() {
+      let log;
+      try { log = await callServer('getLatestCheckIn'); } catch (e) { return; }
+      if (!log || log.logDocId === lastLogId) return;
+
+      // Ignore anything that happened before this screen was opened, so
+      // relaunching the display doesn't replay an old scan.
+      lastLogId = log.logDocId;
+      if (Date.now() - log.timestamp > SHOW_MS) return;
+      show(log);
+    }
+
+    function show(log) {
+      const ok = log.status === 'SUCCESS';
+      const card = $('resultCard');
+      card.className = `rounded-3xl p-10 md:p-14 border pop ${ok
+        ? 'bg-green-950/30 border-green-700'
+        : 'bg-red-950/30 border-red-700'}`;
+      $('resultIcon').className = `text-7xl mb-6 ${ok ? 'fa-solid fa-circle-check text-green-500' : 'fa-solid fa-circle-xmark text-red-500'}`;
+      $('resultLabel').className = `text-lg uppercase tracking-[0.3em] mb-3 ${ok ? 'text-green-500' : 'text-red-500'}`;
+      $('resultLabel').textContent = ok ? 'ยินดีต้อนรับ' : 'เข้าใช้บริการไม่ได้';
+      $('resultName').textContent = log.name || '-';
+
+      const meta = [];
+      if (ok) {
+        if (log.package) meta.push(['แพ็กเกจ', escapeHtml(log.package)]);
+        if (typeof log.checkInCount === 'number') meta.push(['เข้าใช้สะสม', log.checkInCount + ' ครั้ง']);
+        if (log.expiryDate) {
+          const expiryText = log.daysLeft != null && log.daysLeft >= 0
+            ? `${escapeHtml(log.expiryDate)} (เหลือ ${log.daysLeft} วัน)`
+            : escapeHtml(log.expiryDate);
+          meta.push(['หมดอายุ', expiryText]);
+        }
+        meta.push(['เวลา', escapeHtml(log.timeStr)]);
+      }
+      $('resultMeta').innerHTML = meta.map(([k, v]) =>
+        `<div><p class="text-gray-500 text-[10px] uppercase tracking-widest">${k}</p><p class="text-xl font-bold">${v}</p></div>`).join('');
+
+      $('resultDetails').innerHTML = !ok
+        ? `<span class="text-red-400">${escapeHtml(log.details || '')}</span>`
+        : (log.nearExpiry ? '<span class="text-yellow-400 font-bold">⚠️ สมาชิกใกล้หมดอายุ กรุณาติดต่อเคาน์เตอร์</span>' : '');
+
+      $('idleView').classList.add('hidden');
+      $('resultView').classList.remove('hidden');
+
+      clearTimeout(hideTimer);
+      hideTimer = setTimeout(() => {
+        $('resultView').classList.add('hidden');
+        $('idleView').classList.remove('hidden');
+      }, SHOW_MS);
+    }
+  </script>
+</body>
+</html>

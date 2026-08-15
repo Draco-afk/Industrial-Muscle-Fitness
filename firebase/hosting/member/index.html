@@ -67,6 +67,25 @@
       <div id="slotGrid" class="grid grid-cols-3 gap-2"></div>
       <p id="slotMsg" class="text-xs text-gray-500 mt-2"></p>
       <div id="myBookings" class="mt-4 space-y-2 text-sm"></div>
+      <div id="myWaitlist" class="space-y-2 text-sm"></div>
+    </div>
+
+    <div class="panel rounded-2xl p-5">
+      <h3 class="text-xs uppercase tracking-widest text-gray-500 mb-3">แจ้งเตือนทาง LINE</h3>
+      <div id="mLineLinked" class="hidden">
+        <p class="text-green-400 text-sm font-bold mb-2"><i class="fa-solid fa-circle-check mr-1"></i>เชื่อมต่อ LINE แล้ว</p>
+        <button onclick="unlinkMemberLine()" class="text-red-400 hover:text-red-300 text-xs">ยกเลิกการเชื่อมต่อ</button>
+      </div>
+      <div id="mLineUnlinked" class="hidden">
+        <p class="text-gray-400 text-xs mb-3">เชื่อม LINE แล้วจะได้รับแจ้งเตือนก่อนหมดอายุ และส่วนลดวันเกิด</p>
+        <ol class="text-gray-400 text-xs space-y-1 mb-3 list-decimal ml-4">
+          <li>เพิ่มเพื่อน LINE OA ของยิม (<a id="mAddFriendLink" href="#" target="_blank" class="text-red-400 underline">กดที่นี่</a>)</li>
+          <li>กดปุ่มด้านล่างเพื่อรับรหัส 6 หลัก</li>
+          <li>ส่งรหัสนั้นทางแชท LINE ให้ยิม</li>
+        </ol>
+        <button onclick="genMemberLineCode()" class="w-full bg-gray-900 hover:bg-gray-800 border border-gray-800 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider">ขอรหัสเชื่อม LINE</button>
+        <p id="mLinkCode" class="hidden text-center font-mono text-3xl font-black text-red-400 tracking-[0.3em] mt-3"></p>
+      </div>
     </div>
 
     <div class="panel rounded-2xl p-5">
@@ -86,7 +105,7 @@
       document.getElementById('loadingGate').classList.add('hidden');
       document.getElementById('app').classList.remove('hidden');
       document.getElementById('bkDate').value = new Date().toISOString().slice(0, 10);
-      await Promise.all([loadProfile(), loadTrainerOptions(), loadMyBookings()]);
+      await Promise.all([loadProfile(), loadTrainerOptions(), loadMyBookings(), loadMyWaitlist(), loadLineStatus()]);
     });
 
     window.doLogout = async function doLogout() {
@@ -113,14 +132,7 @@
       if (!trainerId || !dateStr) { msg.textContent = 'กรุณาเลือกเทรนเนอร์และวันที่ก่อน'; return; }
       const res = await callServer('getTrainerAvailableSlots', { trainerId, dateStr });
       if (!res.success) { msg.textContent = res.message || 'เกิดข้อผิดพลาด'; return; }
-      if (!res.slots.length) {
-        msg.textContent = res.message || 'ไม่มีคิวว่างในวันนี้';
-        const joinBtn = document.createElement('button');
-        joinBtn.className = 'text-xs text-red-400 hover:underline mt-1';
-        joinBtn.textContent = 'เข้าคิวรอ (Waitlist) แทน?';
-        joinBtn.onclick = () => alert('เลือกช่วงเวลาที่ต้องการรอก่อน แล้วกดเข้าคิวรอในหน้าถัดไป (ฟีเจอร์เต็มรูปแบบกำลังพัฒนา)');
-        return;
-      }
+
       for (const slot of res.slots) {
         const btn = document.createElement('button');
         btn.className = 'bg-black border border-gray-800 rounded-lg py-2 text-xs font-mono hover:border-red-500';
@@ -132,18 +144,104 @@
         };
         grid.appendChild(btn);
       }
+
+      // Slots someone else already took can still be queued for — if that
+      // booking gets cancelled the first person waiting is notified.
+      for (const slot of (res.bookedSlots || [])) {
+        const btn = document.createElement('button');
+        btn.className = 'bg-black/40 border border-gray-800 rounded-lg py-2 text-xs font-mono text-gray-600 hover:border-yellow-600 hover:text-yellow-500';
+        btn.innerHTML = `<span class="line-through">${slot}</span><br><span class="text-[9px]">เข้าคิวรอ</span>`;
+        btn.title = 'ช่วงนี้มีคนจองแล้ว — กดเพื่อเข้าคิวรอ';
+        btn.onclick = async () => {
+          if (!confirm(`เข้าคิวรอช่วง ${slot} วันที่ ${dateStr}?\n\nถ้าคนที่จองไว้ยกเลิก ระบบจะแจ้งเตือนคุณเป็นคนแรก`)) return;
+          const wRes = await callServer('joinWaitlist', { trainerId, dateStr, timeSlot: slot });
+          alert(wRes.message);
+          if (wRes.success) await loadMyWaitlist();
+        };
+        grid.appendChild(btn);
+      }
+
+      if (!res.slots.length) {
+        msg.textContent = (res.bookedSlots || []).length
+          ? 'วันนี้คิวเต็มแล้ว — กดช่วงเวลาด้านบนเพื่อเข้าคิวรอได้'
+          : (res.message || 'ไม่มีคิวว่างในวันนี้');
+      }
     };
 
     async function loadMyBookings() {
       const list = await callServer('getMyBookings');
       const el = document.getElementById('myBookings');
       if (!list.length) { el.innerHTML = ''; return; }
-      el.innerHTML = '<p class="text-[10px] uppercase tracking-widest text-gray-500 mb-1">คิวของฉัน</p>' + list.map((b) => `
-        <div class="flex justify-between items-center border-b border-gray-900 pb-2 text-xs">
-          <span>${escapeHtml(b.trainerName)} — ${escapeHtml(b.date)} ${escapeHtml(b.timeSlot)}</span>
-          <span class="text-gray-500">${escapeHtml(b.status)}</span>
+      el.innerHTML = '<p class="text-[10px] uppercase tracking-widest text-gray-500 mb-1">คิวของฉัน</p>' + list.map((b, i) => `
+        <div class="flex justify-between items-center gap-2 border-b border-gray-900 pb-2 text-xs">
+          <span class="min-w-0 truncate">${escapeHtml(b.trainerName)} — ${escapeHtml(b.date)} ${escapeHtml(b.timeSlot)}</span>
+          <span class="flex items-center gap-2 shrink-0">
+            <span class="text-gray-500">${escapeHtml(b.status)}</span>
+            ${b.status === 'Booked' ? `<button data-cancel="${i}" class="text-red-400 hover:text-red-300">ยกเลิก</button>` : ''}
+          </span>
         </div>`).join('');
+
+      el.querySelectorAll('[data-cancel]').forEach((btn) => {
+        const b = list[+btn.dataset.cancel];
+        btn.onclick = async () => {
+          if (!confirm(`ยกเลิกคิว ${b.trainerName} วันที่ ${b.date} เวลา ${b.timeSlot}?`)) return;
+          const res = await callServer('cancelMyBooking', { bookingId: b.bookingId });
+          alert(res.message);
+          if (res.success) { await loadMyBookings(); await loadMyWaitlist(); }
+        };
+      });
     }
+
+    async function loadMyWaitlist() {
+      let list = [];
+      try { list = await callServer('getMyWaitlist'); } catch (e) { /* ignore */ }
+      const el = document.getElementById('myWaitlist');
+      if (!list.length) { el.innerHTML = ''; return; }
+      el.innerHTML = '<p class="text-[10px] uppercase tracking-widest text-gray-500 mb-1 mt-3">คิวรอของฉัน</p>' + list.map((w, i) => `
+        <div class="flex justify-between items-center gap-2 border-b border-gray-900 pb-2 text-xs">
+          <span class="min-w-0 truncate text-yellow-500">${escapeHtml(w.trainerName)} — ${escapeHtml(w.date)} ${escapeHtml(w.timeSlot)}</span>
+          <button data-wcancel="${i}" class="text-red-400 hover:text-red-300 shrink-0">ออกจากคิวรอ</button>
+        </div>`).join('');
+
+      el.querySelectorAll('[data-wcancel]').forEach((btn) => {
+        const w = list[+btn.dataset.wcancel];
+        btn.onclick = async () => {
+          if (!confirm(`ออกจากคิวรอ ${w.trainerName} ${w.date} ${w.timeSlot}?`)) return;
+          const res = await callServer('cancelMyWaitlistEntry', { waitlistDocId: w.waitlistDocId });
+          alert(res.message);
+          if (res.success) await loadMyWaitlist();
+        };
+      });
+    }
+
+    async function loadLineStatus() {
+      let p;
+      try { p = await callServer('getMemberProfile'); } catch (e) { return; }
+      const linked = !!p.lineLinked;
+      document.getElementById('mLineLinked').classList.toggle('hidden', !linked);
+      document.getElementById('mLineUnlinked').classList.toggle('hidden', linked);
+      if (!linked) {
+        try {
+          const r = await callServer('getLineAddFriendUrlForMember');
+          if (r && r.addFriendUrl) document.getElementById('mAddFriendLink').href = r.addFriendUrl;
+        } catch (e) { /* ignore */ }
+      }
+    }
+
+    window.genMemberLineCode = async function genMemberLineCode() {
+      const res = await callServer('generateMyMemberLineLinkCode', {});
+      if (!res.success) return alert(res.message);
+      const el = document.getElementById('mLinkCode');
+      el.textContent = res.code;
+      el.classList.remove('hidden');
+    };
+
+    window.unlinkMemberLine = async function unlinkMemberLine() {
+      if (!confirm('ยกเลิกการเชื่อมต่อ LINE? จะไม่ได้รับแจ้งเตือนหมดอายุ/วันเกิดอีก')) return;
+      const res = await callServer('unlinkMyMemberLine', {});
+      alert(res.message);
+      if (res.success) await loadLineStatus();
+    };
 
     async function loadProfile() {
       let p;

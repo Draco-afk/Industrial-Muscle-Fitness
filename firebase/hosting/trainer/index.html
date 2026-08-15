@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Industrial Muscle - Trainer</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Urbanist:wght@700;900&family=Prompt:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <style>
+    body {
+      background-color: #050505; color: #F3F4F6; font-family: 'Prompt', sans-serif;
+      background-image: radial-gradient(ellipse at top, rgba(37,99,235,0.10), transparent 55%);
+    }
+    .panel { background: rgba(15,15,15,0.9); border: 1px solid #222; }
+    .fld { width: 100%; background: #000; border: 1px solid #1f2937; border-radius: 12px; padding: 12px; font-size: 13px; color: #fff; outline: none; }
+    .fld:focus { border-color: #3b82f6; }
+    .lbl { display: block; font-size: 10px; text-transform: uppercase; font-weight: 700; color: #6b7280; letter-spacing: 0.1em; margin-bottom: 6px; }
+    .tab { flex: 1; padding: 10px; font-size: 12px; font-weight: 700; color: #6b7280; border-bottom: 2px solid transparent; }
+    .tab.active { color: #fff; border-bottom-color: #3b82f6; }
+    .badge { padding: 2px 10px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+  </style>
+</head>
+<body class="min-h-screen">
+  <div id="loadingGate" class="fixed inset-0 bg-black flex items-center justify-center z-50">
+    <i class="fa-solid fa-circle-notch fa-spin text-3xl text-blue-500"></i>
+  </div>
+
+  <div id="app" class="hidden max-w-2xl mx-auto p-4 md:p-8">
+
+    <header class="flex items-center justify-between mb-6">
+      <div class="flex items-center gap-3 min-w-0">
+        <img id="tPhoto" class="w-12 h-12 rounded-full object-cover bg-gray-900 border border-gray-800 shrink-0" alt="">
+        <div class="min-w-0">
+          <h1 id="tName" class="text-lg font-black truncate font-['Urbanist']">-</h1>
+          <p id="tSpecialty" class="text-xs text-gray-500 truncate">-</p>
+        </div>
+      </div>
+      <button id="btnLogout" class="text-xs bg-gray-900 hover:bg-gray-800 border border-gray-800 px-4 py-2 rounded-lg shrink-0">
+        <i class="fa-solid fa-arrow-right-from-bracket mr-1"></i> ออก
+      </button>
+    </header>
+
+    <!-- Busy toggle -->
+    <div class="panel rounded-2xl p-5 mb-5">
+      <div class="flex items-center justify-between gap-3">
+        <div>
+          <p class="text-sm font-bold">สถานะตอนนี้</p>
+          <p id="busyHint" class="text-gray-500 text-[11px] mt-0.5">ลูกค้าจะเห็นสถานะนี้ตอนเลือกเทรนเนอร์</p>
+        </div>
+        <button id="btnBusy" class="px-5 py-2.5 rounded-xl text-sm font-black">-</button>
+      </div>
+    </div>
+
+    <div class="flex border-b border-gray-800 mb-5">
+      <button class="tab active" data-tab="bookings">คิวของฉัน</button>
+      <button class="tab" data-tab="profile">โปรไฟล์</button>
+      <button class="tab" data-tab="account">บัญชี</button>
+    </div>
+
+    <!-- Bookings -->
+    <section id="tab-bookings">
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="text-xs uppercase tracking-widest text-gray-500">คิวที่ถูกจอง</h3>
+        <span id="bookingCount" class="text-xs text-gray-500"></span>
+      </div>
+      <div id="bookingList" class="space-y-2"></div>
+    </section>
+
+    <!-- Profile -->
+    <section id="tab-profile" class="hidden space-y-5">
+      <div class="panel rounded-2xl p-5">
+        <h3 class="text-xs uppercase tracking-widest text-gray-500 mb-3">รูปโปรไฟล์</h3>
+        <div class="flex items-center gap-3">
+          <input id="photoFile" type="file" accept="image/*" class="fld flex-1">
+          <button id="btnUploadPhoto" class="bg-blue-600 hover:bg-blue-500 px-4 py-2.5 rounded-xl text-sm font-bold shrink-0">อัปโหลด</button>
+        </div>
+        <button id="btnDeletePhoto" class="text-red-400 hover:text-red-300 text-xs mt-2">ลบรูปโปรไฟล์</button>
+      </div>
+
+      <div class="panel rounded-2xl p-5 space-y-3">
+        <h3 class="text-xs uppercase tracking-widest text-gray-500">ข้อมูลของฉัน</h3>
+        <div>
+          <label class="lbl">แนะนำตัว (ลูกค้าจะเห็นตอนเลือกเทรนเนอร์)</label>
+          <textarea id="tBio" rows="3" class="fld" placeholder="เช่น ถนัดสอนเวทเทรนนิ่ง ลดน้ำหนัก..."></textarea>
+        </div>
+        <div>
+          <label class="lbl">อีเมล</label>
+          <input id="tEmail" type="email" class="fld">
+        </div>
+        <button id="btnSaveProfile" class="w-full bg-blue-600 hover:bg-blue-500 py-2.5 rounded-xl text-sm font-bold">บันทึกโปรไฟล์</button>
+      </div>
+
+      <div class="panel rounded-2xl p-5">
+        <h3 class="text-xs uppercase tracking-widest text-gray-500 mb-2">เวลาทำงาน</h3>
+        <p id="tSchedule" class="text-sm text-gray-400"></p>
+        <p class="text-gray-600 text-[11px] mt-2">แก้เวลาทำงานได้ที่แอดมินเท่านั้น</p>
+      </div>
+    </section>
+
+    <!-- Account -->
+    <section id="tab-account" class="hidden space-y-5">
+      <div class="panel rounded-2xl p-5 space-y-3">
+        <h3 class="text-xs uppercase tracking-widest text-gray-500">เปลี่ยนรหัส PIN</h3>
+        <input id="oldPin" type="password" maxlength="4" inputmode="numeric" placeholder="PIN เดิม" class="fld text-center tracking-[0.5em]">
+        <input id="newPin" type="password" maxlength="4" inputmode="numeric" placeholder="PIN ใหม่ (4 หลัก)" class="fld text-center tracking-[0.5em]">
+        <button id="btnChangePin" class="w-full bg-blue-600 hover:bg-blue-500 py-2.5 rounded-xl text-sm font-bold">เปลี่ยน PIN</button>
+      </div>
+
+      <div class="panel rounded-2xl p-5">
+        <h3 class="text-xs uppercase tracking-widest text-gray-500 mb-2">แจ้งเตือนคิวใหม่ทาง LINE</h3>
+        <div id="lineLinked" class="hidden">
+          <p class="text-green-400 text-sm font-bold mb-2"><i class="fa-solid fa-circle-check mr-1"></i>เชื่อมต่อ LINE แล้ว</p>
+          <button id="btnUnlinkLine" class="text-red-400 hover:text-red-300 text-xs">ยกเลิกการเชื่อมต่อ</button>
+        </div>
+        <div id="lineUnlinked" class="hidden">
+          <p class="text-gray-400 text-xs mb-3">เชื่อม LINE แล้วจะได้รับแจ้งเตือนทันทีที่มีลูกค้าจองคิว</p>
+          <ol class="text-gray-400 text-xs space-y-1 mb-3 list-decimal ml-4">
+            <li>เพิ่มเพื่อน LINE OA ของยิม (<a id="addFriendLink" href="#" target="_blank" class="text-blue-400 underline">กดที่นี่</a>)</li>
+            <li>กดปุ่มด้านล่างเพื่อรับรหัส 6 หลัก</li>
+            <li>ส่งรหัสนั้นทางแชท LINE ให้ยิม</li>
+          </ol>
+          <button id="btnGenCode" class="w-full bg-blue-600 hover:bg-blue-500 py-2.5 rounded-xl text-sm font-bold">ขอรหัสเชื่อม LINE</button>
+          <p id="linkCode" class="hidden text-center font-mono text-3xl font-black text-blue-400 tracking-[0.3em] mt-3"></p>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script type="module">
+    import { callServer, auth, onAuthStateChanged, signOut } from '../shared/firebase-init.js';
+
+    const $ = (id) => document.getElementById(id);
+    const escapeHtml = (s) => (s || '').toString().replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+    let profile = null;
+
+    onAuthStateChanged(auth, async (user) => {
+      if (!user) { window.location.href = '../trainer-login.html'; return; }
+      const tok = await user.getIdTokenResult();
+      if (tok.claims.role !== 'trainer') { window.location.href = '../trainer-login.html'; return; }
+      $('loadingGate').classList.add('hidden');
+      $('app').classList.remove('hidden');
+      wire();
+      await refresh();
+    });
+
+    function wire() {
+      $('btnLogout').addEventListener('click', async () => { await signOut(auth); window.location.href = '../trainer-login.html'; });
+      $('btnBusy').addEventListener('click', toggleBusy);
+      $('btnSaveProfile').addEventListener('click', saveProfile);
+      $('btnUploadPhoto').addEventListener('click', uploadPhoto);
+      $('btnDeletePhoto').addEventListener('click', deletePhoto);
+      $('btnChangePin').addEventListener('click', changePin);
+      $('btnGenCode').addEventListener('click', genLineCode);
+      $('btnUnlinkLine').addEventListener('click', unlinkLine);
+      document.querySelectorAll('.tab').forEach((t) => t.addEventListener('click', () => switchTab(t.dataset.tab)));
+      ['oldPin', 'newPin'].forEach((id) => $(id).addEventListener('input', (e) => { e.target.value = e.target.value.replace(/[^0-9]/g, ''); }));
+    }
+
+    function switchTab(name) {
+      document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === name));
+      ['bookings', 'profile', 'account'].forEach((s) => $('tab-' + s).classList.toggle('hidden', s !== name));
+    }
+
+    async function refresh() {
+      const [p, bookings] = await Promise.all([
+        callServer('getTrainerOwnProfile'),
+        callServer('getTrainerOwnBookings')
+      ]);
+      profile = p;
+
+      $('tName').textContent = p.fullName;
+      $('tSpecialty').textContent = p.specialty || '';
+      $('tPhoto').src = p.photoUrl || 'data:image/svg+xml;base64,' + btoa('<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48"><rect width="48" height="48" fill="#1f2937"/></svg>');
+      $('tBio').value = p.bio || '';
+      $('tEmail').value = p.email || '';
+      $('tSchedule').textContent = `${(p.workingDays || []).join(', ') || 'ยังไม่ได้กำหนดวัน'} • ${p.startHour || '-'} - ${p.endHour || '-'}`;
+
+      renderBusy(p.busyStatus);
+      renderLine(p.lineLinked);
+      renderBookings(bookings);
+    }
+
+    function renderBusy(status) {
+      const busy = status === 'Busy';
+      const btn = $('btnBusy');
+      btn.textContent = busy ? '🔴 ติดลูกค้าอยู่' : '🟢 ว่าง';
+      btn.className = `px-5 py-2.5 rounded-xl text-sm font-black ${busy ? 'bg-red-900 hover:bg-red-800 text-red-200' : 'bg-green-900 hover:bg-green-800 text-green-200'}`;
+      $('busyHint').textContent = busy ? 'กดเพื่อเปลี่ยนกลับเป็น "ว่าง"' : 'กดเมื่อกำลังสอนลูกค้าอยู่';
+    }
+
+    async function toggleBusy() {
+      const res = await callServer('setTrainerBusyStatus', { isBusy: profile.busyStatus !== 'Busy' });
+      if (!res.success) return alert(res.message);
+      profile.busyStatus = res.busyStatus;
+      renderBusy(res.busyStatus);
+    }
+
+    function renderLine(linked) {
+      $('lineLinked').classList.toggle('hidden', !linked);
+      $('lineUnlinked').classList.toggle('hidden', !!linked);
+      if (!linked) {
+        callServer('getLineAddFriendUrlForTrainer').then((r) => {
+          if (r && r.addFriendUrl) $('addFriendLink').href = r.addFriendUrl;
+        }).catch(() => {});
+      }
+    }
+
+    function renderBookings(list) {
+      $('bookingCount').textContent = list.length ? `${list.length} คิว` : '';
+      $('bookingList').innerHTML = list.length ? list.map((b, i) => `
+        <div class="panel rounded-2xl p-4 ${b.isToday ? 'border-blue-700' : ''}">
+          <div class="flex justify-between items-start gap-2">
+            <div class="min-w-0">
+              <p class="font-bold text-sm truncate">${escapeHtml(b.memberName)}</p>
+              <p class="text-gray-500 text-xs font-mono mt-0.5">
+                ${escapeHtml(b.date)} • ${escapeHtml(b.timeSlot)}
+                ${b.isToday ? '<span class="text-blue-400 font-bold ml-1">วันนี้</span>' : ''}
+              </p>
+              ${b.memberPhone ? `<a href="tel:${escapeHtml(b.memberPhone)}" class="text-gray-400 text-xs"><i class="fa-solid fa-phone mr-1"></i>${escapeHtml(b.memberPhone)}</a>` : ''}
+            </div>
+            <span class="badge ${b.status === 'Completed' ? 'bg-green-950 text-green-400' : 'bg-blue-950 text-blue-400'} shrink-0">${escapeHtml(b.status)}</span>
+          </div>
+          ${b.status === 'Booked' ? `
+            <div class="flex gap-2 mt-3 pt-3 border-t border-gray-900">
+              <button data-done="${i}" class="flex-1 bg-green-900 hover:bg-green-800 text-green-200 py-2 rounded-lg text-xs font-bold">เสร็จแล้ว</button>
+              <button data-cancel="${i}" class="flex-1 bg-gray-900 hover:bg-gray-800 text-gray-400 py-2 rounded-lg text-xs font-bold">ยกเลิกคิว</button>
+            </div>` : ''}
+        </div>`).join('') : '<p class="text-gray-600 text-xs text-center py-10">ยังไม่มีคิวที่ถูกจอง</p>';
+
+      $('bookingList').querySelectorAll('[data-done]').forEach((b) =>
+        b.onclick = () => setStatus(list[+b.dataset.done], 'Completed'));
+      $('bookingList').querySelectorAll('[data-cancel]').forEach((b) =>
+        b.onclick = () => setStatus(list[+b.dataset.cancel], 'Cancelled'));
+    }
+
+    async function setStatus(booking, newStatus) {
+      const label = newStatus === 'Completed' ? 'ทำเครื่องหมายว่าสอนเสร็จแล้ว' : 'ยกเลิกคิวนี้';
+      if (!confirm(`${label} — ${booking.memberName} (${booking.date} ${booking.timeSlot})?`)) return;
+      const res = await callServer('trainerUpdateBookingStatus', { bookingId: booking.bookingId, newStatus });
+      alert(res.message);
+      if (res.success) await refresh();
+    }
+
+    async function saveProfile() {
+      const res = await callServer('updateTrainerOwnProfile', {
+        bio: $('tBio').value.trim(),
+        email: $('tEmail').value.trim()
+      });
+      alert(res.message);
+      if (res.success) await refresh();
+    }
+
+    async function uploadPhoto() {
+      const file = $('photoFile').files[0];
+      if (!file) return alert('กรุณาเลือกไฟล์รูปก่อน');
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const res = await callServer('uploadTrainerPhotoSelf', { base64Data: reader.result, mimeType: file.type, fileName: file.name });
+        alert(res.message || (res.success ? 'อัปโหลดสำเร็จ' : 'อัปโหลดไม่สำเร็จ'));
+        if (res.success) { $('photoFile').value = ''; await refresh(); }
+      };
+      reader.readAsDataURL(file);
+    }
+
+    async function deletePhoto() {
+      if (!confirm('ลบรูปโปรไฟล์?')) return;
+      const res = await callServer('deleteTrainerPhotoSelf', {});
+      alert(res.message);
+      if (res.success) await refresh();
+    }
+
+    async function changePin() {
+      const oldPin = $('oldPin').value.trim();
+      const newPin = $('newPin').value.trim();
+      if (!/^\d{4}$/.test(newPin)) return alert('PIN ใหม่ต้องเป็นตัวเลข 4 หลัก');
+      const res = await callServer('changeTrainerPin', { oldPin, newPin });
+      alert(res.message);
+      if (res.success) { $('oldPin').value = ''; $('newPin').value = ''; }
+    }
+
+    async function genLineCode() {
+      const res = await callServer('generateMyLineLinkCode', {});
+      if (!res.success) return alert(res.message);
+      const el = $('linkCode');
+      el.textContent = res.code;
+      el.classList.remove('hidden');
+    }
+
+    async function unlinkLine() {
+      if (!confirm('ยกเลิกการเชื่อมต่อ LINE? จะไม่ได้รับแจ้งเตือนคิวใหม่อีก')) return;
+      const res = await callServer('unlinkMyLine', {});
+      alert(res.message);
+      if (res.success) await refresh();
+    }
+  </script>
+</body>
+</html>

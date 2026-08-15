@@ -4,6 +4,7 @@
 const PAGES = [
   { key: 'dashboard', href: 'dashboard.html', label: 'Dashboard', icon: 'fa-chart-line' },
   { key: 'checkin', href: 'checkin.html', label: 'เช็คอินลูกค้า', icon: 'fa-clipboard-check' },
+  { key: 'checkin-display', href: 'checkin-display.html', label: 'จอหน้าประตู', icon: 'fa-tv' },
   { key: 'members', href: 'members.html', label: 'Member Mgmt', icon: 'fa-users-gear' },
   { key: 'trainers', href: 'trainers.html', label: 'Trainers', icon: 'fa-person-running' },
   { key: 'bookings', href: 'bookings.html', label: 'การจอง', icon: 'fa-calendar-check' },

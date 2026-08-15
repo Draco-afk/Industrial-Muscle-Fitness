@@ -32,8 +32,17 @@
         </select>
       </div>
       <div class="grid md:grid-cols-2 gap-3 mb-3">
-        <input id="qrData" placeholder="รหัสสลิป QR (บังคับ — ป้องกันใช้สลิปซ้ำ)" class="bg-black border border-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-red-500">
-        <input id="couponCode" placeholder="โค้ดคูปอง (ถ้ามี)" class="bg-black border border-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-red-500">
+        <div>
+          <!-- Drop the transfer slip here and the QR is read out of the image,
+               so the same slip can't be reused for a second renewal. -->
+          <div id="slipDrop" class="border-2 border-dashed border-gray-700 hover:border-red-500 rounded-xl p-4 text-center cursor-pointer transition-colors">
+            <i id="slipIcon" class="fa-solid fa-qrcode text-2xl text-gray-600"></i>
+            <p id="slipStatus" class="text-xs text-gray-500 mt-1.5">ลากรูปสลิปโอนเงินมาวาง หรือคลิกเพื่อเลือกไฟล์</p>
+            <input id="slipFile" type="file" accept="image/*" class="hidden">
+          </div>
+          <input id="qrData" placeholder="รหัสสลิป QR (บังคับ — ป้องกันใช้สลิปซ้ำ)" class="w-full mt-2 bg-black border border-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-red-500 font-mono">
+        </div>
+        <input id="couponCode" placeholder="โค้ดคูปอง (ถ้ามี)" class="bg-black border border-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-red-500 self-start">
       </div>
       <button onclick="submitRenewal()" id="renewBtn" class="w-full md:w-auto btn-primary px-6 py-2.5 rounded-xl text-sm font-bold">ต่ออายุ + ออกใบเสร็จ</button>
       <p id="renewErr" class="hidden text-red-400 text-xs bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2 mt-2"></p>
@@ -51,6 +60,10 @@
   <script type="module">
     import { callServer, auth, onAuthStateChanged, signOut } from '../shared/firebase-init.js';
     import { renderNav } from '../shared/admin-nav.js';
+    import { openReceiptWindow, offerReceiptPrint } from '../shared/receipt.js';
+    import { initSlipScanner } from '../shared/slip-scanner.js';
+
+    let resetSlipDrop = () => {};
 
     function escapeHtml(s) {
       return (s || '').toString().replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -64,6 +77,9 @@
       document.getElementById('loadingGate').classList.add('hidden');
       document.getElementById('app').classList.remove('hidden');
       window.doLogout = async () => { await signOut(auth); window.location.href = '../login.html'; };
+      resetSlipDrop = initSlipScanner({
+        dropId: 'slipDrop', fileId: 'slipFile', targetId: 'qrData', statusId: 'slipStatus', iconId: 'slipIcon'
+      }) || resetSlipDrop;
       await Promise.all([loadMembers(), loadPackages(), loadLogs()]);
     });
 
@@ -98,7 +114,9 @@
           document.getElementById('qrData').value = '';
           document.getElementById('couponCode').value = '';
           document.getElementById('renewErr').classList.add('hidden');
+          resetSlipDrop();
           await loadLogs();
+          await offerReceiptPrint(callServer, 'generateReceiptPDF', res.receiptNo);
         } else {
           showErr(res.message);
         }
@@ -127,8 +145,33 @@
           <td class="text-gray-400">${escapeHtml(p.package)}</td>
           <td class="text-gray-400 font-mono">${escapeHtml(p.receiptNo)}</td>
           <td class="text-gray-400">${(p.amount || 0).toLocaleString('th-TH')} บาท</td>
-          <td><span class="badge badge-${p.refundStatus === 'Refunded' ? 'Refunded' : 'normal'}">${p.refundStatus === 'Refunded' ? 'คืนเงินแล้ว' : 'ปกติ'}</span></td>
-          <td class="text-right">${p.refundStatus !== 'Refunded' && !p.bundledInDailyBill ? '<button data-act="void" class="text-red-400 hover:text-red-300 text-xs">ยกเลิก/คืนเงิน</button>' : ''}</td>`;
+          <td><span class="badge badge-${p.refundStatus === 'Refunded' ? 'Refunded' : 'normal'}">${p.refundStatus === 'Refunded' ? 'คืนเงินแล้ว' : 'ปกติ'}</span>
+              <span class="text-[10px] ml-1 ${p.paymentMethod === 'โอนเงิน' ? 'text-blue-400' : 'text-green-400'}">${escapeHtml(p.paymentMethod || '')}</span></td>
+          <td class="text-right whitespace-nowrap">
+            <button data-act="print" class="text-gray-400 hover:text-white px-1.5" title="พิมพ์ใบเสร็จ"><i class="fa-solid fa-print"></i></button>
+            ${p.refundStatus !== 'Refunded' && !p.bundledInDailyBill ? `
+              <button data-act="method" class="text-blue-400 hover:text-blue-300 px-1.5" title="แก้วิธีชำระเงิน"><i class="fa-solid fa-right-left"></i></button>
+              <button data-act="void" class="text-red-400 hover:text-red-300 px-1.5" title="ยกเลิก/คืนเงิน"><i class="fa-solid fa-rotate-left"></i></button>` : ''}
+          </td>`;
+
+        tr.querySelector('[data-act="print"]').onclick = async () => {
+          const res = await callServer('generateReceiptPDF', { receiptNo: p.receiptNo });
+          if (!res.success) return alert(res.message);
+          openReceiptWindow(res.html);
+        };
+
+        const methodBtn = tr.querySelector('[data-act="method"]');
+        if (methodBtn) {
+          methodBtn.onclick = async () => {
+            const next = p.paymentMethod === 'โอนเงิน' ? 'cash' : 'transfer';
+            const label = next === 'cash' ? 'เงินสด' : 'โอนเงิน';
+            if (!confirm(`เปลี่ยนวิธีชำระเงินของใบเสร็จ ${p.receiptNo} เป็น "${label}"?`)) return;
+            const res = await callServer('updatePaymentMethod', { receiptNo: p.receiptNo, paymentMethod: next });
+            alert(res.message);
+            if (res.success) await loadLogs();
+          };
+        }
+
         const voidBtn = tr.querySelector('[data-act="void"]');
         if (voidBtn) {
           voidBtn.onclick = async () => {

@@ -36,7 +36,12 @@
       </div>
     </div>
 
-    <div class="grid md:grid-cols-2 gap-6">
+    <div class="panel rounded-2xl p-5 mb-6">
+      <h3 class="text-xs uppercase tracking-widest text-gray-500 mb-3">สมาชิกใหม่ / รายรับ ย้อนหลัง 6 เดือน</h3>
+      <div style="height:260px"><canvas id="monthlyChart"></canvas></div>
+    </div>
+
+    <div class="grid md:grid-cols-2 gap-6 mb-6">
       <div class="panel rounded-2xl p-5">
         <h3 class="text-xs uppercase tracking-widest text-gray-500 mb-3">เช็คอินล่าสุด</h3>
         <div id="logList" class="space-y-2 text-sm max-h-80 overflow-y-auto"></div>
@@ -46,14 +51,59 @@
         <div id="expiringList" class="space-y-2 text-sm max-h-80 overflow-y-auto"></div>
       </div>
     </div>
+
+    <div class="panel rounded-2xl p-5">
+      <h3 class="text-xs uppercase tracking-widest text-gray-500 mb-3">🏆 อันดับคนเข้ายิมบ่อยที่สุด</h3>
+      <div id="leaderboard" class="space-y-2 text-sm"></div>
+    </div>
   </div>
 
   <script type="module">
     import { callServer, auth, onAuthStateChanged, signOut } from '../shared/firebase-init.js';
     import { renderNav } from '../shared/admin-nav.js';
+    import { ensureChartJs, baseChartOptions, chartTheme } from '../shared/lazy-libs.js';
 
     function escapeHtml(s) {
       return (s || '').toString().replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
+    let monthlyChart = null;
+
+    async function renderMonthlyChart(monthly) {
+      if (!monthly || !monthly.length) return;
+      let Chart;
+      try { Chart = await ensureChartJs(); } catch (e) { return; }
+      const ctx = document.getElementById('monthlyChart').getContext('2d');
+      if (monthlyChart) monthlyChart.destroy();
+      monthlyChart = new Chart(ctx, {
+        data: {
+          labels: monthly.map((m) => m.label),
+          datasets: [
+            { type: 'bar', label: 'รายรับ (บาท)', data: monthly.map((m) => m.revenue), backgroundColor: chartTheme.redFill, borderColor: chartTheme.red, borderWidth: 1, yAxisID: 'y' },
+            { type: 'line', label: 'สมาชิกใหม่ (คน)', data: monthly.map((m) => m.newMembers), borderColor: chartTheme.blue, backgroundColor: chartTheme.blue, tension: 0.3, yAxisID: 'y1' }
+          ]
+        },
+        options: baseChartOptions({
+          scales: {
+            x: { grid: { color: chartTheme.grid }, ticks: { color: chartTheme.tick, font: { family: 'Prompt', size: 10 } } },
+            y: { position: 'left', beginAtZero: true, grid: { color: chartTheme.grid }, ticks: { color: chartTheme.tick, font: { family: 'Prompt', size: 10 } } },
+            y1: { position: 'right', beginAtZero: true, grid: { drawOnChartArea: false }, ticks: { color: chartTheme.blue, font: { family: 'Prompt', size: 10 }, precision: 0 } }
+          }
+        })
+      });
+    }
+
+    function renderLeaderboard(leaders) {
+      const medals = ['🥇', '🥈', '🥉'];
+      document.getElementById('leaderboard').innerHTML = (leaders && leaders.length)
+        ? leaders.map((m, i) => `
+          <div class="flex items-center gap-3 border-b border-gray-900 pb-2">
+            <span class="w-7 text-center">${medals[i] || `<span class="text-gray-600 text-xs">${i + 1}</span>`}</span>
+            <span class="flex-1 truncate">${escapeHtml(m.fullName)}</span>
+            <span class="text-gray-500 text-xs truncate hidden sm:block">${escapeHtml(m.package || '')}</span>
+            <span class="text-red-400 font-bold font-mono">${m.checkInCount}</span>
+          </div>`).join('')
+        : '<p class="text-gray-600 text-xs text-center py-4">ยังไม่มีข้อมูลเช็คอิน</p>';
     }
 
     onAuthStateChanged(auth, async (user) => {
@@ -68,11 +118,16 @@
     });
 
     async function load() {
-      const [stats, expiring, birthdays] = await Promise.all([
+      const [stats, expiring, birthdays, monthly, leaders] = await Promise.all([
         callServer('getDashboardStats'),
         callServer('getExpiringMembers'),
-        callServer('getBirthdayMembersThisMonth')
+        callServer('getBirthdayMembersThisMonth'),
+        callServer('getMonthlyStats'),
+        callServer('getCheckInLeaderboard')
       ]);
+
+      renderMonthlyChart(monthly);
+      renderLeaderboard(leaders);
 
       document.getElementById('statTotal').textContent = stats.total;
       document.getElementById('statActive').textContent = stats.active;

@@ -93,9 +93,92 @@
     </div>
 
     <!-- Audit log -->
+    <!-- Packages -->
+    <div class="panel rounded-2xl p-5">
+      <h3 class="text-xs uppercase tracking-widest text-gray-500 mb-3">จัดการแพ็กเกจสมาชิกรายเดือน</h3>
+      <div class="grid grid-cols-1 sm:grid-cols-4 gap-2 mb-3">
+        <input id="pk_name" placeholder="ชื่อแพ็กเกจ" class="fld sm:col-span-2">
+        <input id="pk_price" type="number" min="0" placeholder="ราคา (บาท)" class="fld">
+        <input id="pk_duration" type="number" min="1" placeholder="กี่เดือน" class="fld">
+      </div>
+      <div class="flex gap-2">
+        <button id="btnSavePackage" class="btn-primary px-5 py-2.5 rounded-xl text-sm font-bold"><i class="fa-solid fa-plus mr-1"></i>เพิ่มแพ็กเกจ</button>
+        <button id="btnCancelPackage" class="hidden bg-gray-900 hover:bg-gray-800 border border-gray-800 px-5 py-2.5 rounded-xl text-sm">ยกเลิกแก้ไข</button>
+      </div>
+      <div id="packageList" class="space-y-2 mt-4 text-sm"></div>
+    </div>
+
+    <!-- Day pass prices -->
+    <div class="panel rounded-2xl p-5">
+      <h3 class="text-xs uppercase tracking-widest text-gray-500 mb-3">ราคาค่าเข้ายิมรายวัน (Day Pass)</h3>
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
+        <div>
+          <label class="lbl">นักเรียน/นักศึกษา (บาท/คน)</label>
+          <input id="dp_student" type="number" min="0" class="fld">
+        </div>
+        <div>
+          <label class="lbl">ผู้ใหญ่ (บาท/คน)</label>
+          <input id="dp_adult" type="number" min="0" class="fld">
+        </div>
+        <button id="btnSaveDayPass" class="btn-primary py-2.5 rounded-xl text-sm font-bold">บันทึกราคา</button>
+      </div>
+    </div>
+
+    <!-- Birthday discount + win-back -->
+    <div class="grid md:grid-cols-2 gap-6">
+      <div class="panel rounded-2xl p-5">
+        <h3 class="text-xs uppercase tracking-widest text-gray-500 mb-1">ส่วนลดวันเกิด</h3>
+        <p class="text-gray-500 text-[11px] mb-3">ใช้อัตโนมัติตอนสมัคร/ต่ออายุ ถ้าเดือนเกิดตรงกับเดือนปัจจุบัน</p>
+        <div class="flex gap-2">
+          <select id="bd_type" class="fld w-28 cursor-pointer">
+            <option value="Percent">%</option>
+            <option value="Fixed">บาท</option>
+          </select>
+          <input id="bd_value" type="number" min="0" step="0.01" class="fld flex-1">
+          <button id="btnSaveBirthday" class="btn-primary px-4 rounded-xl text-sm font-bold">บันทึก</button>
+        </div>
+      </div>
+
+      <div class="panel rounded-2xl p-5">
+        <h3 class="text-xs uppercase tracking-widest text-gray-500 mb-1">ตั้งค่า Win-back Campaign</h3>
+        <p class="text-gray-500 text-[11px] mb-3">ส่งคูปองดึงสมาชิกที่หายไปกลับมา (เปิด/ปิดที่ "ระบบอัตโนมัติ" ด้านบน)</p>
+        <div class="grid grid-cols-3 gap-2">
+          <div><label class="lbl">หายไปกี่วัน</label><input id="wb_days" type="number" min="1" class="fld"></div>
+          <div><label class="lbl">ลดกี่ %</label><input id="wb_percent" type="number" min="0" class="fld"></div>
+          <div><label class="lbl">คูปองอยู่กี่วัน</label><input id="wb_valid" type="number" min="1" class="fld"></div>
+        </div>
+        <button id="btnSaveWinback" class="btn-primary w-full mt-3 py-2.5 rounded-xl text-sm font-bold">บันทึกการตั้งค่า</button>
+      </div>
+    </div>
+
+    <!-- Fingerprint scanner -->
+    <div class="panel rounded-2xl p-5">
+      <h3 class="text-xs uppercase tracking-widest text-gray-500 mb-1">เครื่องสแกนลายนิ้วมือหน้าประตู</h3>
+      <p class="text-gray-500 text-[11px] mb-3">API Key ที่โปรแกรมตัวกลางของเครื่องสแกนต้องใช้ส่งข้อมูลเข้าระบบ (ตั้งใหม่ได้ตลอด ตัวเก่าจะใช้ไม่ได้ทันที)</p>
+      <div class="flex gap-2">
+        <input id="fp_apiKey" placeholder="API Key ใหม่ (เว้นว่าง = ไม่เปลี่ยน)" class="fld flex-1">
+        <button id="btnSaveApiKey" class="btn-primary px-5 rounded-xl text-sm font-bold">บันทึก</button>
+      </div>
+      <p class="text-gray-600 text-[11px] mt-2">Webhook URL: <span class="font-mono text-gray-500">https://us-central1-industrial-muscle-fitness.cloudfunctions.net/fingerprintWebhook</span></p>
+    </div>
+
     <div class="panel rounded-2xl p-5">
       <h3 class="text-xs uppercase tracking-widest text-gray-500 mb-3">ประวัติการใช้งาน (Audit Log)</h3>
       <div id="auditList" class="space-y-1 text-xs max-h-96 overflow-y-auto font-mono"></div>
+    </div>
+
+    <!-- Danger zone -->
+    <div class="panel rounded-2xl p-5" style="border-color:#7f1d1d">
+      <h3 class="text-xs uppercase tracking-widest text-red-500 mb-1">ล้างข้อมูลธุรกรรม (อันตราย)</h3>
+      <p class="text-gray-400 text-[11px] mb-3">
+        ลบ<b class="text-white">ประวัติการชำระเงินสมาชิก</b>และ<b class="text-white">บิลลูกค้ารายวัน/ขายสินค้า</b>ทั้งหมดออกจากระบบถาวร
+        (ข้อมูลสมาชิก เทรนเนอร์ สินค้า แพ็กเกจ และรายจ่าย จะยังอยู่ครบ)
+        ระบบจะสำรองข้อมูลให้อัตโนมัติก่อนลบเสมอ
+      </p>
+      <div class="flex gap-2">
+        <input id="clearPhrase" placeholder='พิมพ์ ลบข้อมูลถาวร เพื่อยืนยัน' class="fld flex-1">
+        <button id="btnClearData" class="bg-red-800 hover:bg-red-700 border border-red-700 px-5 rounded-xl text-sm font-bold">ล้างข้อมูล</button>
+      </div>
     </div>
   </div>
 
@@ -133,11 +216,21 @@
     });
 
     async function loadAll() {
-      const [line, qr, autoExpire, winback, memberLine, backup, admins, audit] = await Promise.all([
+      const [line, qr, autoExpire, winback, memberLine, backup, admins, audit, packages, dayPass, birthday] = await Promise.all([
         callServer('getLineSettings'), callServer('getPaymentQRInfo'), callServer('getAutoExpireSettings'),
         callServer('getWinBackSettings'), callServer('getMemberLineNotifySettings'), callServer('getBackupSettings'),
-        callServer('getAdminList'), callServer('getAuditLog')
+        callServer('getAdminList'), callServer('getAuditLog'),
+        callServer('getPackageList'), callServer('getDailyPassPrices'), callServer('getBirthdayDiscountSettings')
       ]);
+
+      renderPackages(packages);
+      document.getElementById('dp_student').value = dayPass.student;
+      document.getElementById('dp_adult').value = dayPass.adult;
+      document.getElementById('bd_type').value = birthday.type;
+      document.getElementById('bd_value').value = birthday.value;
+      document.getElementById('wb_days').value = winback.inactiveDays ?? 30;
+      document.getElementById('wb_percent').value = winback.discountPercent ?? 20;
+      document.getElementById('wb_valid').value = winback.validDays ?? 14;
 
       document.getElementById('lineStatus').textContent = line.hasToken ? '✅ ตั้งค่า Token แล้ว' : '⚠️ ยังไม่ได้ตั้งค่า Channel Access Token';
       document.getElementById('lineAddFriendUrl').value = line.addFriendUrl;
@@ -218,6 +311,117 @@
       ['am_user', 'am_pass', 'am_role', 'am_email'].forEach((id) => document.getElementById(id).value = '');
       document.getElementById('adminModal').classList.remove('hidden');
     };
+
+    // ---------- Packages ----------
+    // Package name doubles as the Firestore doc ID, so editing keeps the
+    // original key around to rename against.
+    let editingPackageId = null;
+
+    function renderPackages(packages) {
+      document.getElementById('packageList').innerHTML = packages.length ? packages.map((p, i) => `
+        <div class="flex items-center gap-3 border-b border-gray-900 pb-2">
+          <span class="flex-1 font-medium">${escapeHtml(p.name)}</span>
+          <span class="text-red-400 font-mono text-xs">${p.price.toLocaleString('th-TH')} บาท</span>
+          <span class="text-gray-500 text-xs">${p.durationMonths} เดือน</span>
+          <span class="badge ${p.status === 'Active' ? 'badge-active' : 'badge-other'}">${escapeHtml(p.status)}</span>
+          <button data-pkedit="${i}" class="text-blue-400 hover:text-blue-300 text-xs px-1"><i class="fa-solid fa-pen"></i></button>
+          <button data-pkdel="${i}" class="text-red-400 hover:text-red-300 text-xs px-1"><i class="fa-solid fa-trash"></i></button>
+        </div>`).join('') : '<p class="text-gray-600 text-xs">ยังไม่มีแพ็กเกจในระบบ</p>';
+
+      document.querySelectorAll('[data-pkedit]').forEach((b) => b.onclick = () => startEditPackage(packages[+b.dataset.pkedit]));
+      document.querySelectorAll('[data-pkdel]').forEach((b) => b.onclick = () => deletePackage(packages[+b.dataset.pkdel]));
+    }
+
+    function startEditPackage(p) {
+      editingPackageId = p.docId;
+      document.getElementById('pk_name').value = p.name;
+      document.getElementById('pk_price').value = p.price;
+      document.getElementById('pk_duration').value = p.durationMonths;
+      document.getElementById('btnSavePackage').innerHTML = '<i class="fa-solid fa-check mr-1"></i>บันทึกการแก้ไข';
+      document.getElementById('btnCancelPackage').classList.remove('hidden');
+    }
+
+    function resetPackageForm() {
+      editingPackageId = null;
+      ['pk_name', 'pk_price', 'pk_duration'].forEach((id) => document.getElementById(id).value = '');
+      document.getElementById('btnSavePackage').innerHTML = '<i class="fa-solid fa-plus mr-1"></i>เพิ่มแพ็กเกจ';
+      document.getElementById('btnCancelPackage').classList.add('hidden');
+    }
+
+    async function savePackage() {
+      const payload = {
+        name: document.getElementById('pk_name').value.trim(),
+        price: document.getElementById('pk_price').value,
+        durationMonths: document.getElementById('pk_duration').value
+      };
+      if (!payload.name || payload.price === '' || payload.durationMonths === '') {
+        return alert('กรุณากรอกชื่อแพ็กเกจ ราคา และระยะเวลาให้ครบ');
+      }
+      const res = editingPackageId
+        ? await callServer('updatePackageData', { ...payload, docId: editingPackageId })
+        : await callServer('addPackageData', payload);
+      alert(res.message);
+      if (res.success) { resetPackageForm(); await loadAll(); }
+    }
+
+    async function deletePackage(p) {
+      if (!confirm(`ลบแพ็กเกจ "${p.name}"?\n\nสมาชิกที่ใช้แพ็กเกจนี้อยู่จะไม่ถูกลบ แต่จะเลือกแพ็กเกจนี้ตอนต่ออายุไม่ได้อีก`)) return;
+      const res = await callServer('deletePackageData', { docId: p.docId });
+      alert(res.message);
+      if (res.success) await loadAll();
+    }
+
+    // ---------- Day pass / discounts / scanner / danger zone ----------
+    async function saveDayPass() {
+      const res = await callServer('updateDailyPassPrices', {
+        student: document.getElementById('dp_student').value,
+        adult: document.getElementById('dp_adult').value
+      });
+      alert(res.message);
+    }
+
+    async function saveBirthday() {
+      const res = await callServer('updateBirthdayDiscountSettings', {
+        discountType: document.getElementById('bd_type').value,
+        discountValue: document.getElementById('bd_value').value
+      });
+      alert(res.message);
+    }
+
+    async function saveWinback() {
+      const res = await callServer('updateWinBackSettings', {
+        inactiveDays: document.getElementById('wb_days').value,
+        discountPercent: document.getElementById('wb_percent').value,
+        validDays: document.getElementById('wb_valid').value
+      });
+      alert(res.message);
+    }
+
+    async function saveApiKey() {
+      const apiKey = document.getElementById('fp_apiKey').value.trim();
+      if (!apiKey) return alert('กรุณากรอก API Key ใหม่');
+      if (!confirm('เปลี่ยน API Key ของเครื่องสแกนลายนิ้วมือ?\n\nโปรแกรมตัวกลางที่ใช้ Key เดิมจะส่งข้อมูลเข้าระบบไม่ได้ทันที ต้องไปแก้ Key ที่เครื่องด้วย')) return;
+      const res = await callServer('updateFingerprintApiKey', { apiKey });
+      alert(res.message);
+      if (res.success) document.getElementById('fp_apiKey').value = '';
+    }
+
+    async function clearData() {
+      const confirmPhrase = document.getElementById('clearPhrase').value.trim();
+      if (!confirmPhrase) return alert('กรุณาพิมพ์ข้อความยืนยันในช่องก่อน');
+      if (!confirm('ยืนยันล้างข้อมูลธุรกรรมทั้งหมด?\n\nลบถาวร กู้คืนไม่ได้ นอกจากมีไฟล์สำรอง')) return;
+      const res = await callServer('clearTransactionData', { confirmPhrase });
+      alert(res.message);
+      if (res.success) { document.getElementById('clearPhrase').value = ''; await loadAll(); }
+    }
+
+    document.getElementById('btnSavePackage').addEventListener('click', savePackage);
+    document.getElementById('btnCancelPackage').addEventListener('click', resetPackageForm);
+    document.getElementById('btnSaveDayPass').addEventListener('click', saveDayPass);
+    document.getElementById('btnSaveBirthday').addEventListener('click', saveBirthday);
+    document.getElementById('btnSaveWinback').addEventListener('click', saveWinback);
+    document.getElementById('btnSaveApiKey').addEventListener('click', saveApiKey);
+    document.getElementById('btnClearData').addEventListener('click', clearData);
 
     window.submitAdmin = async function submitAdmin() {
       const res = await callServer('addAdminData', {

@@ -36,10 +36,27 @@
           <input id="endDate" type="date" class="bg-black border border-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-red-500">
         </div>
         <button id="btnLoad" class="bg-gray-900 hover:bg-gray-800 border border-gray-800 rounded-lg px-4 py-2 text-sm">ดูรายงาน</button>
-        <button data-export="exportMembersPDF" class="text-xs text-gray-400 hover:text-white underline">Export รายชื่อสมาชิก</button>
-        <button data-export="exportPaymentsPDF" class="text-xs text-gray-400 hover:text-white underline">Export ประวัติชำระเงิน</button>
-        <button data-export="exportDailyPaymentsPDF" class="text-xs text-gray-400 hover:text-white underline">Export POS รายวัน</button>
       </div>
+      <div class="flex flex-wrap gap-2 mt-3">
+        <button data-preset="today" class="text-xs bg-black border border-gray-800 hover:border-red-500 rounded-lg px-3 py-1.5">วันนี้</button>
+        <button data-preset="week" class="text-xs bg-black border border-gray-800 hover:border-red-500 rounded-lg px-3 py-1.5">7 วันล่าสุด</button>
+        <button data-preset="month" class="text-xs bg-black border border-gray-800 hover:border-red-500 rounded-lg px-3 py-1.5">เดือนนี้</button>
+        <button data-preset="prevmonth" class="text-xs bg-black border border-gray-800 hover:border-red-500 rounded-lg px-3 py-1.5">เดือนที่แล้ว</button>
+      </div>
+      <div class="flex flex-wrap gap-3 mt-3 pt-3 border-t border-gray-800">
+        <button data-export="exportMembersPDF" class="text-xs text-gray-400 hover:text-white underline">PDF รายชื่อสมาชิก</button>
+        <button data-export="exportPaymentsPDF" class="text-xs text-gray-400 hover:text-white underline">PDF ประวัติชำระเงิน</button>
+        <button data-export="exportDailyPaymentsPDF" class="text-xs text-gray-400 hover:text-white underline">PDF POS รายวัน</button>
+        <button data-export="exportRevenueReportPDF" class="text-xs text-gray-400 hover:text-white underline">PDF รายงานรายรับ</button>
+        <span class="text-gray-700">|</span>
+        <button id="btnExcelMembers" class="text-xs text-emerald-400 hover:text-emerald-300 underline"><i class="fa-solid fa-file-excel mr-1"></i>Excel รายชื่อสมาชิก</button>
+        <button id="btnExcelPayments" class="text-xs text-emerald-400 hover:text-emerald-300 underline"><i class="fa-solid fa-file-excel mr-1"></i>Excel ประวัติชำระเงิน</button>
+      </div>
+    </div>
+
+    <div class="panel rounded-2xl p-5 mb-6">
+      <h3 class="text-xs uppercase tracking-widest text-gray-500 mb-3">กราฟรายรับรายวัน</h3>
+      <div style="height:280px"><canvas id="revenueChart"></canvas></div>
     </div>
 
     <!-- Days whose figures were typed in by hand rather than computed from bills -->
@@ -95,6 +112,9 @@
   <script type="module">
     import { callServer, auth, onAuthStateChanged, signOut } from '../shared/firebase-init.js';
     import { renderNav } from '../shared/admin-nav.js';
+    import { ensureChartJs, baseChartOptions, chartTheme, exportRowsToExcel } from '../shared/lazy-libs.js';
+
+    let revenueChart = null;
 
     const $ = (id) => document.getElementById(id);
     const escapeHtml = (s) => (s || '').toString().replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -118,6 +138,9 @@
       $('btnLoad').addEventListener('click', refresh);
       $('btnAddExpense').addEventListener('click', addExpense);
       document.querySelectorAll('[data-export]').forEach((b) => b.addEventListener('click', () => exportReport(b.dataset.export)));
+      document.querySelectorAll('[data-preset]').forEach((b) => b.addEventListener('click', () => applyPreset(b.dataset.preset)));
+      $('btnExcelMembers').addEventListener('click', exportMembersExcel);
+      $('btnExcelPayments').addEventListener('click', exportPaymentsExcel);
 
       await refresh();
     });
@@ -154,6 +177,83 @@
         : '<p class="text-gray-600 text-xs">ไม่มีข้อมูล</p>';
 
       renderBreakdown(report.breakdown);
+      renderRevenueChart(report.breakdown);
+    }
+
+    async function renderRevenueChart(breakdown) {
+      let Chart;
+      try { Chart = await ensureChartJs(); } catch (e) { return; } // chart is a nice-to-have, never block the report
+      const ctx = $('revenueChart').getContext('2d');
+      if (revenueChart) revenueChart.destroy();
+      revenueChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: breakdown.map((d) => d.date.slice(5)),
+          datasets: [
+            { label: 'สมาชิก', data: breakdown.map((d) => d.membership), backgroundColor: chartTheme.red, stack: 'rev' },
+            { label: 'รายวัน', data: breakdown.map((d) => d.dayPass), backgroundColor: chartTheme.blue, stack: 'rev' },
+            { label: 'สินค้า', data: breakdown.map((d) => d.products), backgroundColor: '#f59e0b', stack: 'rev' },
+            { label: 'รายจ่าย', data: breakdown.map((d) => -(d.expenses || 0)), backgroundColor: '#6b7280', stack: 'rev' }
+          ]
+        },
+        options: baseChartOptions({
+          scales: {
+            x: { stacked: true, grid: { color: chartTheme.grid }, ticks: { color: chartTheme.tick, font: { family: 'Prompt', size: 9 } } },
+            y: { stacked: true, grid: { color: chartTheme.grid }, ticks: { color: chartTheme.tick, font: { family: 'Prompt', size: 10 } } }
+          }
+        })
+      });
+    }
+
+    // Quick ranges matching the original's report presets.
+    function applyPreset(name) {
+      const today = new Date();
+      const fmt = (d) => d.toISOString().slice(0, 10);
+      let start = today, end = today;
+
+      if (name === 'today') {
+        start = end = today;
+      } else if (name === 'week') {
+        start = new Date(today.getTime() - 6 * 86400000);
+      } else if (name === 'month') {
+        start = new Date(today.getFullYear(), today.getMonth(), 1);
+      } else if (name === 'prevmonth') {
+        start = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+        end = new Date(today.getFullYear(), today.getMonth(), 0); // last day of previous month
+      }
+      $('startDate').value = fmt(start);
+      $('endDate').value = fmt(end);
+      refresh();
+    }
+
+    async function exportMembersExcel() {
+      const members = await callServer('getMemberList');
+      await exportRowsToExcel(members.map((m, i) => ({
+        'ลำดับ': i + 1,
+        'ชื่อ-นามสกุล': m.fullName,
+        'เบอร์โทรศัพท์': m.phone,
+        'อีเมล': m.email || '',
+        'แพ็กเกจ': m.package || '',
+        'วันที่เริ่ม': m.startDate || '',
+        'วันหมดอายุ': m.expiryDate || '',
+        'รหัสลายนิ้วมือ': m.fingerprintId || '',
+        'สถานะ': m.status || '',
+        'จำนวนครั้งที่เข้า': m.checkInCount || 0
+      })), 'Members', 'IM_Members');
+    }
+
+    async function exportPaymentsExcel() {
+      const payments = await callServer('getPaymentLogs');
+      await exportRowsToExcel(payments.map((p, i) => ({
+        'ลำดับ': i + 1,
+        'วันเวลา': p.timestamp,
+        'สมาชิก': p.memberName,
+        'แพ็กเกจ': p.package,
+        'เลขที่ใบเสร็จ': p.receiptNo,
+        'ยอดเงิน': p.amount,
+        'วิธีชำระ': p.paymentMethod || '',
+        'สถานะ': p.refundStatus === 'Refunded' ? 'คืนเงินแล้ว' : 'ปกติ'
+      })), 'Payments', 'IM_Payments');
     }
 
     function renderOverrideBanner(days) {
@@ -301,7 +401,11 @@
     }
 
     async function exportReport(fnName) {
-      const res = await callServer(fnName);
+      // The revenue report is the only export scoped to the picked date range.
+      const data = fnName === 'exportRevenueReportPDF'
+        ? { startDateStr: $('startDate').value, endDateStr: $('endDate').value }
+        : {};
+      const res = await callServer(fnName, data);
       if (!res.success) { alert(res.message || 'Export ไม่สำเร็จ'); return; }
       const w = window.open('', '_blank');
       w.document.write(res.html);

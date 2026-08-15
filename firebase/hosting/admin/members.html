@@ -15,6 +15,8 @@
     .fld { width: 100%; background: #000; border: 1px solid #1f2937; border-radius: 12px; padding: 12px; font-size: 13px; color: #fff; outline: none; }
     .fld:focus { border-color: #ef4444; }
     .lbl { display: block; font-size: 10px; text-transform: uppercase; font-weight: 700; color: #6b7280; letter-spacing: 0.1em; margin-bottom: 6px; }
+    .histTab { color: #6b7280; border-bottom: 2px solid transparent; }
+    .histTab.active { color: #fff; border-bottom-color: #ef4444; }
   </style>
 </head>
 <body class="min-h-screen">
@@ -94,6 +96,12 @@
           <p class="text-gray-600 text-[10px] mt-2">รหัสลายนิ้วมือจากเครื่องสแกนจะถูกกรอกที่นี่โดยอัตโนมัติ (เว้นว่างได้)</p>
         </div>
 
+        <div id="enrollBox" class="hidden bg-black/50 border border-blue-900/50 rounded-2xl p-4 mb-5 text-center">
+          <p id="enrollStatus" class="text-blue-400 text-sm font-bold"></p>
+          <p id="enrollHint" class="text-gray-500 text-[11px] mt-1"></p>
+          <button id="btnCancelEnroll" class="text-gray-500 hover:text-red-400 text-xs mt-2">ยกเลิกการลงทะเบียน</button>
+        </div>
+
         <div id="paymentSection" class="bg-black/50 border border-red-900/40 rounded-2xl p-4 mb-5">
           <p class="text-red-500 font-bold uppercase tracking-widest text-[10px] mb-3"><i class="fa-solid fa-money-bill-wave mr-1"></i>ชำระเงินตอนสมัคร</p>
           <div id="bdBadge" class="hidden bg-yellow-950/40 border border-yellow-700 rounded-xl p-2.5 mb-3 text-center">
@@ -134,6 +142,25 @@
         </div>
         <div id="memberList" class="space-y-2 max-h-[36rem] overflow-y-auto pr-1"></div>
       </div>
+    </div>
+  </div>
+
+  <!-- Per-member history -->
+  <div id="historyModal" class="hidden fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50">
+    <div class="panel rounded-2xl w-full max-w-2xl max-h-[85vh] flex flex-col">
+      <div class="flex items-center justify-between p-5 border-b border-gray-800">
+        <div>
+          <h2 id="histName" class="text-lg font-bold">-</h2>
+          <p id="histSub" class="text-gray-500 text-xs"></p>
+        </div>
+        <button id="btnCloseHistory" class="text-gray-500 hover:text-white text-xl px-2">&times;</button>
+      </div>
+      <div class="flex border-b border-gray-800">
+        <button class="histTab active flex-1 py-3 text-xs font-bold" data-htab="checkIns">เช็คอิน</button>
+        <button class="histTab flex-1 py-3 text-xs font-bold" data-htab="payments">การชำระเงิน</button>
+        <button class="histTab flex-1 py-3 text-xs font-bold" data-htab="bookings">การจอง</button>
+      </div>
+      <div id="histBody" class="p-5 overflow-y-auto space-y-2 text-sm"></div>
     </div>
   </div>
 
@@ -256,9 +283,11 @@
             </div>
             <span class="${badgeClass(m.status)} shrink-0">${escapeHtml(m.status)}</span>
           </div>
-          <div class="flex gap-1 mt-2 border-t border-gray-900 pt-2">
+          <div class="flex flex-wrap gap-1 mt-2 border-t border-gray-900 pt-2">
             <button data-act="checkin" data-i="${i}" class="text-green-400 hover:text-green-300 text-[11px] px-2 py-1"><i class="fa-solid fa-right-to-bracket mr-1"></i>เช็คอิน</button>
             <button data-act="edit" data-i="${i}" class="text-blue-400 hover:text-blue-300 text-[11px] px-2 py-1"><i class="fa-solid fa-pen mr-1"></i>แก้ไข</button>
+            <button data-act="history" data-i="${i}" class="text-gray-400 hover:text-white text-[11px] px-2 py-1"><i class="fa-solid fa-clock-rotate-left mr-1"></i>ประวัติ</button>
+            <button data-act="enroll" data-i="${i}" class="text-yellow-500 hover:text-yellow-400 text-[11px] px-2 py-1"><i class="fa-solid fa-fingerprint mr-1"></i>ลงลายนิ้วมือ</button>
             <button data-act="delete" data-i="${i}" class="text-red-400 hover:text-red-300 text-[11px] px-2 py-1 ml-auto"><i class="fa-solid fa-trash"></i></button>
           </div>
         </div>`).join('');
@@ -268,6 +297,8 @@
         btn.onclick = () => {
           if (btn.dataset.act === 'checkin') return checkInMember(m);
           if (btn.dataset.act === 'edit') return openEdit(m);
+          if (btn.dataset.act === 'history') return openHistory(m);
+          if (btn.dataset.act === 'enroll') return startEnrollment(m);
           return deleteMember(m);
         };
       });
@@ -399,6 +430,117 @@
       el.textContent = msg;
       el.classList.remove('hidden');
     }
+
+    // ---------- Member history ----------
+    let historyData = null;
+
+    async function openHistory(m) {
+      $('histName').textContent = m.fullName;
+      $('histSub').textContent = `${m.package || ''} • ${m.phone || ''}`;
+      $('histBody').innerHTML = '<p class="text-gray-600 text-xs text-center py-6">กำลังโหลด...</p>';
+      $('historyModal').classList.remove('hidden');
+      try {
+        historyData = await callServer('getMemberFullHistory', { docId: m.docId });
+      } catch (e) {
+        $('histBody').innerHTML = `<p class="text-red-400 text-xs text-center py-6">${escapeHtml(e.message || 'โหลดประวัติไม่สำเร็จ')}</p>`;
+        return;
+      }
+      switchHistoryTab('checkIns');
+    }
+
+    function switchHistoryTab(tab) {
+      document.querySelectorAll('.histTab').forEach((t) => t.classList.toggle('active', t.dataset.htab === tab));
+      if (!historyData) return;
+      const rows = historyData[tab] || [];
+      const fmt = (iso) => iso ? new Date(iso).toLocaleString('th-TH') : '-';
+
+      if (!rows.length) {
+        $('histBody').innerHTML = '<p class="text-gray-600 text-xs text-center py-6">ยังไม่มีข้อมูลในส่วนนี้</p>';
+        return;
+      }
+
+      if (tab === 'checkIns') {
+        $('histBody').innerHTML = rows.map((r) => `
+          <div class="flex justify-between items-center border-b border-gray-900 pb-2">
+            <span class="text-gray-400 text-xs font-mono">${fmt(r.timestamp)}</span>
+            <span class="text-xs ${r.status === 'SUCCESS' ? 'text-green-400' : 'text-red-400'}">${escapeHtml(r.status)}</span>
+            <span class="text-gray-600 text-[11px] truncate max-w-[45%]">${escapeHtml(r.details || '')}</span>
+          </div>`).join('');
+      } else if (tab === 'payments') {
+        $('histBody').innerHTML = rows.map((r) => `
+          <div class="border-b border-gray-900 pb-2 ${r.refundStatus === 'Refunded' ? 'opacity-50' : ''}">
+            <div class="flex justify-between">
+              <span class="font-medium text-xs">${escapeHtml(r.package || '')}</span>
+              <span class="text-red-400 font-mono text-xs">${(r.amount || 0).toLocaleString('th-TH')} บาท</span>
+            </div>
+            <div class="flex justify-between text-[11px] text-gray-500">
+              <span>${fmt(r.timestamp)}</span>
+              <span>${escapeHtml(r.receiptNo || '')}${r.refundStatus === 'Refunded' ? ' (คืนเงินแล้ว)' : ''}</span>
+            </div>
+            ${r.newExpiry ? `<p class="text-[11px] text-gray-600">หมดอายุใหม่: ${escapeHtml(r.newExpiry)}</p>` : ''}
+          </div>`).join('');
+      } else {
+        $('histBody').innerHTML = rows.map((r) => `
+          <div class="flex justify-between items-center border-b border-gray-900 pb-2">
+            <span class="text-xs">${escapeHtml(r.trainerName)}</span>
+            <span class="text-gray-400 text-xs font-mono">${escapeHtml(r.date)} ${escapeHtml(r.timeSlot)}</span>
+            <span class="text-gray-500 text-[11px]">${escapeHtml(r.status)}</span>
+          </div>`).join('');
+      }
+    }
+
+    // ---------- Fingerprint enrollment ----------
+    // The door scanner's middleware polls for a pending request, captures the
+    // finger, and writes the id back — so this side just opens the request and
+    // watches for the result.
+    let enrollPoll = null;
+
+    async function startEnrollment(m) {
+      if (!confirm(`เริ่มลงทะเบียนลายนิ้วมือให้ "${m.fullName}"?\n\nหลังกดตกลง ให้ไปแตะนิ้วที่เครื่องสแกนหน้าประตูภายใน 1 นาที`)) return;
+      const res = await callServer('requestFingerprintEnrollment', { memberDocId: m.docId });
+      alert(res.message);
+      if (!res.success) return;
+      $('enrollBox').classList.remove('hidden');
+      $('enrollStatus').textContent = `กำลังรอสแกนนิ้วของ "${m.fullName}"...`;
+      $('enrollHint').textContent = 'ไปแตะนิ้วที่เครื่องสแกนหน้าประตูได้เลย';
+      pollEnrollment();
+    }
+
+    function pollEnrollment() {
+      clearInterval(enrollPoll);
+      enrollPoll = setInterval(async () => {
+        let st;
+        try { st = await callServer('getEnrollmentStatus'); } catch (e) { return; }
+        if (!st.pending) { stopEnrollment(); return; }
+
+        if (st.status === 'completed') {
+          stopEnrollment();
+          $('f_fingerprintId').value = st.fingerprintId || '';
+          alert(`ลงทะเบียนลายนิ้วมือของ "${st.memberName}" สำเร็จ! (รหัส: ${st.fingerprintId})`);
+          await loadMembers();
+        } else if (st.status === 'error') {
+          stopEnrollment();
+          alert('ลงทะเบียนไม่สำเร็จ: ' + (st.errorMessage || 'ไม่ทราบสาเหตุ'));
+        }
+      }, 2000);
+    }
+
+    function stopEnrollment() {
+      clearInterval(enrollPoll);
+      enrollPoll = null;
+      $('enrollBox').classList.add('hidden');
+    }
+
+    async function cancelEnrollment() {
+      const res = await callServer('cancelFingerprintEnrollmentRequest', {});
+      alert(res.message);
+      stopEnrollment();
+    }
+
+    $('btnCloseHistory').addEventListener('click', () => $('historyModal').classList.add('hidden'));
+    $('historyModal').addEventListener('click', (e) => { if (e.target.id === 'historyModal') $('historyModal').classList.add('hidden'); });
+    document.querySelectorAll('.histTab').forEach((t) => t.addEventListener('click', () => switchHistoryTab(t.dataset.htab)));
+    $('btnCancelEnroll').addEventListener('click', cancelEnrollment);
   </script>
 </body>
 </html>

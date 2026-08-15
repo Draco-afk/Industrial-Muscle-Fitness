@@ -18,7 +18,8 @@
     "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
     "headers": [
       {
-        "source": "**/*.@(js|css)",
+        "comment": "This app has no build step, so filenames never change between deploys. Without this the default max-age=3600 keeps serving the previous version of a page for an hour after a deploy — HTML especially, since it is the entry point that pulls everything else.",
+        "source": "**/*.@(html|js|css)",
         "headers": [{ "key": "Cache-Control", "value": "no-cache, max-age=0, must-revalidate" }]
       }
     ]

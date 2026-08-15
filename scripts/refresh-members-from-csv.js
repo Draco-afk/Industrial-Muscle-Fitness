@@ -16,7 +16,7 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
-const { parseCsv } = require('./lib/parse-csv');
+const { parseCsvRows } = require('./lib/parse-csv');
 
 const args = process.argv.slice(2);
 const useProd = args.includes('--prod');
@@ -53,30 +53,66 @@ function parseTimestamp(raw) {
   return isNaN(d.getTime()) ? new Date() : d;
 }
 
+// Columns are read by position, not by header name: the sheet's export has
+// come through with six header cells blank (Check-in Count through Freeze
+// Start Date) while the data underneath is intact. Keying by name would merge
+// those into one field and silently zero every member's check-in count.
+const COL = {
+  timestamp: 0, fullName: 1, phone: 2, email: 3, package: 4,
+  startDate: 5, expiryDate: 6, fingerprintId: 7, status: 8,
+  checkInCount: 9, referralCode: 10, referredBy: 11, referralRewardGiven: 12,
+  cardChangeCount: 13, freezeStartDate: 14,
+  pinCode: 15, pinHash: 16, dob: 17,
+  lineUserId: 18, lineLinkCode: 19, expiryLineNotifiedFor: 20,
+  birthdayLineNotifiedYear: 21, winbackCouponCode: 22
+};
+
+// Positions are only safe if the headers that *are* present sit where expected,
+// so check a few anchors and bail out rather than import into the wrong fields.
+function assertLayout(header) {
+  const anchors = [
+    [COL.fullName, 'Full Name'], [COL.phone, 'Phone'], [COL.package, 'Package'],
+    [COL.fingerprintId, 'Fingerprint ID'], [COL.pinHash, 'PIN Hash'], [COL.dob, 'Date of Birth']
+  ];
+  const bad = anchors.filter(([i, expect]) => !(header[i] || '').includes(expect));
+  if (bad.length) {
+    console.error('Unexpected column layout in this export — aborting so nothing is imported into the wrong field.');
+    bad.forEach(([i, expect]) => console.error(`  column ${i}: expected to contain "${expect}", found ${JSON.stringify(header[i] || '')}`));
+    console.error('\nFull header:', JSON.stringify(header));
+    process.exit(1);
+  }
+  const blanks = header.map((h, i) => [h, i]).filter(([h]) => !String(h).trim()).map(([, i]) => i);
+  if (blanks.length) {
+    console.log(`Note: ${blanks.length} header cell(s) are blank in this export (columns ${blanks.join(', ')}).`);
+    console.log('      Reading those by position instead — data is unaffected.\n');
+  }
+}
+
 function rowToDoc(r) {
+  const at = (i) => (r[i] === undefined ? '' : r[i]);
   return {
-    fullName: normName(r['ชื่อ-นามสกุล (Full Name)']),
-    phone: normPhone(r['เบอร์โทรศัพท์ (Phone)']),
-    email: r['อีเมล (Email)'] || '',
-    package: r['แพ็กเกจ (Package)'] || '',
-    startDate: r['วันเริ่มคุ้มครอง (Start Date)'] || '',
-    expiryDate: r['วันหมดอายุ (Expiry Date)'] || '',
-    fingerprintId: r['Fingerprint ID'] || '',
-    status: r['สถานะ (Status)'] || 'Active',
-    checkInCount: parseInt(r['Check-in Count'] || '0', 10) || 0,
-    referralCode: r['Referral Code'] || '',
-    referredBy: r['Referred By'] || '',
-    referralRewardGiven: r['Referral Reward Given'] || '',
-    cardChangeCount: parseInt(r['Card Change Count'] || '0', 10) || 0,
-    freezeStartDate: r['Freeze Start Date'] || '',
-    pinHash: r['PIN Hash'] || '', // already sha256, same algorithm as util/hash.js
-    dob: r['Date of Birth'] || '',
-    lineUserId: r['LINE User ID'] || '',
-    lineLinkCode: r['LINE Link Code'] || '',
-    expiryLineNotifiedFor: r['Expiry LINE Notified For'] || '',
-    birthdayLineNotifiedYear: r['Birthday LINE Notified Year'] || '',
-    winbackCouponCode: r['Winback Coupon Code'] || '',
-    createdAt: Timestamp.fromDate(parseTimestamp(r['วันที่บันทึก (Timestamp)']))
+    fullName: normName(at(COL.fullName)),
+    phone: normPhone(at(COL.phone)),
+    email: at(COL.email),
+    package: at(COL.package),
+    startDate: at(COL.startDate),
+    expiryDate: at(COL.expiryDate),
+    fingerprintId: at(COL.fingerprintId),
+    status: at(COL.status) || 'Active',
+    checkInCount: parseInt(at(COL.checkInCount) || '0', 10) || 0,
+    referralCode: at(COL.referralCode),
+    referredBy: at(COL.referredBy),
+    referralRewardGiven: at(COL.referralRewardGiven),
+    cardChangeCount: parseInt(at(COL.cardChangeCount) || '0', 10) || 0,
+    freezeStartDate: at(COL.freezeStartDate),
+    pinHash: at(COL.pinHash), // already sha256, same algorithm as util/hash.js
+    dob: at(COL.dob),
+    lineUserId: at(COL.lineUserId),
+    lineLinkCode: at(COL.lineLinkCode),
+    expiryLineNotifiedFor: at(COL.expiryLineNotifiedFor),
+    birthdayLineNotifiedYear: at(COL.birthdayLineNotifiedYear),
+    winbackCouponCode: at(COL.winbackCouponCode),
+    createdAt: Timestamp.fromDate(parseTimestamp(at(COL.timestamp)))
   };
 }
 
@@ -101,7 +137,9 @@ async function main() {
     process.exit(1);
   }
 
-  const rows = parseCsv(fs.readFileSync(CSV_PATH, 'utf8'));
+  const allRows = parseCsvRows(fs.readFileSync(CSV_PATH, 'utf8'));
+  assertLayout(allRows[0]);
+  const rows = allRows.slice(1);
   console.log(`Sheet export : ${CSV_PATH}`);
   console.log(`Target       : ${useProd ? 'PRODUCTION (industrial-muscle-fitness)' : 'emulator ' + process.env.FIRESTORE_EMULATOR_HOST}`);
   console.log(`Mode         : ${apply ? 'APPLY (will write)' : 'DRY RUN (no writes)'}`);

@@ -134,6 +134,9 @@
           <button class="payTab" data-pm="transfer"><i class="fa-solid fa-qrcode mr-1"></i>โอนเงิน</button>
         </div>
 
+        <button id="btnShowQr" class="w-full mb-2 bg-black border border-gray-800 hover:border-red-500 py-3 rounded-xl text-sm font-bold">
+          <i class="fa-solid fa-qrcode text-red-500 mr-2"></i>แสดง QR รับเงิน ให้ลูกค้าสแกน
+        </button>
         <button id="btnSubmit" class="w-full btn-primary py-3.5 rounded-xl text-sm font-black uppercase tracking-wider">รับชำระเงิน &amp; ออกใบเสร็จ</button>
         <button id="btnClear" class="w-full mt-2 text-gray-500 hover:text-red-400 text-xs py-2">ล้างบิลทั้งหมด</button>
         <p id="posErr" class="hidden text-red-400 text-xs bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2 mt-2"></p>
@@ -151,6 +154,7 @@
     import { renderNav } from '../shared/admin-nav.js';
     import { loadPosState, savePosState, clearPosState, emptyPosState } from '../shared/pos-state.js';
     import { openReceiptWindow, offerReceiptPrint } from '../shared/receipt.js';
+    import { showPaymentQr } from '../shared/payment-qr.js';
 
     let products = [];
     let st = emptyPosState();
@@ -183,6 +187,7 @@
       $('btnApplyManual').addEventListener('click', applyManualDiscount);
       $('btnApplyCoupon').addEventListener('click', applyCoupon);
       $('btnSubmit').addEventListener('click', submitPayment);
+      $('btnShowQr').addEventListener('click', () => showPaymentQr(callServer));
       $('btnClear').addEventListener('click', () => {
         if (!confirm('ล้างรายการทั้งหมดในบิลนี้?')) return;
         st = emptyPosState(); clearPosState(); renderCustomers(); renderAll();

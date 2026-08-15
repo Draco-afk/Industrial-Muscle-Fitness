@@ -199,6 +199,7 @@
   <script type="module">
     import { callServer, auth, onAuthStateChanged, signOut } from '../shared/firebase-init.js';
     import { renderNav } from '../shared/admin-nav.js';
+    import { clearPaymentQrCache } from '../shared/payment-qr.js';
 
     function escapeHtml(s) {
       return (s || '').toString().replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -275,7 +276,7 @@
       reader.onload = async () => {
         const res = await callServer('uploadPaymentQR', { base64Data: reader.result, mimeType: file.type, fileName: file.name });
         alert(res.success ? 'อัปโหลดสำเร็จ!' : res.message);
-        if (res.success) await loadAll();
+        if (res.success) { clearPaymentQrCache(); await loadAll(); }
       };
       reader.readAsDataURL(file);
     };

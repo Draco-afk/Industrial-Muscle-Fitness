@@ -2,7 +2,14 @@
 // for the small members.csv export, no need for an external dependency.
 'use strict';
 
-function parseCsv(text) {
+// Returns the raw rows (arrays), header included. Use this when the export's
+// header cells can't be trusted — keying by header name silently merges any
+// columns whose header is blank.
+function parseCsvRows(text) {
+  return parseRows(text);
+}
+
+function parseRows(text) {
   const rows = [];
   let row = [];
   let field = '';
@@ -29,7 +36,11 @@ function parseCsv(text) {
     }
   }
   if (field !== '' || row.length) { row.push(field); rows.push(row); }
+  return rows;
+}
 
+function parseCsv(text) {
+  const rows = parseRows(text);
   const header = rows[0];
   return rows.slice(1).map((r) => {
     const obj = {};
@@ -38,4 +49,4 @@ function parseCsv(text) {
   });
 }
 
-module.exports = { parseCsv };
+module.exports = { parseCsv, parseCsvRows };

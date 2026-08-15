@@ -44,7 +44,12 @@
         </div>
         <input id="couponCode" placeholder="โค้ดคูปอง (ถ้ามี)" class="bg-black border border-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-red-500 self-start">
       </div>
-      <button onclick="submitRenewal()" id="renewBtn" class="w-full md:w-auto btn-primary px-6 py-2.5 rounded-xl text-sm font-bold">ต่ออายุ + ออกใบเสร็จ</button>
+      <div class="flex flex-col md:flex-row gap-2">
+        <button id="btnShowQrRenew" class="bg-black border border-gray-800 hover:border-red-500 px-6 py-2.5 rounded-xl text-sm font-bold">
+          <i class="fa-solid fa-qrcode text-red-500 mr-2"></i>แสดง QR รับเงิน ให้ลูกค้าสแกน
+        </button>
+        <button onclick="submitRenewal()" id="renewBtn" class="btn-primary px-6 py-2.5 rounded-xl text-sm font-bold">ต่ออายุ + ออกใบเสร็จ</button>
+      </div>
       <p id="renewErr" class="hidden text-red-400 text-xs bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2 mt-2"></p>
     </div>
 
@@ -62,6 +67,7 @@
     import { renderNav } from '../shared/admin-nav.js';
     import { openReceiptWindow, offerReceiptPrint } from '../shared/receipt.js';
     import { initSlipScanner } from '../shared/slip-scanner.js';
+    import { showPaymentQr } from '../shared/payment-qr.js';
 
     let resetSlipDrop = () => {};
 
@@ -80,6 +86,7 @@
       resetSlipDrop = initSlipScanner({
         dropId: 'slipDrop', fileId: 'slipFile', targetId: 'qrData', statusId: 'slipStatus', iconId: 'slipIcon'
       }) || resetSlipDrop;
+      document.getElementById('btnShowQrRenew').addEventListener('click', () => showPaymentQr(callServer));
       await Promise.all([loadMembers(), loadPackages(), loadLogs()]);
     });
 

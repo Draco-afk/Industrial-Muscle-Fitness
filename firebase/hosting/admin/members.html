@@ -118,9 +118,13 @@
             </div>
             <div class="sm:col-span-2">
               <label class="lbl">โค้ดคูปอง (ถ้ามี)</label>
-              <input id="f_coupon" type="text" class="fld" placeholder="เว้นว่างได้">
+              <input id="f_coupon" type="text" class="fld" placeholder="เช่น NEWYEAR2026">
             </div>
           </div>
+          <button id="btnShowQrMember" type="button" class="w-full mt-3 bg-black border border-gray-800 hover:border-red-500 py-2.5 rounded-xl text-sm font-bold">
+            <i class="fa-solid fa-qrcode text-red-500 mr-2"></i>แสดง QR รับเงิน ให้ลูกค้าสแกน
+          </button>
+          <p class="text-gray-600 text-[10px] mt-2">ยอดจะเติมให้อัตโนมัติตามแพ็กเกจที่เลือก แก้ไขได้ถ้ามีส่วนลด — ระบบจะออกใบเสร็จให้ทันทีเมื่อกดลงทะเบียน</p>
         </div>
 
         <p id="formErr" class="hidden text-red-400 text-xs bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2 mb-3"></p>
@@ -165,6 +169,7 @@
     import { callServer, auth, onAuthStateChanged, signOut } from '../shared/firebase-init.js';
     import { renderNav } from '../shared/admin-nav.js';
     import { loadPosState, savePosState } from '../shared/pos-state.js';
+    import { showPaymentQr } from '../shared/payment-qr.js';
 
     let members = [];
     let packages = [];
@@ -199,6 +204,7 @@
       $('btnSubmit').addEventListener('click', submitForm);
       $('btnCancelEdit').addEventListener('click', resetForm);
       $('btnCancelAddOn').addEventListener('click', () => { window.location.href = 'pos.html'; });
+      $('btnShowQrMember').addEventListener('click', () => showPaymentQr(callServer));
     }
 
     async function loadPackages() {

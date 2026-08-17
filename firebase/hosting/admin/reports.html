@@ -60,6 +60,7 @@
     <div id="overrideBanner" class="hidden panel rounded-2xl p-5 mb-6" style="border-color:#a16207;background:rgba(161,98,7,0.08)">
       <p class="text-yellow-500 font-bold text-sm mb-1"><i class="fa-solid fa-triangle-exclamation mr-2"></i>ยอดบางวันถูกแก้ด้วยมือ — ไม่ได้มาจากบิลจริง</p>
       <p class="text-gray-400 text-xs mb-3">วันที่อยู่ในรายการนี้ ระบบจะไม่นับบิลที่รับเข้ามาจริง แต่ใช้ตัวเลขที่แอดมินพิมพ์ไว้แทนทั้งวัน กดปุ่ม "ใช้ยอดจริง" เพื่อกลับไปคิดจากบิลตามปกติ</p>
+      <div id="overrideUnbalanced" class="hidden bg-orange-950/25 border border-orange-800 rounded-xl p-3 mb-3"></div>
       <div id="overrideList" class="space-y-2"></div>
     </div>
 
@@ -257,6 +258,26 @@
       $('overrideBanner').classList.toggle('hidden', !days.length);
       if (!days.length) return;
 
+      const unbalanced = days.filter((d) => Math.abs(d.cashBalanceDiff || 0) > 0.009);
+      const warn = $('overrideUnbalanced');
+      warn.classList.toggle('hidden', !unbalanced.length);
+      if (unbalanced.length) {
+        const totalOff = unbalanced.reduce((a, d) => a + d.cashBalanceDiff, 0);
+        warn.innerHTML = `
+          <p class="text-orange-400 font-bold text-xs mb-1">
+            <i class="fa-solid fa-scale-unbalanced mr-1"></i>
+            มี ${unbalanced.length} วันที่ "เงินสด + เงินโอน" ไม่เท่ากับ "รายรับ − รายจ่าย" ของวันนั้น
+          </p>
+          <p class="text-gray-400 text-[11px] mb-2">
+            รวมแล้วต่างกัน ${baht(Math.abs(totalOff))} บาท จึงทำให้ยอดเงินสด/โอนทั้งเดือนไม่ตรงกับกำไรสุทธิ
+            กดดินสอแก้วันเหล่านี้ แล้วระบบจะช่วยคำนวณให้ลงตัว
+          </p>
+          <div class="flex flex-wrap gap-1">${unbalanced.map((d) =>
+            `<span class="font-mono text-[11px] bg-orange-950/50 border border-orange-800 text-orange-300 rounded px-2 py-0.5">
+               ${escapeHtml(d.date)} (${d.cashBalanceDiff > 0 ? 'เกิน' : 'ขาด'} ${baht(Math.abs(d.cashBalanceDiff))})
+             </span>`).join('')}</div>`;
+      }
+
       $('overrideList').innerHTML = days.map((d, i) => {
         const diff = d.shownTotal - d.autoTotal;
         const diffLabel = diff === 0
@@ -323,6 +344,44 @@
       tr.lastElementChild.innerHTML = `
         <button data-save class="text-green-400 hover:text-green-300 px-1.5" title="บันทึก"><i class="fa-solid fa-check"></i></button>
         <button data-cancel class="text-gray-500 hover:text-gray-300 px-1.5" title="ยกเลิก"><i class="fa-solid fa-xmark"></i></button>`;
+
+      // เงินสด + เงินโอน ต้องรวมกันได้เท่ากับ "รายรับ − รายจ่ายของวันนั้น" คือเงินที่
+      // เหลืออยู่จริง แก้ช่องไหนอีกช่องจะวิ่งตามให้เอง และถ้ายังไม่ลงตัวจะเตือนไว้
+      // ไม่งั้นยอดรวมทั้งเดือนจะไม่ตรงกับเงินที่นับได้จริง
+      const val = (f) => parseFloat(tr.querySelector(`[data-in="${f}"]`).value) || 0;
+      const r2 = (n) => Math.round(n * 100) / 100;
+      const expenseOfDay = day.expenses || 0;
+
+      function rebalance(source) {
+        const revenue = r2(val('membership') + val('dayPass') + val('products'));
+        const target = r2(revenue - expenseOfDay);
+        const cashEl = tr.querySelector('[data-in="cash"]');
+        const transferEl = tr.querySelector('[data-in="transfer"]');
+        if (source === 'transfer') cashEl.value = r2(Math.max(0, target - val('transfer')));
+        else transferEl.value = r2(Math.max(0, target - val('cash')));
+        showBalanceHint(revenue, target);
+      }
+
+      function showBalanceHint(revenue, target) {
+        const diff = r2((val('cash') + val('transfer')) - target);
+        let hint = tr.querySelector('[data-hint]');
+        if (!hint) {
+          hint = document.createElement('div');
+          hint.setAttribute('data-hint', '');
+          hint.className = 'text-[10px] mt-1 whitespace-nowrap';
+          tr.querySelector('[data-f="transfer"]').appendChild(hint);
+        }
+        hint.className = `text-[10px] mt-1 whitespace-nowrap ${diff === 0 ? 'text-gray-600' : 'text-yellow-400'}`;
+        hint.textContent = diff === 0
+          ? `ลงตัว (ต้องรวม ${target.toLocaleString('th-TH')})`
+          : `สด+โอน ${diff > 0 ? 'เกิน' : 'ขาด'} ${Math.abs(diff).toLocaleString('th-TH')}`;
+      }
+
+      ['membership', 'dayPass', 'products', 'cash', 'transfer'].forEach((f) => {
+        tr.querySelector(`[data-in="${f}"]`).addEventListener('input', () => rebalance(f));
+      });
+      showBalanceHint(r2(val('membership') + val('dayPass') + val('products')),
+        r2(val('membership') + val('dayPass') + val('products') - expenseOfDay));
 
       tr.querySelector('[data-cancel]').addEventListener('click', loadReport);
       tr.querySelector('[data-save]').addEventListener('click', async () => {

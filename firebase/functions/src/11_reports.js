@@ -20,6 +20,15 @@ function isTrainerFeeItemName_(n) { return (n || '').toString().indexOf('ค่�
 // as bogus entries in the top-products list.
 function isDiscountItemName_(n) { return (n || '').toString().indexOf('ส่วนลด') !== -1; }
 
+// The gym is in Thailand, which has no DST, so a fixed offset is exact.
+const GYM_UTC_OFFSET = '+07:00';
+const GYM_OFFSET_MS = 7 * 60 * 60 * 1000;
+
+// Which gym-day a timestamp belongs to.
+function gymDayKey_(date) {
+  return new Date(date.getTime() + GYM_OFFSET_MS).toISOString().slice(0, 10);
+}
+
 exports.getMonthlyStats = onCall(async (request) => {
   requireAuth(request, 'admin');
   try {
@@ -67,21 +76,27 @@ exports.getMonthlyStats = onCall(async (request) => {
 });
 
 async function getRevenueReportCore_(startDateStr, endDateStr) {
-  const startDate = new Date(startDateStr + 'T00:00:00');
-  const endDate = new Date(endDateStr + 'T23:59:59');
+  // A "day" means a day at the gym, in Bangkok time — not UTC, which is what
+  // Cloud Functions runs in. Without this a 9am sale lands in the report a day
+  // early once the servers' date rolls over ahead of the shop's, and a day the
+  // admin typed in by hand never matches the bucket it belongs to.
+  const startDate = new Date(`${startDateStr}T00:00:00${GYM_UTC_OFFSET}`);
+  const endDate = new Date(`${endDateStr}T23:59:59.999${GYM_UTC_OFFSET}`);
   if (isNaN(startDate.getTime()) || isNaN(endDate.getTime()) || startDate > endDate) {
     throw new Error('ช่วงวันที่ไม่ถูกต้อง');
   }
 
   const dailyBuckets = {};
   const orderedKeys = [];
-  const cursor = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
-  const endMid = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate());
-  while (cursor <= endMid) {
+  // Walk the date strings themselves so the run of days can't drift with the
+  // server's own timezone.
+  const cursor = new Date(`${startDateStr}T00:00:00Z`);
+  const lastDay = new Date(`${endDateStr}T00:00:00Z`);
+  while (cursor <= lastDay) {
     const key = cursor.toISOString().slice(0, 10);
     dailyBuckets[key] = { date: key, membership: 0, dayPass: 0, products: 0, membershipCount: 0, dailyTxnCount: 0, expenses: 0, cash: 0, transfer: 0 };
     orderedKeys.push(key);
-    cursor.setDate(cursor.getDate() + 1);
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
   }
 
   let totalMembership = 0, totalDayPass = 0, totalProducts = 0, totalTrainerFees = 0, totalExpenses = 0, totalCash = 0, totalTransfer = 0;
@@ -96,7 +111,7 @@ async function getRevenueReportCore_(startDateStr, endDateStr) {
     if (!p.timestamp || p.refundStatus === 'Refunded') return;
     const pDate = p.timestamp.toDate();
     if (pDate < startDate || pDate > endDate) return;
-    const pKey = pDate.toISOString().slice(0, 10);
+    const pKey = gymDayKey_(pDate);
     const pAmount = p.amount || 0;
     totalMembership += pAmount;
     membershipTxnCount++;
@@ -117,7 +132,7 @@ async function getRevenueReportCore_(startDateStr, endDateStr) {
     if (!d.timestamp || d.refundStatus === 'Refunded') return;
     const dDate = d.timestamp.toDate();
     if (dDate < startDate || dDate > endDate) return;
-    const dKey = dDate.toISOString().slice(0, 10);
+    const dKey = gymDayKey_(dDate);
 
     let dItems = [];
     try { dItems = d.itemsJson ? JSON.parse(d.itemsJson) : []; } catch (e2) { dItems = []; }
@@ -160,8 +175,10 @@ async function getRevenueReportCore_(startDateStr, endDateStr) {
     }
   });
 
-  // 3) Expenses — also taken out of whichever channel actually paid for them,
-  //    so cash + transfer equals the money genuinely left on hand.
+  // 3) Expenses. Only tallied here — the money is taken out of cash/transfer
+  //    in step 5, after any hand-entered figures have been applied, so a
+  //    purchase is deducted exactly once whether or not the day was typed in.
+  const expensesByDay = {};
   const expenseSnap = await db.collection('expenses').get();
   expenseSnap.forEach((doc) => {
     const e = doc.data();
@@ -172,13 +189,8 @@ async function getRevenueReportCore_(startDateStr, endDateStr) {
 
     // Blank counts as โอนเงิน, matching the original expensePaymentMethod_().
     const paidByTransfer = ((e.paymentMethod || '').toString().trim() || 'โอนเงิน') === 'โอนเงิน';
-    if (paidByTransfer) {
-      totalTransfer -= eAmount;
-      if (dailyBuckets[e.date]) dailyBuckets[e.date].transfer -= eAmount;
-    } else {
-      totalCash -= eAmount;
-      if (dailyBuckets[e.date]) dailyBuckets[e.date].cash -= eAmount;
-    }
+    if (!expensesByDay[e.date]) expensesByDay[e.date] = { cash: 0, transfer: 0 };
+    expensesByDay[e.date][paidByTransfer ? 'transfer' : 'cash'] += eAmount;
   });
 
   // 4) Manual per-day overrides.
@@ -226,11 +238,36 @@ async function getRevenueReportCore_(startDateStr, endDateStr) {
       shownTotal: dailyBuckets[oKey].membership + dailyBuckets[oKey].dayPass + dailyBuckets[oKey].products,
       shownCash: dailyBuckets[oKey].cash,
       shownTransfer: dailyBuckets[oKey].transfer,
+      // How far this day's cash+transfer is from the money that should be left
+      // (its takings minus its purchases). Anything other than 0 means the
+      // month's cash/transfer totals can't tie out, so the UI surfaces it.
+      cashBalanceDiff: Math.round((
+        (dailyBuckets[oKey].cash + dailyBuckets[oKey].transfer)
+        - (dailyBuckets[oKey].membership + dailyBuckets[oKey].dayPass + dailyBuckets[oKey].products - (dailyBuckets[oKey].expenses || 0))
+      ) * 100) / 100,
       updatedBy: (o.updatedBy || '').toString(),
       updatedAt: o.updatedAt && o.updatedAt.toDate ? o.updatedAt.toDate().toISOString().slice(0, 16).replace('T', ' ') : ''
     });
   });
   overriddenDays.sort((a, b) => (a.date < b.date ? -1 : 1));
+
+  // 5) Take the day's purchases out of cash/transfer, so those two add up to
+  //    the money actually left on hand rather than the gross takings.
+  //
+  //    Skipped for hand-entered days: there the admin types what is left after
+  //    paying for things (the edit form balances the two fields against
+  //    revenue minus that day's expenses), so subtracting again would count
+  //    every purchase twice.
+  const handEnteredDays = new Set(overriddenDays.map((d) => d.date));
+  for (const [dateKey, spent] of Object.entries(expensesByDay)) {
+    if (handEnteredDays.has(dateKey)) continue;
+    totalCash -= spent.cash;
+    totalTransfer -= spent.transfer;
+    if (dailyBuckets[dateKey]) {
+      dailyBuckets[dateKey].cash -= spent.cash;
+      dailyBuckets[dateKey].transfer -= spent.transfer;
+    }
+  }
 
   const breakdown = orderedKeys.map((k) => dailyBuckets[k]);
   const topProducts = Object.keys(productRevenueMap).map((name) => ({ name, qty: productRevenueMap[name].qty, revenue: productRevenueMap[name].revenue })).sort((a, b) => b.revenue - a.revenue);

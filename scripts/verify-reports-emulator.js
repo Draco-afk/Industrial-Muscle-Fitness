@@ -116,6 +116,53 @@ async function main() {
   check('deleting the cash expense restores 40 to cash', Math.abs((cashBeforeDelete + 40) - rep.totals.cash) < 0.01,
     `before=${cashBeforeDelete} after=${rep.totals.cash}`);
 
+  // --- Regressions from the owner's first week of real use ---
+  // Recording a purchase used to wipe a day's hand-entered takings, and on a
+  // hand-entered day the purchase was never taken out of cash/transfer, so
+  // "cash + transfer" disagreed with net profit by the expense amount.
+  const day = today;
+  await call('setDailyRevenueOverride', {
+    dateStr: day, membership: 5000, dayPass: 1200, products: 300, cash: 4000, transfer: 2500
+  }, idToken);
+
+  const beforeExp = await call('getRevenueReport', range, idToken);
+  check('hand-entered day is used as-is', beforeExp.totals.grandTotal === 6500, JSON.stringify(beforeExp.totals));
+
+  const purchase = await call('addExpense', { dateStr: day, description: 'ทดสอบรายจ่ายกับยอดที่กรอกเอง', amount: 200, paymentMethod: 'cash' }, idToken);
+  check('addExpense on a hand-entered day succeeds', purchase && purchase.success === true, JSON.stringify(purchase));
+
+  const afterExp = await call('getRevenueReport', range, idToken);
+  check('recording a purchase does NOT wipe the hand-entered day',
+    afterExp.totals.grandTotal === 6500, `grandTotal=${afterExp.totals.grandTotal} (was 6500 before the purchase)`);
+  // On a hand-entered day the admin types what is left after paying for
+  // things, so the report must take those figures as-is rather than
+  // subtracting the purchase a second time.
+  check('a hand-entered day keeps the cash/transfer the admin typed',
+    Math.abs(afterExp.totals.cash - beforeExp.totals.cash) < 0.01 &&
+    Math.abs(afterExp.totals.transfer - beforeExp.totals.transfer) < 0.01,
+    `cash ${beforeExp.totals.cash}->${afterExp.totals.cash}, transfer ${beforeExp.totals.transfer}->${afterExp.totals.transfer}`);
+  // The day was typed as 4000+2500 = 6500, exactly its typed revenue, so it is
+  // over by however much was spent that day — the report should say so, since
+  // that is what stops the month's cash/transfer tying out.
+  const flagged = (afterExp.overriddenDays || []).find((d) => d.date === day);
+  const spentThatDay = (afterExp.breakdown.find((d) => d.date === day) || {}).expenses || 0;
+  check('an unbalanced hand-entered day is reported so it can be corrected',
+    flagged && spentThatDay > 0 && Math.abs(flagged.cashBalanceDiff - spentThatDay) < 0.01,
+    JSON.stringify({ flaggedDiff: flagged && flagged.cashBalanceDiff, spentThatDay }));
+
+  // Range totals must equal the sum of the per-day rows shown in the table.
+  const sumOf = (f) => afterExp.breakdown.reduce((a, d) => a + (d[f] || 0), 0);
+  const r2 = (n) => Math.round(n * 100) / 100;
+  check('range total equals the sum of the daily rows',
+    r2(afterExp.totals.grandTotal) === r2(sumOf('membership') + sumOf('dayPass') + sumOf('products')),
+    `total=${afterExp.totals.grandTotal} rows=${sumOf('membership') + sumOf('dayPass') + sumOf('products')}`);
+  check('cash total equals the sum of the daily cash column',
+    r2(afterExp.totals.cash) === r2(sumOf('cash')), `total=${afterExp.totals.cash} rows=${sumOf('cash')}`);
+  check('expenses total equals the sum of the daily expense column',
+    r2(afterExp.totals.expenses) === r2(sumOf('expenses')), `total=${afterExp.totals.expenses} rows=${sumOf('expenses')}`);
+
+  await call('clearDailyRevenueOverride', { dateStr: day }, idToken);
+
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail === 0 ? 0 : 1);
 }

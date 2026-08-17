@@ -121,7 +121,11 @@ exports.addExpense = onCall(async (request) => {
     const method = expensePaymentMethod_(paymentMethod);
     const actor = authCtx.token.adminRole || authCtx.uid;
     await db.collection('expenses').add({ timestamp: FieldValue.serverTimestamp(), date: dateStr, description: desc, amount: amt, addedBy: actor, paymentMethod: method });
-    await clearRevenueOverrideForDate_(dateStr, actor, 'บันทึกรายจ่าย ' + desc);
+    // Deliberately does NOT clear a hand-entered total for this date. An
+    // expense doesn't change the day's takings, so it can't make those figures
+    // stale — and the report subtracts it from them anyway. Wiping the
+    // override here made a whole day's typed-in numbers vanish the moment the
+    // owner recorded a purchase.
     await logAudit_(actor, 'ADD_EXPENSE', desc, `บันทึกรายจ่ายวันที่ ${dateStr} จำนวน ${amt.toLocaleString('th-TH')} บาท (${method})`);
     return { success: true, message: `🟢 บันทึกรายจ่ายสำเร็จแล้ว! (${method})` };
   } catch (e) {
@@ -157,10 +161,10 @@ exports.deleteExpense = onCall(async (request) => {
     const snap = await ref.get();
     if (!snap.exists) return { success: false, message: 'ไม่พบรายการนี้' };
     const desc = snap.data().description;
-    const expenseDate = toOverrideDateKey_(snap.data().date);
     const actor = authCtx.token.adminRole || authCtx.uid;
     await ref.delete();
-    await clearRevenueOverrideForDate_(expenseDate, actor, 'ลบรายจ่าย ' + desc);
+    // Same reasoning as addExpense: removing a purchase doesn't invalidate a
+    // hand-entered day's takings.
     await logAudit_(actor, 'DELETE_EXPENSE', desc, 'ลบรายการรายจ่ายออกจากระบบ');
     return { success: true, message: `ลบรายการ "${desc}" ออกจากระบบสำเร็จ` };
   } catch (e) {

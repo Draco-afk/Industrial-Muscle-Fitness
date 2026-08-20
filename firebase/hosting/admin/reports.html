@@ -64,7 +64,7 @@
       <div id="overrideList" class="space-y-2"></div>
     </div>
 
-    <div id="summary" class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6"></div>
+    <div id="summary" class="mb-6"></div>
 
     <div class="grid md:grid-cols-2 gap-6 mb-6">
       <div class="panel rounded-2xl p-5">
@@ -160,11 +160,7 @@
 
       renderOverrideBanner(report.overriddenDays || []);
 
-      $('summary').innerHTML = `
-        <div class="panel rounded-2xl p-5"><p class="text-[10px] uppercase tracking-widest text-gray-500 mb-1">รายรับรวม</p><p class="text-2xl font-black">${baht(report.totals.grandTotal)}</p></div>
-        <div class="panel rounded-2xl p-5"><p class="text-[10px] uppercase tracking-widest text-gray-500 mb-1">รายจ่าย</p><p class="text-2xl font-black text-red-400">${baht(report.totals.expenses)}</p></div>
-        <div class="panel rounded-2xl p-5"><p class="text-[10px] uppercase tracking-widest text-gray-500 mb-1">กำไรสุทธิ</p><p class="text-2xl font-black text-green-400">${baht(report.totals.netProfit)}</p></div>
-        <div class="panel rounded-2xl p-5"><p class="text-[10px] uppercase tracking-widest text-gray-500 mb-1">เงินสด / โอน</p><p class="text-lg font-black">${baht(report.totals.cash)} / ${baht(report.totals.transfer)}</p></div>`;
+      renderSummary(report.totals, report.trainerFees);
 
       $('topProducts').innerHTML = report.topProducts.length
         ? report.topProducts.slice(0, 10).map((p) => `<div class="flex justify-between border-b border-gray-900 pb-1"><span>${escapeHtml(p.name)} (${p.qty})</span><span class="text-gray-400">${baht(p.revenue)}</span></div>`).join('')
@@ -176,6 +172,43 @@
 
       renderBreakdown(report.breakdown);
       renderRevenueChart(report.breakdown);
+    }
+
+    // แยกรายรับเป็น 3 ทาง (สมาชิกรายเดือน / ค่าเข้ารายวัน / ขายสินค้า) ให้เห็นว่า
+    // ยอดรวมมาจากไหน พร้อมจำนวนรายการ — ไม่ใช่เห็นแต่ยอดรวมก้อนเดียว
+    function renderSummary(t, trainerFees) {
+      const card = (label, value, opts = {}) => `
+        <div class="panel rounded-2xl p-5">
+          <p class="text-[10px] uppercase tracking-widest text-gray-500 mb-1">${label}</p>
+          <p class="text-2xl font-black ${opts.color || ''}">${value}</p>
+          ${opts.sub ? `<p class="text-[11px] text-gray-500 mt-0.5">${opts.sub}</p>` : ''}
+        </div>`;
+
+      const trainerNote = trainerFees && trainerFees.total
+        ? `<p class="text-[11px] text-gray-500 mt-2">
+             * ไม่รวมค่าเทรนเนอร์ที่เก็บแทนให้ ${baht(trainerFees.total)} บาท (ไม่ใช่รายรับของยิม)
+           </p>`
+        : '';
+
+      $('summary').innerHTML = `
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+          ${card('สมาชิกรายเดือน', baht(t.membership), { sub: `${t.membershipCount || 0} รายการ` })}
+          ${card('ค่าเข้ารายวัน', baht(t.dayPass))}
+          ${card('ขายสินค้า', baht(t.products))}
+          ${card('รวมรายรับทั้งหมด', baht(t.grandTotal), {
+            color: 'text-red-500',
+            sub: `${t.dailyCount || 0} บิลรายวัน/สินค้า`
+          })}
+        </div>
+        <div class="grid grid-cols-2 gap-4 mt-4">
+          ${card('รวมรายจ่าย', baht(t.expenses), { color: 'text-orange-400' })}
+          ${card('กำไรสุทธิ (รายรับ − รายจ่าย)', baht(t.netProfit), { color: 'text-green-400' })}
+        </div>
+        <div class="grid grid-cols-2 gap-4 mt-4">
+          ${card('💵 เงินสด', baht(t.cash))}
+          ${card('📱 เงินโอน', baht(t.transfer))}
+        </div>
+        ${trainerNote}`;
     }
 
     async function renderRevenueChart(breakdown) {

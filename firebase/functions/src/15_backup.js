@@ -11,18 +11,24 @@
 const { onCall } = require('firebase-functions/v2/https');
 const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { GoogleAuth } = require('google-auth-library');
-const { db, bucket, FieldValue } = require('./util/admin');
+const { db, FieldValue } = require('./util/admin');
 const { requireAuth, authOrNull } = require('./util/authGuard');
 const { logAudit_ } = require('./util/auditLog');
 
 const BACKUP_HANDLER_FN_ = 'createFullBackupAuto';
+
+// Its own private bucket, deliberately not the uploads one: a Firestore export
+// contains every member's name, phone, email and PIN hash, and the uploads
+// bucket is world-readable so the QR and trainer photos can be shown in the
+// app. Backups must never be written somewhere public.
+const BACKUP_BUCKET = process.env.BACKUP_BUCKET || 'industrial-muscle-fitness-backups';
 
 async function exportFirestoreBackup_(labelPrefix) {
   const auth = new GoogleAuth({ scopes: ['https://www.googleapis.com/auth/cloud-platform'] });
   const client = await auth.getClient();
   const projectId = await auth.getProjectId();
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const outputPrefix = `gs://${bucket.name}/firestore-backups/${labelPrefix}-${timestamp}`;
+  const outputPrefix = `gs://${BACKUP_BUCKET}/firestore-backups/${labelPrefix}-${timestamp}`;
 
   const res = await client.request({
     url: `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default):exportDocuments`,

@@ -87,6 +87,37 @@ function toDateStr(v) {
 // ---------- what to import ----------
 // key: {tab, collection, naturalKey(doc), build(row), docId?(row)}
 const IMPORTS = {
+  members: {
+    tab: 'Members', collection: 'members',
+    // Timestamp, Full Name, Phone, Email, Package, Start Date, Expiry Date,
+    // Fingerprint ID, Status, Check-in Count, Referral Code, Referred By,
+    // Referral Reward Given, Card Change Count, Freeze Start Date, PIN Code,
+    // PIN Hash, Date of Birth, LINE User ID, LINE Link Code,
+    // Expiry LINE Notified For, Birthday LINE Notified Year, Winback Coupon Code
+    //
+    // The plaintext PIN column (15) is deliberately never copied — only its hash.
+    build: (r) => ({
+      fullName: S(r[1]).replace(/\s+/g, ' '), phone: phone(r[2]), email: S(r[3]),
+      package: S(r[4]), startDate: toDateStr(r[5]), expiryDate: toDateStr(r[6]),
+      fingerprintId: S(r[7]), status: S(r[8]) || 'Active', checkInCount: I(r[9]),
+      referralCode: S(r[10]), referredBy: S(r[11]), referralRewardGiven: S(r[12]),
+      cardChangeCount: I(r[13]), freezeStartDate: S(r[14]),
+      pinHash: S(r[16]), dob: S(r[17]),
+      lineUserId: S(r[18]), lineLinkCode: S(r[19]),
+      expiryLineNotifiedFor: S(r[20]), birthdayLineNotifiedYear: S(r[21]),
+      winbackCouponCode: S(r[22]),
+      createdAt: toTs(r[0]) || Timestamp.now()
+    }),
+    key: (d) => `${d.phone}|${d.fullName}`,
+    // Phone is not unique here (two members already share one), so it is only a
+    // fallback for spotting a member whose name was edited in the sheet —
+    // matching on name alone would file the rename as a whole new person.
+    altKey: (d) => (d.phone ? 'p:' + d.phone : null),
+    updateExisting: true,
+    label: (d) => `${d.fullName} (${d.phone}) ${d.package} • เช็คอิน ${d.checkInCount}`,
+    skip: (d) => !d.fullName && !d.phone
+  },
+
   trainers: {
     tab: 'Trainers', collection: 'trainers',
     // Trainer ID, Full Name, Specialty, Phone, Working Days, Start Hour, End Hour,
@@ -252,6 +283,18 @@ async function importOne(name, spec) {
   }
 
   const existing = await db.collection(spec.collection).get();
+  // For collections we update in place, keep the document id so an existing
+  // record can be written to rather than duplicated.
+  const byKey = new Map(), byAlt = new Map();
+  if (spec.updateExisting) {
+    existing.forEach((doc) => {
+      const d = doc.data();
+      byKey.set(spec.key(d), doc.id);
+      const alt = spec.altKey && spec.altKey(d);
+      if (alt) byAlt.set(alt, byAlt.has(alt) ? '__ambiguous__' : doc.id);
+    });
+  }
+
   const seen = new Set();
   existing.forEach((doc) => {
     // Where the document id *is* the natural key (package name, coupon code,
@@ -282,11 +325,32 @@ async function importOne(name, spec) {
   }
 
   const toAdd = [];
+  const toUpdate = []; // [{ id, doc, changes }]
   let skipped = 0, already = 0, linked = 0;
   for (const r of rows) {
     if (!r || r.every((c) => S(c) === '')) continue;
     const doc = spec.build(r);
     if (spec.skip && spec.skip(doc)) { skipped++; continue; }
+
+    if (spec.updateExisting) {
+      // Exact match first; then the fallback key, which catches a record whose
+      // name was edited in the sheet — without it the edit lands as a second
+      // copy of the same person.
+      const alt = spec.altKey && spec.altKey(doc);
+      const altHit = alt ? byAlt.get(alt) : null;
+      const id = byKey.get(spec.key(doc)) || (altHit && altHit !== '__ambiguous__' ? altHit : null);
+      if (id) {
+        const before = existing.docs.find((x) => x.id === id).data();
+        const changes = Object.keys(doc).filter((f) =>
+          f !== 'createdAt' && String(before[f] ?? '') !== String(doc[f] ?? ''));
+        if (changes.length) toUpdate.push({ id, doc, changes, name: spec.label(doc) });
+        else already++;
+        byKey.delete(spec.key(doc));
+        if (alt) byAlt.delete(alt);
+        continue;
+      }
+    }
+
     const k = spec.docId ? spec.docId(doc) : spec.key(doc);
     if (seen.has(k)) { already++; continue; }
     seen.add(k);
@@ -305,6 +369,13 @@ async function importOne(name, spec) {
     (memberIndex ? ` | จับคู่กับสมาชิกได้ ${linked}/${toAdd.length}` : ''));
   toAdd.slice(0, 8).forEach((d) => console.log(`      + ${spec.label(d)}`));
   if (toAdd.length > 8) console.log(`      ... และอีก ${toAdd.length - 8} รายการ`);
+
+  if (spec.updateExisting) {
+    console.log(`    จะอัปเดตของเดิม ${toUpdate.length}`);
+    toUpdate.slice(0, 8).forEach((u) =>
+      console.log(`      ~ ${u.name}  [${u.changes.slice(0, 4).join(', ')}${u.changes.length > 4 ? ', ...' : ''}]`));
+    if (toUpdate.length > 8) console.log(`      ... และอีก ${toUpdate.length - 8} รายการ`);
+  }
 
   // Void, refund and receipt printing all look a bill up by receipt number and
   // take the first hit, so two different bills must never share one inside a
@@ -336,8 +407,13 @@ async function importOne(name, spec) {
       if (spec.docId) await db.collection(spec.collection).doc(spec.docId(doc)).set(body, { merge: true });
       else await db.collection(spec.collection).add(body);
     }
+    for (const u of toUpdate) {
+      const body = { ...u.doc };
+      delete body.createdAt; // keep when the record was first created
+      await db.collection(spec.collection).doc(u.id).set(body, { merge: true });
+    }
   }
-  return { name, added: toAdd.length, already, skipped, renumbered };
+  return { name, added: toAdd.length, updated: toUpdate.length, already, skipped, renumbered };
 }
 
 // Imported receipts must not collide with ones the app issues next.
@@ -385,7 +461,7 @@ async function syncReceiptCounter() {
   console.log('\n===== สรุป =====');
   results.forEach((r) => console.log(r.error
     ? `  ${r.name}: อ่านไม่ได้`
-    : `  ${r.name}: เพิ่ม ${r.added} | มีอยู่แล้ว ${r.already} | ข้าม ${r.skipped}`));
+    : `  ${r.name}: เพิ่ม ${r.added}${r.updated ? ` | อัปเดต ${r.updated}` : ''} | เหมือนเดิม ${r.already} | ข้าม ${r.skipped}`));
   if (!apply) console.log('\nยังไม่ได้เขียนอะไรลงฐานข้อมูล — ใส่ --apply เพื่อนำเข้าจริง');
   process.exit(0);
 })().catch((e) => { console.error(e); process.exit(1); });

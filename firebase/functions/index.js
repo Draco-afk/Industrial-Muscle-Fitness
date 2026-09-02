@@ -20,5 +20,6 @@ module.exports = {
   ...require('./src/14_automation'),
   ...require('./src/15_backup'),
   ...require('./src/16_fingerprint'),
-  ...require('./src/17_line')
+  ...require('./src/17_line'),
+  ...require('./src/18_monthlybills')
 };

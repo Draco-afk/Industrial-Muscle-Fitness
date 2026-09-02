@@ -193,6 +193,17 @@ async function getRevenueReportCore_(startDateStr, endDateStr) {
     expensesByDay[e.date][paidByTransfer ? 'transfer' : 'cash'] += eAmount;
   });
 
+  // 3b) Monthly overheads (rent, water, electricity). Kept out of both the
+  //     expenses total and the cash/transfer figures on purpose — the owner
+  //     tracks these separately and only wants them off the bottom line.
+  let totalMonthlyBills = 0;
+  const monthlyBillSnap = await db.collection('monthlyBills').get();
+  monthlyBillSnap.forEach((doc) => {
+    const b = doc.data();
+    if (b.date < startDateStr || b.date > endDateStr) return;
+    totalMonthlyBills += b.amount || 0;
+  });
+
   // 4) Manual per-day overrides.
   const overriddenDays = [];
   const overrideSnap = await db.collection('dailyPaymentOverrides').get();
@@ -279,7 +290,9 @@ async function getRevenueReportCore_(startDateStr, endDateStr) {
       membership: totalMembership, dayPass: totalDayPass, products: totalProducts,
       grandTotal: totalMembership + totalDayPass + totalProducts,
       membershipCount: membershipTxnCount, dailyCount: dailyTxnCount,
-      expenses: totalExpenses, netProfit: (totalMembership + totalDayPass + totalProducts) - totalExpenses,
+      expenses: totalExpenses,
+      monthlyBills: totalMonthlyBills,
+      netProfit: (totalMembership + totalDayPass + totalProducts) - totalExpenses - totalMonthlyBills,
       cash: totalCash, transfer: totalTransfer
     },
     breakdown, topProducts, overriddenDays,

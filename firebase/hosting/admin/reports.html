@@ -105,6 +105,33 @@
       </button>
       <div id="expenseList" class="space-y-2 mt-5"></div>
     </div>
+
+    <!-- Monthly overheads: off the bottom line only, never mixed into the
+         day-to-day expense total or the money-on-hand figures -->
+    <div class="panel rounded-2xl p-5 mt-6" style="border-color:#6b21a8">
+      <h3 class="text-sm font-bold mb-1"><i class="fa-solid fa-file-invoice-dollar text-purple-400 mr-2"></i>บิลรายเดือน (ค่าน้ำ / ค่าไฟ / ค่าเช่าที่ ฯลฯ)</h3>
+      <p class="text-gray-500 text-xs mb-4">
+        บิลประจำเดือนที่จ่ายแยกจากหน้าร้าน — จะถูก<b class="text-white">หักออกจากกำไรสุทธิเท่านั้น</b>
+        ไม่ถูกนำไปรวมใน "รวมรายจ่าย" และไม่หักจากยอดเงินสด/เงินโอน เพิ่มกี่บิลก็ได้
+      </p>
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-3 mb-3">
+        <input id="billDate" type="date" class="fld">
+        <input id="billDesc" type="text" placeholder="ชื่อบิล เช่น ค่าไฟเดือน ส.ค." class="fld" list="billPresets">
+        <datalist id="billPresets">
+          <option value="ค่าน้ำ"></option>
+          <option value="ค่าไฟ"></option>
+          <option value="ค่าเช่าที่"></option>
+          <option value="ค่าอินเทอร์เน็ต"></option>
+          <option value="เงินเดือนพนักงาน"></option>
+        </datalist>
+        <input id="billAmount" type="number" min="0" step="0.01" placeholder="จำนวนเงิน" class="fld">
+        <button id="btnAddBill" class="bg-purple-800 hover:bg-purple-700 border border-purple-600 rounded-xl px-5 py-2.5 text-sm font-bold">
+          <i class="fa-solid fa-plus mr-1"></i> เพิ่มบิล
+        </button>
+      </div>
+      <div id="billTotal" class="hidden text-sm font-bold text-purple-300 mb-2"></div>
+      <div id="billList" class="space-y-2"></div>
+    </div>
   </div>
 
   <script type="module">
@@ -132,9 +159,11 @@
       $('startDate').value = monthAgo.toISOString().slice(0, 10);
       $('endDate').value = today.toISOString().slice(0, 10);
       $('expDate').value = today.toISOString().slice(0, 10);
+      $('billDate').value = today.toISOString().slice(0, 10);
 
       $('btnLoad').addEventListener('click', refresh);
       $('btnAddExpense').addEventListener('click', addExpense);
+      $('btnAddBill').addEventListener('click', addMonthlyBill);
       document.querySelectorAll('[data-export]').forEach((b) => b.addEventListener('click', () => exportReport(b.dataset.export)));
       document.querySelectorAll('[data-preset]').forEach((b) => b.addEventListener('click', () => applyPreset(b.dataset.preset)));
       $('btnExcelMembers').addEventListener('click', exportMembersExcel);
@@ -144,7 +173,65 @@
     });
 
     async function refresh() {
-      await Promise.all([loadReport(), loadExpenses()]);
+      await Promise.all([loadReport(), loadExpenses(), loadMonthlyBills()]);
+    }
+
+    // ---------- Monthly overheads ----------
+    async function loadMonthlyBills() {
+      let list = [];
+      try {
+        list = await callServer('getMonthlyBills', { startDateStr: $('startDate').value, endDateStr: $('endDate').value });
+      } catch (e) { /* leave empty */ }
+
+      const total = list.reduce((a, b) => a + (b.amount || 0), 0);
+      const totalEl = $('billTotal');
+      totalEl.classList.toggle('hidden', !list.length);
+      totalEl.textContent = `รวมบิลรายเดือนในช่วงนี้ ${baht(total)} บาท (${list.length} บิล)`;
+
+      $('billList').innerHTML = list.length ? list.map((b, i) => `
+        <div class="bg-black/40 border border-purple-900/50 rounded-xl p-3 flex items-center gap-3">
+          <div class="flex-1 min-w-0">
+            <p class="font-bold text-sm truncate">${escapeHtml(b.description)}</p>
+            <p class="text-gray-600 text-[11px] font-mono">${escapeHtml(b.date)} • บันทึกโดย ${escapeHtml(b.addedBy || '-')}</p>
+          </div>
+          <span class="font-mono font-bold text-sm text-purple-300 shrink-0">${baht(b.amount)} บาท</span>
+          <button data-billdel="${i}" class="text-gray-600 hover:text-red-400 shrink-0"><i class="fa-solid fa-trash"></i></button>
+        </div>`).join('') : '<p class="text-gray-600 text-xs text-center py-6">ยังไม่มีบิลรายเดือนในช่วงวันที่นี้</p>';
+
+      $('billList').querySelectorAll('[data-billdel]').forEach((btn) => {
+        const b = list[parseInt(btn.dataset.billdel, 10)];
+        btn.addEventListener('click', () => deleteMonthlyBill(b));
+      });
+    }
+
+    async function addMonthlyBill() {
+      const payload = {
+        dateStr: $('billDate').value,
+        description: $('billDesc').value.trim(),
+        amount: $('billAmount').value
+      };
+      if (!payload.description || !payload.amount) { alert('กรุณากรอกชื่อบิลและจำนวนเงิน'); return; }
+
+      const btn = $('btnAddBill');
+      btn.disabled = true;
+      try {
+        const res = await callServer('addMonthlyBill', payload);
+        alert(res.message);
+        if (res.success) {
+          $('billDesc').value = '';
+          $('billAmount').value = '';
+          await refresh();
+        }
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    async function deleteMonthlyBill(b) {
+      if (!confirm(`ลบบิล "${b.description}" (${baht(b.amount)} บาท)?`)) return;
+      const res = await callServer('deleteMonthlyBill', { docId: b.docId });
+      alert(res.message);
+      if (res.success) await refresh();
     }
 
     async function loadReport() {
@@ -190,6 +277,7 @@
            </p>`
         : '';
 
+      const bills = t.monthlyBills || 0;
       $('summary').innerHTML = `
         <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
           ${card('สมาชิกรายเดือน', baht(t.membership), { sub: `${t.membershipCount || 0} รายการ` })}
@@ -201,13 +289,21 @@
           })}
         </div>
         <div class="grid grid-cols-2 gap-4 mt-4">
-          ${card('รวมรายจ่าย', baht(t.expenses), { color: 'text-orange-400' })}
-          ${card('กำไรสุทธิ (รายรับ − รายจ่าย)', baht(t.netProfit), { color: 'text-green-400' })}
+          ${card('💵 เงินสด', baht(t.cash), { sub: 'หักรายจ่ายหน้าร้านแล้ว' })}
+          ${card('📱 เงินโอน', baht(t.transfer), { sub: 'หักรายจ่ายหน้าร้านแล้ว' })}
         </div>
-        <div class="grid grid-cols-2 gap-4 mt-4">
-          ${card('💵 เงินสด', baht(t.cash))}
-          ${card('📱 เงินโอน', baht(t.transfer))}
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+          ${card('รวมรายจ่าย (หน้าร้าน)', baht(t.expenses), { color: 'text-orange-400', sub: 'หักจากเงินสด/โอนแล้ว' })}
+          ${card('บิลรายเดือน (ค่าน้ำ/ไฟ/เช่า)', baht(bills), { color: 'text-purple-400', sub: 'หักจากกำไรสุทธิเท่านั้น' })}
+          ${card('กำไรสุทธิ', baht(t.netProfit), {
+            color: 'text-green-400',
+            sub: `รายรับ ${baht(t.grandTotal)} − รายจ่าย ${baht(t.expenses)}${bills ? ` − บิลรายเดือน ${baht(bills)}` : ''}`
+          })}
         </div>
+        ${bills ? `<p class="text-[11px] text-gray-500 mt-2">
+            * บิลรายเดือนถูกหักออกจากกำไรสุทธิเท่านั้น ไม่รวมอยู่ใน "รวมรายจ่าย" และไม่ได้หักจากยอดเงินสด/เงินโอน
+            (เงินสด+โอน = ${baht(t.cash + t.transfer)})
+          </p>` : ''}
         ${trainerNote}`;
     }
 

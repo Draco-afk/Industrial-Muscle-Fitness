@@ -36,18 +36,26 @@ const req = require('module').createRequire(path.join(FN, 'package.json'));
 const admin = req('firebase-admin');
 admin.initializeApp({ projectId: process.env.GCLOUD_PROJECT });
 const { getFirestore, Timestamp } = req('firebase-admin/firestore');
-const { GoogleAuth } = req('google-auth-library');
+
 const db = getFirestore();
 
 // ---------- sheet reading ----------
+// Uses the sheet's own CSV endpoint rather than the Sheets API: the sheet is
+// shared read-only by link, so this needs no Google credential at all, which
+// avoids making the gym owner re-authorise a broader OAuth scope just so their
+// own data can be copied across.
+const { parseCsvRows } = require('./lib/parse-csv');
+
 async function readSheet(tabName) {
-  const auth = new GoogleAuth({ scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'] });
-  const client = await auth.getClient();
-  const res = await client.request({
-    url: `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${encodeURIComponent(tabName)}!A:Z`,
-    method: 'GET'
-  });
-  const rows = res.data.values || [];
+  const url = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(tabName)}`;
+  const res = await fetch(url, { redirect: 'follow' });
+  if (!res.ok) throw new Error(`HTTP ${res.status} reading "${tabName}"`);
+  const text = await res.text();
+  // A sheet that isn't shared returns Google's HTML sign-in page with a 200.
+  if (/^\s*<(!doctype|html)/i.test(text)) {
+    throw new Error(`"${tabName}" ไม่ได้เปิดให้เข้าถึงด้วยลิงก์ (ได้หน้า login กลับมา)`);
+  }
+  const rows = parseCsvRows(text);
   return rows.slice(1); // drop the header row; columns are read by position
 }
 
@@ -146,7 +154,12 @@ const IMPORTS = {
       refundStatus: S(r[7]), refundReason: S(r[8]), refundedBy: S(r[9]),
       refundedAt: toTs(r[10]) || '', paymentMethod: S(r[11]) || 'เงินสด'
     }),
-    key: (d) => d.receiptNo || `${d.memberName}|${d.amount}|${d.timestamp && d.timestamp.toMillis()}`,
+    // Receipt number alone is not an identity here: the old system and the new
+    // app each ran their own counter, so both issued RC2026-0024 and friends to
+    // completely different sales. Keying on the number alone silently dropped
+    // real takings as "already imported".
+    key: (d) => `${d.receiptNo}|${d.timestamp && d.timestamp.toMillis()}|${d.amount}`,
+    uniqueReceipt: true,
     label: (d) => `${d.receiptNo} ${d.memberName} ${d.amount} บาท (${d.paymentMethod})`,
     skip: (d) => !d.timestamp
   },
@@ -161,7 +174,8 @@ const IMPORTS = {
       refundStatus: S(r[6]), refundReason: S(r[7]), refundedBy: S(r[8]),
       refundedAt: toTs(r[9]) || '', paymentMethod: S(r[10]) || 'เงินสด'
     }),
-    key: (d) => d.receiptNo || `${d.customerName}|${d.amount}|${d.timestamp && d.timestamp.toMillis()}`,
+    key: (d) => `${d.receiptNo}|${d.timestamp && d.timestamp.toMillis()}|${d.amount}`,
+    uniqueReceipt: true,
     label: (d) => `${d.receiptNo} ${d.customerName} ${d.amount} บาท (${d.paymentMethod})`,
     skip: (d) => !d.timestamp
   },
@@ -210,11 +224,17 @@ const IMPORTS = {
     tab: 'Bookings', collection: 'bookings',
     // Timestamp, Booking ID, Trainer ID, Trainer Name, Member Row, Member Name,
     // Member Phone, Date, Time Slot, Status, Notes
+    //
+    // The sheet identifies the member by its own row number, which means
+    // nothing here, so memberDocId is resolved from the member's name/phone in
+    // needsMemberLookup below — without it these bookings would never show up
+    // in the member's own history.
     build: (r) => ({
       createdAt: toTs(r[0]) || Timestamp.now(), bookingId: S(r[1]), trainerId: S(r[2]),
       trainerName: S(r[3]), memberDocId: '', memberName: S(r[5]), memberPhone: phone(r[6]),
       date: toDateStr(r[7]), timeSlot: S(r[8]), status: S(r[9]) || 'Booked', notes: S(r[10])
     }),
+    needsMemberLookup: true,
     key: (d) => d.bookingId || `${d.trainerId}|${d.date}|${d.timeSlot}|${d.memberName}`,
     label: (d) => `${d.date} ${d.timeSlot} ${d.trainerName} <- ${d.memberName} (${d.status})`,
     skip: (d) => !d.date || !d.timeSlot
@@ -234,27 +254,80 @@ async function importOne(name, spec) {
   const existing = await db.collection(spec.collection).get();
   const seen = new Set();
   existing.forEach((doc) => {
+    // Where the document id *is* the natural key (package name, coupon code,
+    // override date) that field is stripped from the body, so read it back off
+    // the id — otherwise every existing row looks new and gets re-added.
+    if (spec.docId) { seen.add(doc.id); return; }
     const d = doc.data();
-    try { seen.add(spec.key(d)); } catch (e) { /* ignore malformed existing rows */ }
+    try {
+      // A record imported earlier may have been stored under a suffixed receipt
+      // number; match it on the original it came in with, or a re-run would
+      // treat it as new and import the sale twice.
+      seen.add(spec.key(d));
+      if (d.originalReceiptNo) seen.add(spec.key({ ...d, receiptNo: d.originalReceiptNo }));
+    } catch (e) { /* ignore malformed existing rows */ }
   });
 
+  // name/phone -> member doc id, for sheets that reference members by row number
+  let memberIndex = null;
+  if (spec.needsMemberLookup) {
+    memberIndex = new Map();
+    const ms = await db.collection('members').get();
+    ms.forEach((d) => {
+      const m = d.data();
+      const name = S(m.fullName).replace(/\s+/g, ' ');
+      if (name) memberIndex.set('n:' + name, d.id);
+      if (m.phone) memberIndex.set('p:' + m.phone, d.id);
+    });
+  }
+
   const toAdd = [];
-  let skipped = 0, already = 0;
+  let skipped = 0, already = 0, linked = 0;
   for (const r of rows) {
     if (!r || r.every((c) => S(c) === '')) continue;
     const doc = spec.build(r);
     if (spec.skip && spec.skip(doc)) { skipped++; continue; }
-    const k = spec.key(doc);
+    const k = spec.docId ? spec.docId(doc) : spec.key(doc);
     if (seen.has(k)) { already++; continue; }
     seen.add(k);
+
+    if (memberIndex) {
+      const hit = memberIndex.get('p:' + doc.memberPhone) ||
+                  memberIndex.get('n:' + S(doc.memberName).replace(/\s+/g, ' '));
+      if (hit) { doc.memberDocId = hit; linked++; }
+    }
     toAdd.push(doc);
   }
 
   console.log(`\n### ${name}  (ชีต "${spec.tab}")`);
   console.log(`    ในชีต ${rows.length} แถว | มีอยู่แล้วใน Firestore ${existing.size} | ข้ามเพราะข้อมูลไม่ครบ ${skipped}`);
-  console.log(`    จะเพิ่มใหม่ ${toAdd.length} | ซ้ำกับของเดิม ${already}`);
+  console.log(`    จะเพิ่มใหม่ ${toAdd.length} | ซ้ำกับของเดิม ${already}` +
+    (memberIndex ? ` | จับคู่กับสมาชิกได้ ${linked}/${toAdd.length}` : ''));
   toAdd.slice(0, 8).forEach((d) => console.log(`      + ${spec.label(d)}`));
   if (toAdd.length > 8) console.log(`      ... และอีก ${toAdd.length - 8} รายการ`);
+
+  // Void, refund and receipt printing all look a bill up by receipt number and
+  // take the first hit, so two different bills must never share one inside a
+  // collection. Where the old system's number is already taken by a different
+  // sale, the imported one keeps its original in originalReceiptNo and is
+  // stored under a suffixed number.
+  let renumbered = 0;
+  if (spec.uniqueReceipt) {
+    const taken = new Set();
+    existing.forEach((d) => { const rc = d.data().receiptNo; if (rc) taken.add(rc); });
+    for (const doc of toAdd) {
+      if (!doc.receiptNo || !taken.has(doc.receiptNo)) { if (doc.receiptNo) taken.add(doc.receiptNo); continue; }
+      doc.originalReceiptNo = doc.receiptNo;
+      let n = 2, candidate;
+      do { candidate = `${doc.receiptNo}-OLD${n > 2 ? n : ''}`; n++; } while (taken.has(candidate));
+      doc.receiptNo = candidate;
+      taken.add(candidate);
+      renumbered++;
+    }
+  }
+  if (renumbered) {
+    console.log(`    * ${renumbered} รายการมีเลขใบเสร็จชนกับบิลที่ออกในแอปใหม่ -> เก็บเลขเดิมไว้และต่อท้ายด้วย -OLD`);
+  }
 
   if (apply) {
     for (const doc of toAdd) {
@@ -264,7 +337,7 @@ async function importOne(name, spec) {
       else await db.collection(spec.collection).add(body);
     }
   }
-  return { name, added: toAdd.length, already, skipped };
+  return { name, added: toAdd.length, already, skipped, renumbered };
 }
 
 // Imported receipts must not collide with ones the app issues next.

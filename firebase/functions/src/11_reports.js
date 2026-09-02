@@ -94,7 +94,9 @@ async function getRevenueReportCore_(startDateStr, endDateStr) {
   const lastDay = new Date(`${endDateStr}T00:00:00Z`);
   while (cursor <= lastDay) {
     const key = cursor.toISOString().slice(0, 10);
-    dailyBuckets[key] = { date: key, membership: 0, dayPass: 0, products: 0, membershipCount: 0, dailyTxnCount: 0, expenses: 0, cash: 0, transfer: 0 };
+    // expenseCash/expenseTransfer split the day's purchases by how they were
+    // paid for, so the table can say which pocket the money came out of.
+    dailyBuckets[key] = { date: key, membership: 0, dayPass: 0, products: 0, membershipCount: 0, dailyTxnCount: 0, expenses: 0, expenseCash: 0, expenseTransfer: 0, cash: 0, transfer: 0 };
     orderedKeys.push(key);
     cursor.setUTCDate(cursor.getUTCDate() + 1);
   }
@@ -191,6 +193,7 @@ async function getRevenueReportCore_(startDateStr, endDateStr) {
     const paidByTransfer = ((e.paymentMethod || '').toString().trim() || 'โอนเงิน') === 'โอนเงิน';
     if (!expensesByDay[e.date]) expensesByDay[e.date] = { cash: 0, transfer: 0 };
     expensesByDay[e.date][paidByTransfer ? 'transfer' : 'cash'] += eAmount;
+    if (dailyBuckets[e.date]) dailyBuckets[e.date][paidByTransfer ? 'expenseTransfer' : 'expenseCash'] += eAmount;
   });
 
   // 3b) Monthly overheads (rent, water, electricity). Kept out of both the

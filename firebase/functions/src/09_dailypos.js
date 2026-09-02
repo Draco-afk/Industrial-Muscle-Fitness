@@ -143,12 +143,44 @@ exports.getExpenseList = onCall(async (request) => {
       const e = doc.data();
       if (startDateStr && e.date < startDateStr) return;
       if (endDateStr && e.date > endDateStr) return;
-      list.push({ docId: doc.id, date: e.date, description: e.description, amount: e.amount || 0, addedBy: e.addedBy || '', paymentMethod: expensePaymentMethod_(e.paymentMethod) });
+      list.push({ docId: doc.id, date: e.date, description: e.description, amount: e.amount || 0, addedBy: e.addedBy || '', editedBy: e.editedBy || '', paymentMethod: expensePaymentMethod_(e.paymentMethod) });
     });
     list.sort((a, b) => (a.date < b.date ? 1 : (a.date > b.date ? -1 : 0)));
     return list;
   } catch (e) {
     return [];
+  }
+});
+
+// Correcting a typo shouldn't mean deleting the row and re-typing it, which
+// loses who recorded it and when. Same field rules as addExpense.
+exports.updateExpense = onCall(async (request) => {
+  const authCtx = authOrNull(request, 'admin');
+  if (!authCtx) return { success: false, message: 'Session หมดอายุ กรุณา Login ใหม่' };
+  const { docId, dateStr, description, amount, paymentMethod } = request.data || {};
+  try {
+    const desc = (description || '').toString().trim();
+    const amt = parseFloat(amount);
+    if (!desc) return { success: false, message: 'กรุณากรอกรายการที่ซื้อ' };
+    if (isNaN(amt) || amt <= 0) return { success: false, message: 'กรุณากรอกจำนวนเงินให้ถูกต้อง' };
+    if (!dateStr) return { success: false, message: 'กรุณาเลือกวันที่' };
+
+    const ref = db.collection('expenses').doc(docId);
+    const snap = await ref.get();
+    if (!snap.exists) return { success: false, message: 'ไม่พบรายการนี้' };
+
+    const before = snap.data();
+    const method = expensePaymentMethod_(paymentMethod);
+    const actor = authCtx.token.adminRole || authCtx.uid;
+    // timestamp and addedBy are left alone on purpose — they record the
+    // original entry, not this correction.
+    await ref.update({ date: dateStr, description: desc, amount: amt, paymentMethod: method, editedBy: actor, editedAt: FieldValue.serverTimestamp() });
+    await logAudit_(actor, 'EDIT_EXPENSE', desc,
+      `แก้รายจ่าย: ${before.date} ${before.description} ${(before.amount || 0).toLocaleString('th-TH')} (${expensePaymentMethod_(before.paymentMethod)})`
+      + ` → ${dateStr} ${desc} ${amt.toLocaleString('th-TH')} (${method})`);
+    return { success: true, message: `🟢 แก้ไขรายจ่าย "${desc}" แล้ว (${method})` };
+  } catch (e) {
+    return { success: false, message: e.toString() };
   }
 });
 

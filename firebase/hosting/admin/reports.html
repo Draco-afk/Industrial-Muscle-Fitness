@@ -437,6 +437,19 @@
       if (res.success) await loadReport();
     }
 
+    // Says which pocket the day's purchases came out of. Only labels a channel
+    // that was actually used, so a day paid entirely in cash doesn't carry a
+    // meaningless "โอน 0" next to it.
+    function expenseMethodTags(d) {
+      const tag = (icon, amount, cls) =>
+        `<span class="inline-block text-[9px] px-1.5 py-px rounded-full border ${cls} whitespace-nowrap">${icon} ${baht(amount)}</span>`;
+      const parts = [];
+      if (d.expenseCash) parts.push(tag('💵', d.expenseCash, 'bg-green-950/60 text-green-300 border-green-900'));
+      if (d.expenseTransfer) parts.push(tag('📱', d.expenseTransfer, 'bg-blue-950/60 text-blue-300 border-blue-900'));
+      if (!parts.length) return '';
+      return `<div class="flex gap-1 justify-end mt-1">${parts.join('')}</div>`;
+    }
+
     function renderBreakdown(breakdown) {
       $('rows').innerHTML = breakdown.map((d, i) => `
         <tr data-row="${i}" class="${d.cashTransferOverridden ? 'edited' : ''}">
@@ -447,7 +460,9 @@
           <td class="text-right text-gray-400" data-f="membership">${baht(d.membership)}</td>
           <td class="text-right text-gray-400" data-f="dayPass">${baht(d.dayPass)}</td>
           <td class="text-right text-gray-400" data-f="products">${baht(d.products)}</td>
-          <td class="text-right ${d.expenses ? 'text-red-400' : 'text-gray-600'}">${d.expenses ? '-' + baht(d.expenses) : '0'}</td>
+          <td class="text-right ${d.expenses ? 'text-red-400' : 'text-gray-600'}">
+            ${d.expenses ? `<button data-exp-day="${escapeHtml(d.date)}" class="hover:underline" title="ดู/แก้รายจ่ายของวันนี้">-${baht(d.expenses)}</button>${expenseMethodTags(d)}` : '0'}
+          </td>
           <td class="text-right text-gray-400" data-f="cash">${baht(d.cash)}</td>
           <td class="text-right text-blue-400" data-f="transfer">${baht(d.transfer)}</td>
           <td class="text-right font-bold text-red-400">${baht(d.membership + d.dayPass + d.products)}</td>
@@ -456,6 +471,21 @@
 
       $('rows').querySelectorAll('[data-edit]').forEach((btn) => {
         btn.addEventListener('click', () => startEdit(breakdown[parseInt(btn.dataset.edit, 10)], parseInt(btn.dataset.edit, 10)));
+      });
+      // Clicking a day's expense figure jumps to the list below and marks that
+      // day's rows, so the way to correct it is one click from where it's seen.
+      $('rows').querySelectorAll('[data-exp-day]').forEach((btn) => {
+        btn.addEventListener('click', () => highlightExpenseDay(btn.dataset.expDay));
+      });
+    }
+
+    function highlightExpenseDay(dateStr) {
+      const panel = $('expenseList');
+      panel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      panel.querySelectorAll('[data-exp-date]').forEach((el) => {
+        const hit = el.dataset.expDate === dateStr;
+        el.classList.toggle('ring-2', hit);
+        el.classList.toggle('ring-orange-500', hit);
       });
     }
 
@@ -535,22 +565,64 @@
       $('expenseList').innerHTML = list.length ? list.map((e, i) => {
         const isTransfer = e.paymentMethod === 'โอนเงิน';
         return `
-          <div class="bg-black/40 border border-gray-800 rounded-xl p-3 flex items-center gap-3">
+          <div data-exp-row="${i}" data-exp-date="${escapeHtml(e.date)}" class="bg-black/40 border border-gray-800 rounded-xl p-3 flex items-center gap-3">
             <div class="flex-1 min-w-0">
               <p class="font-bold text-sm truncate">${escapeHtml(e.description)}</p>
-              <p class="text-gray-600 text-[11px] font-mono">${escapeHtml(e.date)} • บันทึกโดย ${escapeHtml(e.addedBy || '-')}</p>
+              <p class="text-gray-600 text-[11px] font-mono">${escapeHtml(e.date)} • บันทึกโดย ${escapeHtml(e.addedBy || '-')}${e.editedBy ? ` • แก้โดย ${escapeHtml(e.editedBy)}` : ''}</p>
             </div>
             <span class="text-[10px] px-2 py-1 rounded-full font-bold shrink-0 ${isTransfer ? 'bg-blue-950 text-blue-300 border border-blue-800' : 'bg-green-950 text-green-300 border border-green-800'}">
               ${isTransfer ? '📱 เงินโอน' : '💵 เงินสด'}
             </span>
             <span class="font-mono font-bold text-sm shrink-0">${baht(e.amount)} บาท</span>
-            <button data-del="${i}" class="text-gray-600 hover:text-red-400 shrink-0"><i class="fa-solid fa-trash"></i></button>
+            <button data-exp-edit="${i}" class="text-gray-600 hover:text-blue-400 shrink-0" title="แก้ไขรายการนี้"><i class="fa-solid fa-pen"></i></button>
+            <button data-del="${i}" class="text-gray-600 hover:text-red-400 shrink-0" title="ลบรายการนี้"><i class="fa-solid fa-trash"></i></button>
           </div>`;
       }).join('') : '<p class="text-gray-600 text-xs text-center py-6">ยังไม่มีรายจ่ายในช่วงวันที่นี้</p>';
 
       $('expenseList').querySelectorAll('[data-del]').forEach((btn) => {
         const e = list[parseInt(btn.dataset.del, 10)];
         btn.addEventListener('click', () => deleteExpense(e));
+      });
+      $('expenseList').querySelectorAll('[data-exp-edit]').forEach((btn) => {
+        const i = parseInt(btn.dataset.expEdit, 10);
+        btn.addEventListener('click', () => startExpenseEdit(list[i], i));
+      });
+    }
+
+    // Swaps one expense row for inputs covering every field, including which
+    // channel paid for it — that's what decides whether the amount comes off
+    // cash or transfer in the report above.
+    function startExpenseEdit(exp, idx) {
+      const row = $('expenseList').querySelector(`[data-exp-row="${idx}"]`);
+      if (!row || row.dataset.editing === '1') return;
+      row.dataset.editing = '1';
+      row.className = 'bg-black/60 border border-blue-800 rounded-xl p-3';
+      row.innerHTML = `
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-2 mb-2">
+          <input data-ein="date" type="date" class="fld" value="${escapeHtml(exp.date)}">
+          <input data-ein="desc" type="text" class="fld" value="${escapeHtml(exp.description)}">
+          <input data-ein="amount" type="number" min="0" step="0.01" class="fld" value="${exp.amount}">
+          <select data-ein="method" class="fld cursor-pointer">
+            <option value="cash" ${exp.paymentMethod !== 'โอนเงิน' ? 'selected' : ''}>💵 จ่ายด้วยเงินสด</option>
+            <option value="transfer" ${exp.paymentMethod === 'โอนเงิน' ? 'selected' : ''}>📱 จ่ายด้วยเงินโอน</option>
+          </select>
+        </div>
+        <div class="flex gap-2">
+          <button data-esave class="bg-green-800 hover:bg-green-700 border border-green-600 rounded-lg px-4 py-1.5 text-xs font-bold"><i class="fa-solid fa-check mr-1"></i>บันทึก</button>
+          <button data-ecancel class="bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg px-4 py-1.5 text-xs font-bold"><i class="fa-solid fa-xmark mr-1"></i>ยกเลิก</button>
+        </div>`;
+
+      row.querySelector('[data-ecancel]').addEventListener('click', loadExpenses);
+      row.querySelector('[data-esave]').addEventListener('click', async () => {
+        const v = (f) => row.querySelector(`[data-ein="${f}"]`).value;
+        const res = await callServer('updateExpense', {
+          docId: exp.docId, dateStr: v('date'), description: v('desc').trim(),
+          amount: v('amount'), paymentMethod: v('method')
+        });
+        alert(res.message);
+        // Reload the report too: a changed amount, date or channel moves the
+        // day's cash/transfer figures in the table above.
+        if (res.success) await refresh();
       });
     }
 

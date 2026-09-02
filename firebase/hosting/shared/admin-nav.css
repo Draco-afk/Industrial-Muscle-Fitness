@@ -7,6 +7,17 @@ body {
 .panel { background: rgba(15, 15, 15, 0.9); border: 1px solid #222; }
 table th { font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: #6b7280; text-align: left; padding: 10px 12px; }
 table td { padding: 10px 12px; border-top: 1px solid #1f1f1f; font-size: 13px; }
+/* Tailwind's utilities live in a cascade layer, and layered rules always lose to
+   unlayered ones no matter how specific — so the blanket `table th` rule above
+   was quietly overriding every `text-right` header, leaving right-aligned
+   numbers under left-aligned titles. Restating the alignment utilities here
+   (unlayered) is what actually makes them apply inside a table. */
+table th.text-right, table td.text-right { text-align: right; }
+table th.text-center, table td.text-center { text-align: center; }
+table th.text-left, table td.text-left { text-align: left; }
+/* Digits share one width, so figures stack into clean columns instead of
+   drifting with whichever numerals a row happens to contain. */
+table th.text-right, table td.text-right { font-variant-numeric: tabular-nums; }
 .badge { padding: 2px 10px; border-radius: 999px; font-size: 11px; font-weight: 600; }
 .badge-active { background: rgba(34,197,94,0.15); color: #4ade80; }
 .badge-suspended { background: rgba(234,179,8,0.15); color: #facc15; }

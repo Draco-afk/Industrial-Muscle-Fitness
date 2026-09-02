@@ -15,10 +15,79 @@
   </div>
   <div id="navSlot"></div>
 
-  <div id="app" class="hidden md:ml-64 p-4 md:p-8 pt-24 md:pt-8 max-w-3xl">
+  <div id="app" class="hidden md:ml-64 p-4 md:p-8 pt-24 md:pt-8 max-w-5xl">
     <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2 mb-6">
       <h2 class="text-2xl font-black font-['Urbanist']">เช็คอินลูกค้า</h2>
       <span class="text-gray-500 text-xs"><i class="fa-solid fa-circle-info mr-1"></i>ใช้เวลาเครื่องสแกนลายนิ้วมือหน้าประตูใช้งานไม่ได้</span>
+    </div>
+
+    <!-- Today's footfall, up top: the number the owner wants at a glance -->
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+      <div class="panel rounded-2xl p-4">
+        <p class="text-[10px] uppercase tracking-widest text-gray-500 mb-1">คนเข้าวันนี้</p>
+        <p id="todayTotal" class="text-3xl font-black text-red-400">-</p>
+        <p id="todayDate" class="text-gray-600 text-[11px] font-mono mt-0.5"></p>
+      </div>
+      <div class="panel rounded-2xl p-4">
+        <p class="text-[10px] uppercase tracking-widest text-gray-500 mb-1">สมาชิกวันนี้</p>
+        <p id="todayMember" class="text-3xl font-black text-green-400">-</p>
+        <p id="todayMemberSub" class="text-gray-600 text-[11px] mt-0.5"></p>
+      </div>
+      <div class="panel rounded-2xl p-4">
+        <p class="text-[10px] uppercase tracking-widest text-gray-500 mb-1">รายวันวันนี้</p>
+        <p id="todayDayPass" class="text-3xl font-black text-blue-400">-</p>
+        <p class="text-gray-600 text-[11px] mt-0.5">นับตามจำนวนคนที่ซื้อค่าเข้า</p>
+      </div>
+      <div class="panel rounded-2xl p-4">
+        <p class="text-[10px] uppercase tracking-widest text-gray-500 mb-1">เฉลี่ยต่อวัน</p>
+        <p id="avgPerDay" class="text-3xl font-black text-yellow-400">-</p>
+        <p id="avgSub" class="text-gray-600 text-[11px] mt-0.5"></p>
+      </div>
+    </div>
+
+    <!-- Per-day history -->
+    <div class="panel rounded-2xl p-5 mb-6">
+      <div class="flex flex-col md:flex-row md:items-end justify-between gap-3 mb-4">
+        <div>
+          <h3 class="text-sm font-bold"><i class="fa-solid fa-users text-red-500 mr-2"></i>สรุปจำนวนคนเข้าต่อวัน</h3>
+          <p class="text-gray-500 text-xs mt-1">
+            นับรวมทั้ง <b class="text-green-400">สมาชิกที่สแกนเข้า</b> และ <b class="text-blue-400">ลูกค้ารายวันที่ซื้อค่าเข้า</b>
+          </p>
+        </div>
+        <div class="flex flex-wrap items-end gap-2">
+          <div>
+            <label class="block text-[10px] uppercase tracking-widest text-gray-500 mb-1">ตั้งแต่</label>
+            <input id="statStart" type="date" class="fld fld-md">
+          </div>
+          <div>
+            <label class="block text-[10px] uppercase tracking-widest text-gray-500 mb-1">ถึง</label>
+            <input id="statEnd" type="date" class="fld fld-md">
+          </div>
+          <button id="btnStats" class="bg-red-700 hover:bg-red-600 border border-red-600 rounded-xl px-4 py-2.5 text-xs font-bold">
+            <i class="fa-solid fa-rotate mr-1"></i>ดูสรุป
+          </button>
+        </div>
+      </div>
+
+      <div id="statSummary" class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4"></div>
+
+      <div class="overflow-x-auto">
+        <table class="w-full">
+          <thead><tr>
+            <th>วันที่</th>
+            <th class="text-right">สมาชิก</th>
+            <th class="text-right">รายวัน</th>
+            <th class="text-right">รวมคนเข้า</th>
+            <th class="text-right">จำนวนครั้งที่สแกน</th>
+          </tr></thead>
+          <tbody id="statRows"></tbody>
+        </table>
+      </div>
+      <p class="text-gray-600 text-[11px] mt-3">
+        <i class="fa-solid fa-circle-info mr-1"></i>
+        "รวมคนเข้า" นับสมาชิกคนละ 1 ครั้งต่อวัน แม้จะสแกนเข้าหลายรอบ ส่วนช่อง "จำนวนครั้งที่สแกน" คือจำนวนครั้งทั้งหมด
+        (เครื่องสแกนบันทึกเฉพาะ<b class="text-white">ตอนเข้า</b> ไม่ได้บันทึกตอนออก)
+      </p>
     </div>
 
     <div class="panel rounded-2xl p-4 mb-6">
@@ -50,8 +119,65 @@
       document.getElementById('app').classList.remove('hidden');
       window.doLogout = async () => { await signOut(auth); window.location.href = '../login.html'; };
       document.getElementById('checkinSearchBar').addEventListener('input', renderList);
-      await loadMembers();
+
+      // Default the range to the current gym month, which is what the owner
+      // checks day to day.
+      const today = gymToday();
+      document.getElementById('statStart').value = today.slice(0, 8) + '01';
+      document.getElementById('statEnd').value = today;
+      document.getElementById('btnStats').addEventListener('click', loadStats);
+
+      await Promise.all([loadMembers(), loadStats()]);
     });
+
+    // The gym day rolls over at Bangkok midnight, not the browser's.
+    function gymToday() {
+      return new Date(Date.now() + 7 * 3600 * 1000).toISOString().slice(0, 10);
+    }
+
+    async function loadStats() {
+      const stats = await callServer('getCheckinStats', {
+        startDateStr: document.getElementById('statStart').value,
+        endDateStr: document.getElementById('statEnd').value
+      });
+      const t = stats.totals || {};
+      const today = stats.today || { total: 0, memberPeople: 0, memberVisits: 0, dayPass: 0, date: gymToday() };
+
+      document.getElementById('todayTotal').textContent = today.total;
+      document.getElementById('todayDate').textContent = today.date;
+      document.getElementById('todayMember').textContent = today.memberPeople;
+      document.getElementById('todayMemberSub').textContent =
+        today.memberVisits > today.memberPeople ? `สแกนทั้งหมด ${today.memberVisits} ครั้ง` : 'คน (สแกนเข้า)';
+      document.getElementById('todayDayPass').textContent = today.dayPass;
+      document.getElementById('avgPerDay').textContent = t.avgPerDay != null ? t.avgPerDay : '-';
+      document.getElementById('avgSub').textContent = t.activeDays ? `จาก ${t.activeDays} วันที่มีคนเข้า` : '';
+
+      const hh = (h) => (h < 0 ? '-' : `${String(h).padStart(2, '0')}:00-${String(h + 1).padStart(2, '0')}:00`);
+      const box = (label, value, sub, cls) => `
+        <div class="bg-black/40 border border-gray-800 rounded-xl p-3">
+          <p class="text-[10px] uppercase tracking-widest text-gray-500 mb-1">${label}</p>
+          <p class="text-xl font-black ${cls || ''}">${value}</p>
+          <p class="text-gray-600 text-[11px] mt-0.5">${sub || ''}</p>
+        </div>`;
+      document.getElementById('statSummary').innerHTML =
+        box('รวมคนเข้าทั้งช่วง', t.totalPeople != null ? t.totalPeople : '-', `${t.activeDays || 0} วันที่มีคนเข้า`, 'text-red-400')
+        + box('สมาชิก', t.memberPeople != null ? t.memberPeople : '-', `สแกนรวม ${t.memberVisits || 0} ครั้ง`, 'text-green-400')
+        + box('ลูกค้ารายวัน', t.dayPass != null ? t.dayPass : '-', 'คน', 'text-blue-400')
+        + box('วันที่คนเยอะสุด', t.busiestTotal ? `${t.busiestTotal} คน` : '-',
+              t.busiestDate ? `${t.busiestDate}${t.peakHour >= 0 ? ` • ช่วงพีค ${hh(t.peakHour)}` : ''}` : '', 'text-yellow-400');
+
+      const rows = (stats.breakdown || []).slice().reverse();
+      document.getElementById('statRows').innerHTML = rows.length
+        ? rows.map((d) => `
+            <tr class="${d.total ? '' : 'opacity-40'}">
+              <td class="text-gray-400 font-mono whitespace-nowrap">${escapeHtml(d.date)}</td>
+              <td class="text-right text-green-400">${d.memberPeople}</td>
+              <td class="text-right text-blue-400">${d.dayPass}</td>
+              <td class="text-right font-bold ${d.total ? 'text-red-400' : 'text-gray-600'}">${d.total}</td>
+              <td class="text-right text-gray-600">${d.memberVisits}</td>
+            </tr>`).join('')
+        : '<tr><td colspan="5" class="text-gray-600 text-xs text-center py-6">ยังไม่มีข้อมูลในช่วงวันที่นี้</td></tr>';
+    }
 
     async function loadMembers() {
       members = await callServer('getMemberList');
@@ -103,7 +229,8 @@
       if (!confirm(`ยืนยันเช็คอินให้ "${name}" ด้วยมือ?`)) return;
       const res = await callServer('manualCheckIn', { docId });
       alert(res.message);
-      if (res.success) await loadMembers();
+      // Reload the counts too — a check-in just changed today's numbers.
+      if (res.success) await Promise.all([loadMembers(), loadStats()]);
     }
   </script>
 </body>

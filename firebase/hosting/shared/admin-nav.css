@@ -22,6 +22,8 @@ table th.text-right, table td.text-right { font-variant-numeric: tabular-nums; }
 .badge-active { background: rgba(34,197,94,0.15); color: #4ade80; }
 .badge-suspended { background: rgba(234,179,8,0.15); color: #facc15; }
 .badge-other { background: rgba(107,114,128,0.15); color: #9ca3af; }
+.badge-expired { background: rgba(220,38,38,0.22); color: #fca5a5; }
+.badge-expiring { background: rgba(234,179,8,0.18); color: #fde047; }
 .sidebar-item {
   display: flex; align-items: center; width: 100%; padding: 12px 14px; margin-bottom: 2px;
   border-radius: 12px; color: #9ca3af; font-weight: 700; text-transform: uppercase;

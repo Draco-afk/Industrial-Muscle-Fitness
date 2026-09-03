@@ -104,6 +104,7 @@
     import { callServer, auth, onAuthStateChanged, signOut } from '../shared/firebase-init.js';
     import { renderNav } from '../shared/admin-nav.js';
     import { toast } from '../shared/toast.js';
+    import { membershipState } from '../shared/membership-status.js';
 
     let members = [];
 
@@ -201,12 +202,20 @@
       const displayList = term ? filtered : filtered.slice(0, 15);
 
       container.innerHTML = displayList.map((m) => {
-        const isActive = m.status === 'Active';
-        const badge = isActive
-          ? '<span class="text-[10px] bg-green-950 text-green-400 border border-green-800 px-2.5 py-1 rounded-full font-bold uppercase">Active</span>'
-          : `<span class="text-[10px] bg-gray-800 text-gray-400 border border-gray-700 px-2.5 py-1 rounded-full font-bold uppercase">${escapeHtml(m.status || '')}</span>`;
+        // Same expiry-date rule as the members page. Showing a green Active
+        // badge and then refusing the check-in is the confusing combination.
+        const st = membershipState(m);
+        const canCheckIn = st.state === 'active' || st.state === 'expiring';
+        const badgeStyle = {
+          expired: 'bg-red-950 text-red-300 border-red-600',
+          expiring: 'bg-yellow-950 text-yellow-300 border-yellow-700',
+          suspended: 'bg-yellow-950 text-yellow-400 border-yellow-800',
+          active: 'bg-green-950 text-green-400 border-green-800',
+          unknown: 'bg-gray-800 text-gray-400 border-gray-700'
+        }[st.state];
+        const badge = `<span class="text-[10px] ${badgeStyle} border px-2.5 py-1 rounded-full font-bold whitespace-nowrap">${escapeHtml(st.label)}</span>`;
         return `
-          <div class="panel rounded-2xl p-4 md:p-5 flex items-center justify-between gap-4">
+          <div class="panel rounded-2xl p-4 md:p-5 flex items-center justify-between gap-4 ${st.state === 'expired' ? 'border-red-700' : ''}">
             <div class="min-w-0">
               <div class="flex items-center gap-2 mb-1">
                 <h4 class="font-bold text-base truncate">${escapeHtml(m.fullName)}</h4>
@@ -215,9 +224,16 @@
               <p class="text-gray-500 text-xs">${escapeHtml(m.package || '')} • ${escapeHtml(m.phone || '')}</p>
               <p class="text-gray-600 text-[11px] mt-0.5"><i class="fa-solid fa-calendar-days mr-1"></i>หมดอายุ: <span class="font-mono">${escapeHtml(m.expiryDate || '')}</span> <span class="mx-1">•</span><i class="fa-solid fa-dumbbell mr-1"></i>เข้าแล้ว <span data-count>${m.checkInCount || 0}</span> ครั้ง</p>
             </div>
+            ${canCheckIn ? `
             <button data-docid="${m.docId}" data-name="${escapeHtml(m.fullName)}" class="checkin-btn shrink-0 bg-green-600 hover:bg-green-500 text-white font-black py-3 px-5 rounded-xl text-xs uppercase flex items-center gap-2">
               <i class="fa-solid fa-check text-sm"></i> เช็คอิน
-            </button>
+            </button>` : `
+            <div class="shrink-0 text-right">
+              <span class="block bg-gray-800 text-gray-500 font-black py-3 px-5 rounded-xl text-xs uppercase cursor-not-allowed">
+                <i class="fa-solid fa-ban text-sm mr-1"></i> เช็คอินไม่ได้
+              </span>
+              <span class="block text-red-400 text-[10px] mt-1">${st.state === 'expired' ? 'ต่ออายุก่อน' : 'บัตรถูกระงับ'}</span>
+            </div>`}
           </div>`;
       }).join('');
 

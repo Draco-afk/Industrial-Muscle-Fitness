@@ -135,7 +135,17 @@
       <div class="panel rounded-2xl p-5">
         <div class="flex items-center justify-between mb-3">
           <h3 class="text-xs uppercase tracking-widest text-gray-500">รายชื่อสมาชิก</h3>
-          <span class="text-xs text-gray-400">ทั้งหมด <b id="statTotal" class="text-white">-</b> / Active <b id="statActive" class="text-green-400">-</b></span>
+          <span class="text-xs text-gray-400">ทั้งหมด <b id="statTotal" class="text-white">-</b> / ใช้งานได้ <b id="statActive" class="text-green-400">-</b></span>
+        </div>
+        <!-- Counts come from the expiry dates, so they're right whether or not
+             the auto-expire job has run. Tap to see just those members. -->
+        <div class="flex flex-wrap gap-2 mb-3">
+          <button id="expiredChip" class="hidden text-[11px] font-bold px-3 py-1.5 rounded-full border border-red-600 bg-red-950/40 text-red-300 hover:bg-red-900/50">
+            <i class="fa-solid fa-circle-exclamation mr-1"></i>หมดอายุแล้ว <b id="statExpired">0</b> คน
+          </button>
+          <span id="expiringChip" class="hidden text-[11px] font-bold px-3 py-1.5 rounded-full border border-yellow-700 bg-yellow-950/30 text-yellow-300">
+            <i class="fa-solid fa-clock mr-1"></i>ใกล้หมดอายุ (7 วัน) <b id="statExpiring">0</b> คน
+          </span>
         </div>
         <div class="flex items-center bg-black border border-gray-800 rounded-xl px-3 py-2 mb-3 focus-within:border-red-500/50">
           <i class="fa-solid fa-magnifying-glass text-gray-600 mr-2 text-xs"></i>
@@ -168,6 +178,7 @@
   <script type="module">
     import { callServer, auth, onAuthStateChanged, signOut } from '../shared/firebase-init.js';
     import { renderNav } from '../shared/admin-nav.js';
+    import { membershipState } from '../shared/membership-status.js';
     import { loadPosState, savePosState } from '../shared/pos-state.js';
     import { showPaymentQr } from '../shared/payment-qr.js';
 
@@ -201,6 +212,12 @@
       $('f_dob').addEventListener('change', recalcExpiryAndPrice);
       $('f_pin').addEventListener('input', (e) => { e.target.value = e.target.value.replace(/[^0-9]/g, ''); });
       $('memberSearch').addEventListener('input', renderMembers);
+      $('expiredChip').addEventListener('click', () => {
+        showExpiredOnly = !showExpiredOnly;
+        $('expiredChip').classList.toggle('ring-2', showExpiredOnly);
+        $('expiredChip').classList.toggle('ring-red-400', showExpiredOnly);
+        renderMembers();
+      });
       $('btnSubmit').addEventListener('click', submitForm);
       $('btnCancelEdit').addEventListener('click', resetForm);
       $('btnCancelAddOn').addEventListener('click', () => { window.location.href = 'pos.html'; });
@@ -255,20 +272,25 @@
       renderMembers();
     }
 
-    function badgeClass(status) {
-      if (status === 'Active') return 'badge badge-active';
-      if (status === 'Suspended') return 'badge badge-suspended';
-      return 'badge badge-other';
-    }
+    let showExpiredOnly = false;
 
     function renderMembers() {
       const term = ($('memberSearch').value || '').trim().toLowerCase();
-      const filtered = term
+      let filtered = term
         ? members.filter((m) => (m.fullName || '').toLowerCase().includes(term) || (m.phone || '').includes(term))
         : members;
+      if (showExpiredOnly) filtered = filtered.filter((m) => membershipState(m).state === 'expired');
 
+      // Counted from the expiry dates, not the status field. The old count read
+      // status and so reported all 56 as Active while 9 had already lapsed.
+      const expired = members.filter((m) => membershipState(m).state === 'expired');
+      const expiring = members.filter((m) => membershipState(m).state === 'expiring');
       $('statTotal').textContent = members.length;
-      $('statActive').textContent = members.filter((m) => m.status === 'Active').length;
+      $('statActive').textContent = members.length - expired.length;
+      $('statExpired').textContent = expired.length;
+      $('statExpiring').textContent = expiring.length;
+      $('expiredChip').classList.toggle('hidden', expired.length === 0);
+      $('expiringChip').classList.toggle('hidden', expiring.length === 0);
 
       const list = $('memberList');
       if (!filtered.length) {
@@ -276,15 +298,19 @@
         return;
       }
 
-      list.innerHTML = filtered.map((m, i) => `
-        <div class="bg-black/40 border border-gray-800 rounded-xl p-3">
+      list.innerHTML = filtered.map((m, i) => {
+        const st = membershipState(m);
+        const dateColor = st.state === 'expired' ? 'text-red-300'
+          : (st.state === 'expiring' ? 'text-yellow-300' : 'text-gray-600');
+        return `
+        <div class="${st.cardClass} rounded-xl p-3">
           <div class="flex justify-between items-start gap-2">
             <div class="min-w-0">
-              <p class="font-bold text-sm truncate">${escapeHtml(m.fullName)}${m.isBirthdayMonth ? ' <i class="fa-solid fa-cake-candles text-yellow-500 text-xs"></i>' : ''}</p>
+              <p class="font-bold text-sm truncate ${st.state === 'expired' ? 'text-red-200' : ''}">${escapeHtml(m.fullName)}${m.isBirthdayMonth ? ' <i class="fa-solid fa-cake-candles text-yellow-500 text-xs"></i>' : ''}</p>
               <p class="text-gray-500 text-[11px]">${escapeHtml(m.package || '')} • ${escapeHtml(m.phone || '')}</p>
-              <p class="text-gray-600 text-[10px] mt-0.5"><i class="fa-solid fa-calendar-days mr-1"></i>หมดอายุ ${escapeHtml(m.expiryDate || '-')} • <i class="fa-solid fa-dumbbell mr-1"></i>${m.checkInCount || 0} ครั้ง</p>
+              <p class="${dateColor} text-[10px] mt-0.5"><i class="fa-solid fa-calendar-days mr-1"></i>หมดอายุ ${escapeHtml(m.expiryDate || '-')} • <i class="fa-solid fa-dumbbell mr-1"></i>${m.checkInCount || 0} ครั้ง</p>
             </div>
-            <span class="${badgeClass(m.status)} shrink-0">${escapeHtml(m.status)}</span>
+            <span class="${st.badgeClass} shrink-0 whitespace-nowrap">${escapeHtml(st.label)}</span>
           </div>
           <div class="flex flex-wrap gap-1 mt-2 border-t border-gray-900 pt-2">
             <button data-act="checkin" data-i="${i}" class="text-green-400 hover:text-green-300 text-[11px] px-2 py-1"><i class="fa-solid fa-right-to-bracket mr-1"></i>เช็คอิน</button>
@@ -293,7 +319,7 @@
             <button data-act="enroll" data-i="${i}" class="text-yellow-500 hover:text-yellow-400 text-[11px] px-2 py-1"><i class="fa-solid fa-fingerprint mr-1"></i>ลงลายนิ้วมือ</button>
             <button data-act="delete" data-i="${i}" class="text-red-400 hover:text-red-300 text-[11px] px-2 py-1 ml-auto"><i class="fa-solid fa-trash"></i></button>
           </div>
-        </div>`).join('');
+        </div>`; }).join('');
 
       list.querySelectorAll('button[data-act]').forEach((btn) => {
         const m = filtered[parseInt(btn.dataset.i, 10)];

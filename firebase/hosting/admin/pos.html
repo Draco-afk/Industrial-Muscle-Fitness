@@ -151,6 +151,7 @@
 
   <script type="module">
     import { callServer, auth, onAuthStateChanged, signOut } from '../shared/firebase-init.js';
+    import { toast } from '../shared/toast.js';
     import { renderNav } from '../shared/admin-nav.js';
     import { loadPosState, savePosState, clearPosState, emptyPosState } from '../shared/pos-state.js';
     import { openReceiptWindow, offerReceiptPrint } from '../shared/receipt.js';
@@ -464,14 +465,18 @@
         });
         if (!res.success) return showErr(res.message);
 
-        alert(res.message);
+        // Toast, not alert: the till shouldn't wait for someone to tap OK
+        // before the next customer can be rung up.
+        toast(res.message);
         st = emptyPosState();
         clearPosState();
         $('posErr').classList.add('hidden');
         document.querySelectorAll('.payTab').forEach((t) => t.classList.toggle('active', t.dataset.pm === 'cash'));
         renderCustomers();
         renderAll();
-        await Promise.all([loadProducts(), loadLogs()]);
+        // The receipt matters to the customer standing there; refreshing stock
+        // and the log doesn't, so let those catch up on their own.
+        Promise.all([loadProducts(), loadLogs()]).catch(() => { /* next load picks it up */ });
         await offerReceiptPrint(callServer, 'generateDailyReceiptPDF', res.receiptNo);
       } catch (e) {
         showErr(e.message || 'เกิดข้อผิดพลาด');

@@ -2,6 +2,17 @@
 // breakdown in apps-script-source-refactored/ so functions stay easy to
 // trace back to their Apps Script origin.
 'use strict';
+const { setGlobalOptions } = require('firebase-functions/v2');
+
+// Run in the same region as Firestore (asia-southeast1), and next door to the
+// gym itself. On the us-central1 default every call paid for two Pacific
+// crossings — browser to the function, then the function to the database and
+// back for each read — which put an ~800ms floor under even a trivial lookup
+// like getProductList. Same region collapses that to a local hop.
+//
+// Changing this moves the HTTP endpoints too, so the fingerprint reader and
+// the LINE webhook have to be pointed at the new asia-southeast1 URLs.
+setGlobalOptions({ region: 'asia-southeast1' });
 
 module.exports = {
   ...require('./src/01_auth'),

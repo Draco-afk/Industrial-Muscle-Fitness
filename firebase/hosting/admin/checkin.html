@@ -103,6 +103,7 @@
   <script type="module">
     import { callServer, auth, onAuthStateChanged, signOut } from '../shared/firebase-init.js';
     import { renderNav } from '../shared/admin-nav.js';
+    import { toast } from '../shared/toast.js';
 
     let members = [];
 
@@ -212,7 +213,7 @@
                 ${badge}
               </div>
               <p class="text-gray-500 text-xs">${escapeHtml(m.package || '')} • ${escapeHtml(m.phone || '')}</p>
-              <p class="text-gray-600 text-[11px] mt-0.5"><i class="fa-solid fa-calendar-days mr-1"></i>หมดอายุ: <span class="font-mono">${escapeHtml(m.expiryDate || '')}</span> <span class="mx-1">•</span><i class="fa-solid fa-dumbbell mr-1"></i>เข้าแล้ว ${m.checkInCount || 0} ครั้ง</p>
+              <p class="text-gray-600 text-[11px] mt-0.5"><i class="fa-solid fa-calendar-days mr-1"></i>หมดอายุ: <span class="font-mono">${escapeHtml(m.expiryDate || '')}</span> <span class="mx-1">•</span><i class="fa-solid fa-dumbbell mr-1"></i>เข้าแล้ว <span data-count>${m.checkInCount || 0}</span> ครั้ง</p>
             </div>
             <button data-docid="${m.docId}" data-name="${escapeHtml(m.fullName)}" class="checkin-btn shrink-0 bg-green-600 hover:bg-green-500 text-white font-black py-3 px-5 rounded-xl text-xs uppercase flex items-center gap-2">
               <i class="fa-solid fa-check text-sm"></i> เช็คอิน
@@ -221,16 +222,42 @@
       }).join('');
 
       container.querySelectorAll('.checkin-btn').forEach((btn) => {
-        btn.onclick = () => doCheckIn(btn.dataset.docid, btn.dataset.name);
+        btn.onclick = () => doCheckIn(btn.dataset.docid, btn.dataset.name, btn);
       });
     }
 
-    async function doCheckIn(docId, name) {
+    async function doCheckIn(docId, name, btn) {
       if (!confirm(`ยืนยันเช็คอินให้ "${name}" ด้วยมือ?`)) return;
-      const res = await callServer('manualCheckIn', { docId });
-      alert(res.message);
-      // Reload the counts too — a check-in just changed today's numbers.
-      if (res.success) await Promise.all([loadMembers(), loadStats()]);
+      if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i>'; }
+      let res;
+      try {
+        res = await callServer('manualCheckIn', { docId });
+      } catch (e) {
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-check text-sm"></i> เช็คอิน'; }
+        alert(e.message || 'เช็คอินไม่สำเร็จ');
+        return;
+      }
+      if (!res.success) {
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-check text-sm"></i> เช็คอิน'; }
+        alert(res.message);   // a refusal has to stop the person and be read
+        return;
+      }
+
+      toast(res.message);
+      // Patch the one row that changed instead of refetching every member, and
+      // let the counts catch up in the background. The next customer can be
+      // served immediately rather than waiting on two more round trips.
+      const m = members.find((x) => x.docId === docId);
+      if (m) m.checkInCount = (m.checkInCount || 0) + 1;
+      if (btn) {
+        btn.disabled = true;
+        btn.className = btn.className.replace('bg-green-600 hover:bg-green-500', 'bg-gray-700');
+        btn.innerHTML = '<i class="fa-solid fa-check text-sm"></i> เช็คอินแล้ว';
+        const card = btn.closest('.panel');
+        const counter = card && card.querySelector('[data-count]');
+        if (counter && m) counter.textContent = m.checkInCount;
+      }
+      loadStats().catch(() => { /* the numbers refresh on the next load */ });
     }
   </script>
 </body>

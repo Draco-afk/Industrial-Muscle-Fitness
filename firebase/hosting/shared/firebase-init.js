@@ -25,7 +25,9 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
-const functions = getFunctions(app, 'us-central1');
+// asia-southeast1 is where Firestore lives and where the gym is. See the
+// region note in functions/index.js.
+const functions = getFunctions(app, 'asia-southeast1');
 
 const isLocal = ['localhost', '127.0.0.1'].includes(location.hostname);
 if (isLocal) {

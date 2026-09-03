@@ -32,7 +32,7 @@
         </select>
       </div>
       <div class="grid md:grid-cols-2 gap-3 mb-3">
-        <div>
+        <div id="slipSection">
           <!-- Drop the transfer slip here and the QR is read out of the image,
                so the same slip can't be reused for a second renewal. -->
           <div id="slipDrop" class="border-2 border-dashed border-gray-700 hover:border-red-500 rounded-xl p-4 text-center cursor-pointer transition-colors">
@@ -40,7 +40,17 @@
             <p id="slipStatus" class="text-xs text-gray-500 mt-1.5">ลากรูปสลิปโอนเงินมาวาง หรือคลิกเพื่อเลือกไฟล์</p>
             <input id="slipFile" type="file" accept="image/*" class="hidden">
           </div>
-          <input id="qrData" placeholder="รหัสสลิป QR (บังคับ — ป้องกันใช้สลิปซ้ำ)" class="w-full mt-2 bg-black border border-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-red-500 font-mono">
+          <input id="qrData" placeholder="รหัสสลิป QR (ป้องกันใช้สลิปซ้ำ)" class="w-full mt-2 bg-black border border-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-red-500 font-mono">
+
+          <!-- For when the money is visibly in the bank app but there's no slip
+               image to hand. Deliberately styled as a distinct choice, not a
+               quiet checkbox, because it waives the duplicate-slip check. -->
+          <button type="button" id="btnConfirmTransfer"
+                  class="w-full mt-2 border rounded-xl px-4 py-2.5 text-sm font-bold transition-colors
+                         bg-black border-gray-800 hover:border-green-500 text-gray-300">
+            <i class="fa-solid fa-circle-check mr-2"></i><span id="confirmTransferLabel">ยืนยันว่าลูกค้าโอนเงินแล้ว (ไม่ต้องแนบสลิป)</span>
+          </button>
+          <p id="slipHint" class="text-gray-600 text-[11px] mt-1.5"></p>
         </div>
         <input id="couponCode" placeholder="โค้ดคูปอง (ถ้ามี)" class="bg-black border border-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-red-500 self-start">
       </div>
@@ -87,6 +97,15 @@
         dropId: 'slipDrop', fileId: 'slipFile', targetId: 'qrData', statusId: 'slipStatus', iconId: 'slipIcon'
       }) || resetSlipDrop;
       document.getElementById('btnShowQrRenew').addEventListener('click', () => showPaymentQr(callServer));
+      document.getElementById('btnConfirmTransfer').addEventListener('click', () => setTransferConfirmed(!transferConfirmed));
+      document.getElementById('payMethod').addEventListener('change', () => {
+        // Switching to cash drops the manual confirmation — it only ever
+        // applies to a transfer.
+        if (document.getElementById('payMethod').value !== 'transfer') setTransferConfirmed(false);
+        else syncSlipHint();
+      });
+      document.getElementById('qrData').addEventListener('input', syncSlipHint);
+      syncSlipHint();
       await Promise.all([loadMembers(), loadPackages(), loadLogs()]);
     });
 
@@ -102,15 +121,60 @@
         pkgs.map((p) => `<option value="${escapeHtml(p.name)}">${escapeHtml(p.name)} (${p.price}฿ / ${p.durationMonths} เดือน)</option>`).join('');
     }
 
+    // Staff has eyeballed the money in the bank app instead of attaching a slip.
+    let transferConfirmed = false;
+
+    function setTransferConfirmed(on) {
+      transferConfirmed = on;
+      const btn = document.getElementById('btnConfirmTransfer');
+      const label = document.getElementById('confirmTransferLabel');
+      btn.className = 'w-full mt-2 border rounded-xl px-4 py-2.5 text-sm font-bold transition-colors '
+        + (on ? 'bg-green-900/60 border-green-500 text-green-200'
+              : 'bg-black border-gray-800 hover:border-green-500 text-gray-300');
+      label.textContent = on
+        ? 'ยืนยันแล้วว่าได้รับเงินโอน — กดอีกครั้งเพื่อยกเลิก'
+        : 'ยืนยันว่าลูกค้าโอนเงินแล้ว (ไม่ต้องแนบสลิป)';
+      syncSlipHint();
+    }
+
+    // Keeps the slip area honest about whether it's actually needed, so nobody
+    // hunts for a slip on a cash sale or wonders why the button is there.
+    function syncSlipHint() {
+      const isTransfer = document.getElementById('payMethod').value === 'transfer';
+      const hasSlip = !!document.getElementById('qrData').value.trim();
+      const section = document.getElementById('slipSection');
+      const hint = document.getElementById('slipHint');
+      section.style.opacity = isTransfer ? '1' : '0.45';
+      document.getElementById('btnConfirmTransfer').disabled = !isTransfer;
+
+      if (!isTransfer) {
+        hint.textContent = 'จ่ายเงินสด — ไม่ต้องใช้สลิป';
+        hint.className = 'text-gray-600 text-[11px] mt-1.5';
+      } else if (hasSlip) {
+        hint.textContent = '✓ มีสลิปแล้ว ระบบจะตรวจไม่ให้ใช้สลิปซ้ำ';
+        hint.className = 'text-green-500 text-[11px] mt-1.5';
+      } else if (transferConfirmed) {
+        hint.textContent = '⚠️ ยืนยันด้วยตัวเอง — จะบันทึกชื่อผู้ยืนยันไว้ และไม่มีระบบกันสลิปซ้ำ';
+        hint.className = 'text-yellow-500 text-[11px] mt-1.5';
+      } else {
+        hint.textContent = 'แนบสลิป หรือกดปุ่มยืนยันด้านบน อย่างใดอย่างหนึ่ง';
+        hint.className = 'text-gray-600 text-[11px] mt-1.5';
+      }
+    }
+
     window.submitRenewal = async function submitRenewal() {
       const payload = {
         memberDocId: document.getElementById('pickMember').value,
         package: document.getElementById('pickPackage').value,
         paymentMethod: document.getElementById('payMethod').value,
         qrData: document.getElementById('qrData').value.trim(),
-        couponCode: document.getElementById('couponCode').value.trim()
+        couponCode: document.getElementById('couponCode').value.trim(),
+        slipConfirmed: transferConfirmed
       };
       if (!payload.memberDocId || !payload.package) return showErr('กรุณาเลือกสมาชิกและแพ็กเกจ');
+      if (payload.paymentMethod === 'transfer' && !payload.qrData && !transferConfirmed) {
+        return showErr('กรุณาแนบสลิปโอนเงิน หรือกดปุ่ม "ยืนยันว่าลูกค้าโอนเงินแล้ว"');
+      }
 
       const btn = document.getElementById('renewBtn');
       btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i>';
@@ -122,6 +186,7 @@
           document.getElementById('couponCode').value = '';
           document.getElementById('renewErr').classList.add('hidden');
           resetSlipDrop();
+          setTransferConfirmed(false);   // never carries over to the next customer
           await loadLogs();
           await offerReceiptPrint(callServer, 'generateReceiptPDF', res.receiptNo);
         } else {
@@ -153,7 +218,8 @@
           <td class="text-gray-400 font-mono">${escapeHtml(p.receiptNo)}</td>
           <td class="text-gray-400">${(p.amount || 0).toLocaleString('th-TH')} บาท</td>
           <td><span class="badge badge-${p.refundStatus === 'Refunded' ? 'Refunded' : 'normal'}">${p.refundStatus === 'Refunded' ? 'คืนเงินแล้ว' : 'ปกติ'}</span>
-              <span class="text-[10px] ml-1 ${p.paymentMethod === 'โอนเงิน' ? 'text-blue-400' : 'text-green-400'}">${escapeHtml(p.paymentMethod || '')}</span></td>
+              <span class="text-[10px] ml-1 ${p.paymentMethod === 'โอนเงิน' ? 'text-blue-400' : 'text-green-400'}">${escapeHtml(p.paymentMethod || '')}</span>
+              ${p.slipConfirmedManually ? `<span class="text-[10px] ml-1 px-1.5 py-0.5 rounded-full bg-yellow-950 text-yellow-300 border border-yellow-800 whitespace-nowrap" title="ยืนยันรับเงินโอนด้วยตัวเอง ไม่ได้แนบสลิป${p.slipConfirmedBy ? ' โดย ' + escapeHtml(p.slipConfirmedBy) : ''}"><i class="fa-solid fa-user-check"></i> ไม่มีสลิป</span>` : ''}</td>
           <td class="text-right whitespace-nowrap">
             <button data-act="print" class="text-gray-400 hover:text-white px-1.5" title="พิมพ์ใบเสร็จ"><i class="fa-solid fa-print"></i></button>
             ${p.refundStatus !== 'Refunded' && !p.bundledInDailyBill ? `

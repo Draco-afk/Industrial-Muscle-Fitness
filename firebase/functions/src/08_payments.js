@@ -32,11 +32,29 @@ exports.processRenewalPayment = onCall(async (request) => {
   if (!authCtx) return { success: false, message: 'Session หมดอายุ กรุณา Login ใหม่' };
   const data = request.data || {};
   try {
+    // Proof of payment. Three legitimate shapes, and one that isn't:
+    //
+    //   cash              - no slip exists to scan, so none is asked for. The
+    //                       old rule demanded one for cash too, which meant a
+    //                       cash renewal could not be completed at all without
+    //                       typing something into the slip box.
+    //   transfer + slip   - scanned QR, checked against every past payment so
+    //                       the same slip can't be used twice.
+    //   transfer, staff confirmed - the owner has seen the money arrive in the
+    //                       bank app and says so. Recorded as such, because
+    //                       this is the one path with no duplicate protection.
+    //   transfer, neither - refused.
+    const isTransfer = data.paymentMethod === 'transfer';
     const inputQrData = data.qrData ? data.qrData.toString().trim() : '';
-    if (!inputQrData) return { success: false, message: '❌ ไม่พบข้อมูล QR Code จากสลิป' };
+    const slipConfirmedManually = isTransfer && !inputQrData && data.slipConfirmed === true;
 
-    const dupe = await db.collection('payments').where('qrData', '==', inputQrData).limit(1).get();
-    if (!dupe.empty) return { success: false, message: '❌ ไม่สามารถใช้สลิปนี้ซ้ำได้! เคยถูกใช้ต่ออายุไปแล้ว' };
+    if (isTransfer && !inputQrData && !slipConfirmedManually) {
+      return { success: false, message: '❌ กรุณาแนบสลิปโอนเงิน หรือกดยืนยันว่าได้รับเงินโอนแล้ว' };
+    }
+    if (inputQrData) {
+      const dupe = await db.collection('payments').where('qrData', '==', inputQrData).limit(1).get();
+      if (!dupe.empty) return { success: false, message: '❌ ไม่สามารถใช้สลิปนี้ซ้ำได้! เคยถูกใช้ต่ออายุไปแล้ว' };
+    }
 
     const memberSnap = await db.collection('members').doc(data.memberDocId).get();
     if (!memberSnap.exists) return { success: false, message: '❌ ไม่พบรายชื่อสมาชิกนี้ในระบบ' };
@@ -80,7 +98,10 @@ exports.processRenewalPayment = onCall(async (request) => {
     await db.collection('payments').add({
       timestamp: FieldValue.serverTimestamp(),
       memberName: member.fullName, package: data.package, qrData: inputQrData, newExpiryDate: newExpiryStr,
-      receiptNo, amount: paidAmount, refundStatus: '', refundReason: '', refundedBy: '', refundedAt: '', paymentMethod
+      receiptNo, amount: paidAmount, refundStatus: '', refundReason: '', refundedBy: '', refundedAt: '', paymentMethod,
+      // Who vouched for the money, when no slip backs it up.
+      slipConfirmedManually,
+      slipConfirmedBy: slipConfirmedManually ? (authCtx.token.adminRole || authCtx.uid) : ''
     });
     if (couponResult) {
       const { applyCouponUsage_ } = require('./06_coupons');
@@ -90,7 +111,8 @@ exports.processRenewalPayment = onCall(async (request) => {
     const { clearRevenueOverrideForDate_ } = require('./09_dailypos');
     await clearRevenueOverrideForDate_(new Date().toISOString().slice(0, 10), authCtx.token.adminRole || authCtx.uid, `ต่ออายุสมาชิก ใบเสร็จ ${receiptNo}`);
     await logAudit_(authCtx.token.adminRole || authCtx.uid, 'RENEW_PAYMENT', member.fullName,
-      `ต่ออายุสำเร็จ: ${data.package} หมดอายุ ${newExpiryStr} (ใบเสร็จ: ${receiptNo})${discountNote}`);
+      `ต่ออายุสำเร็จ: ${data.package} หมดอายุ ${newExpiryStr} (ใบเสร็จ: ${receiptNo})${discountNote}`
+      + (slipConfirmedManually ? ' ⚠️ ยืนยันรับเงินโอนด้วยตัวเอง ไม่ได้แนบสลิป' : ''));
 
     return {
       success: true,
@@ -116,7 +138,9 @@ async function getPaymentLogsCore_() {
         timestampRaw: p.timestamp.toMillis(), timestamp: p.timestamp.toDate().toISOString(),
         memberName: p.memberName, package: p.package, qrData: p.qrData || '', newExpiry: p.newExpiryDate || '',
         receiptNo: p.receiptNo || '', amount: p.amount || 0, refundStatus: p.refundStatus || '', refundReason: p.refundReason || '',
-        paymentMethod: p.paymentMethod || 'เงินสด', bundledInDailyBill: false
+        paymentMethod: p.paymentMethod || 'เงินสด', bundledInDailyBill: false,
+        slipConfirmedManually: p.slipConfirmedManually === true,
+        slipConfirmedBy: p.slipConfirmedBy || ''
       });
     });
 

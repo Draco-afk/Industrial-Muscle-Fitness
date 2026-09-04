@@ -44,11 +44,11 @@
     <div class="grid md:grid-cols-2 gap-6 mb-6">
       <div class="panel rounded-2xl p-5">
         <h3 class="text-xs uppercase tracking-widest text-gray-500 mb-3">เช็คอินล่าสุด</h3>
-        <div id="logList" class="space-y-2 text-sm max-h-80 overflow-y-auto"></div>
+        <div id="logList" class="space-y-2 text-sm max-h-80 overflow-y-auto pr-2"></div>
       </div>
       <div class="panel rounded-2xl p-5">
-        <h3 class="text-xs uppercase tracking-widest text-gray-500 mb-3">สมาชิกใกล้หมดอายุ (7 วัน)</h3>
-        <div id="expiringList" class="space-y-2 text-sm max-h-80 overflow-y-auto"></div>
+        <h3 class="text-xs uppercase tracking-widest text-gray-500 mb-3">หมดอายุแล้ว / ใกล้หมดอายุ (7 วัน)</h3>
+        <div id="expiringList" class="space-y-2 text-sm max-h-80 overflow-y-auto pr-2"></div>
       </div>
     </div>
 
@@ -134,20 +134,27 @@
       document.getElementById('statExpiring').textContent = expiring.length;
       document.getElementById('statBirthday').textContent = birthdays.length;
 
+      // A fixed 3-column grid rather than justify-between: with flex, every row
+      // placed its time and status wherever that row's name happened to end,
+      // so nothing lined up down the column.
+      const ROW = 'grid grid-cols-[1fr_auto_auto] items-baseline gap-3 border-b border-gray-900 pb-2';
+
       const logList = document.getElementById('logList');
       logList.innerHTML = stats.logs.length ? stats.logs.map((l) => `
-        <div class="flex justify-between border-b border-gray-900 pb-2">
-          <span>${escapeHtml(l.name)}</span>
-          <span class="text-gray-500 font-mono text-xs">${escapeHtml(l.time)}</span>
-          <span class="text-xs ${l.status === 'SUCCESS' ? 'text-green-400' : 'text-red-400'}">${escapeHtml(l.status)}</span>
+        <div class="${ROW}">
+          <span class="truncate">${escapeHtml(l.name)}</span>
+          <span class="text-gray-500 font-mono text-xs tabular-nums text-right whitespace-nowrap">
+            ${l.dayLabel && l.dayLabel !== 'วันนี้' ? `<span class="text-gray-600">${escapeHtml(l.dayLabel)}</span> ` : ''}${escapeHtml(l.time)}
+          </span>
+          <span class="text-xs w-16 text-right ${l.status === 'SUCCESS' ? 'text-green-400' : 'text-red-400'}">${escapeHtml(l.status)}</span>
         </div>`).join('') : '<p class="text-gray-600 text-xs text-center py-4">ยังไม่มีการเช็คอิน</p>';
 
       const expList = document.getElementById('expiringList');
       expList.innerHTML = expiring.length ? expiring.map((m) => `
-        <div class="flex justify-between border-b border-gray-900 pb-2">
-          <span>${escapeHtml(m.fullName)}</span>
-          <span class="text-gray-500">${escapeHtml(m.expiryDate)}</span>
-          <span class="text-xs ${m.daysLeft < 0 ? 'text-red-400' : 'text-yellow-400'}">${m.daysLeft < 0 ? 'หมดอายุแล้ว' : `เหลือ ${m.daysLeft} วัน`}</span>
+        <div class="${ROW}">
+          <span class="truncate ${m.daysLeft < 0 ? 'text-red-200' : ''}">${escapeHtml(m.fullName)}</span>
+          <span class="text-gray-500 font-mono text-xs tabular-nums whitespace-nowrap">${escapeHtml(m.expiryDate)}</span>
+          <span class="text-xs w-24 text-right whitespace-nowrap ${m.daysLeft < 0 ? 'text-red-400 font-bold' : 'text-yellow-400'}">${m.daysLeft < 0 ? `หมดอายุแล้ว ${Math.abs(m.daysLeft)} วัน` : `เหลือ ${m.daysLeft} วัน`}</span>
         </div>`).join('') : '<p class="text-gray-600 text-xs text-center py-4">ไม่มีสมาชิกใกล้หมดอายุ</p>';
     }
   </script>

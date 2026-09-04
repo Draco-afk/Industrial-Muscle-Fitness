@@ -15,6 +15,7 @@ const { requireAuth } = require('./util/authGuard');
 const { logAudit_ } = require('./util/auditLog');
 const { db } = require('./util/admin');
 const config = require('./00_config');
+const { gymDateThai_, gymTimeHM_ } = require('./util/dates');
 
 function buildThermalReceiptHtml_(opts) {
   const itemsHtml = opts.items.map((it) =>
@@ -79,7 +80,7 @@ function generatePDFReport_(title, headers, dataRows, filename) {
     '.footer { margin-top: 30px; font-size: 10px; text-align: right; color: #888; }' +
     '</style></head><body>' +
     '<h1>INDUSTRIAL MUSCLE GYM</h1>' +
-    `<p class="subtitle">${title} (พิมพ์เมื่อ: ${new Date().toLocaleString('th-TH')})</p>` +
+    `<p class="subtitle">${title} (พิมพ์เมื่อ: ${gymDateThai_(new Date())} ${gymTimeHM_(new Date())})</p>` +
     '<table><thead><tr>';
   headers.forEach((h) => { html += `<th>${h}</th>`; });
   html += '</tr></thead><tbody>';
@@ -101,8 +102,8 @@ exports.generateDailyReceiptPDF = onCall(async (request) => {
     const d = snap.docs[0].data();
 
     const payDate = d.timestamp ? d.timestamp.toDate() : new Date();
-    const payDateStr = payDate.toLocaleDateString('th-TH');
-    const payTimeStr = payDate.toTimeString().slice(0, 5);
+    const payDateStr = gymDateThai_(payDate);
+    const payTimeStr = gymTimeHM_(payDate);
     const amount = d.amount || 0;
     const amountText = Number(amount).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -140,8 +141,8 @@ exports.generateReceiptPDF = onCall(async (request) => {
     const memberPhone = memberSnap.empty ? '' : (memberSnap.docs[0].data().phone || '');
 
     const payDate = p.timestamp ? p.timestamp.toDate() : new Date();
-    const payDateStr = payDate.toLocaleDateString('th-TH');
-    const payTimeStr = payDate.toTimeString().slice(0, 5);
+    const payDateStr = gymDateThai_(payDate);
+    const payTimeStr = gymTimeHM_(payDate);
     let amount = p.amount;
     if (!amount) {
       const pkgSnap = await db.collection('packages').doc(p.package).get();

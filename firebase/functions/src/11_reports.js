@@ -7,7 +7,7 @@
 const { onCall } = require('firebase-functions/v2/https');
 const { db } = require('./util/admin');
 const { requireAuth } = require('./util/authGuard');
-const { daysUntil_ } = require('./util/dates');
+const { daysUntil_, gymDayKey_, gymTimeStr_, gymDayLabel_ } = require('./util/dates');
 const config = require('./00_config');
 
 function isDayPassItemName_(n) { return (n || '').toString().indexOf('ค่าเข้าใช้บริการฟิตเนสรายวัน') !== -1; }
@@ -23,11 +23,6 @@ function isDiscountItemName_(n) { return (n || '').toString().indexOf('ส่ว
 // The gym is in Thailand, which has no DST, so a fixed offset is exact.
 const GYM_UTC_OFFSET = '+07:00';
 const GYM_OFFSET_MS = 7 * 60 * 60 * 1000;
-
-// Which gym-day a timestamp belongs to.
-function gymDayKey_(date) {
-  return new Date(date.getTime() + GYM_OFFSET_MS).toISOString().slice(0, 10);
-}
 
 exports.getMonthlyStats = onCall(async (request) => {
   requireAuth(request, 'admin');
@@ -328,7 +323,13 @@ exports.getDashboardStats = onCall(async (request) => {
     const logSnap = await db.collection('checkinLogs').orderBy('timestamp', 'desc').limit(15).get();
     const logs = logSnap.docs.map((doc) => {
       const l = doc.data();
-      return { time: l.timestamp ? l.timestamp.toDate().toTimeString().slice(0, 8) : '', name: l.name, uid: l.fingerprintId, status: l.status, details: l.details };
+      const ts = l.timestamp ? l.timestamp.toDate() : null;
+      return {
+        time: ts ? gymTimeStr_(ts) : '',
+        date: ts ? gymDayKey_(ts) : '',
+        dayLabel: ts ? gymDayLabel_(ts) : '',
+        name: l.name, uid: l.fingerprintId, status: l.status, details: l.details
+      };
     });
 
     return { total, active, logs };
@@ -347,7 +348,7 @@ exports.getLatestCheckIn = onCall(async (request) => {
     const tsDate = l.timestamp ? l.timestamp.toDate() : new Date();
 
     const result = {
-      logDocId: doc.id, timestamp: tsDate.getTime(), timeStr: tsDate.toTimeString().slice(0, 8),
+      logDocId: doc.id, timestamp: tsDate.getTime(), timeStr: gymTimeStr_(tsDate), dayLabel: gymDayLabel_(tsDate),
       name: l.name, fingerprintId: l.fingerprintId, status: l.status, details: l.details
     };
 

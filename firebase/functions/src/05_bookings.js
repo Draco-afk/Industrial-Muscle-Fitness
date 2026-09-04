@@ -18,6 +18,7 @@ const { getTrainerByCode_ } = require('./util/trainerLookup');
 const { generateTimeSlots_, timeStrToMinutes_ } = require('./util/timeSlots');
 const { sendLineMessage_ } = require('./util/lineClient');
 const config = require('./00_config');
+const { gymDayKey_, gymMinutesOfDay_ } = require('./util/dates');
 
 async function notifyTrainerNewBooking_(trainerId, memberName, memberPhone, dateStr, timeSlot) {
   try {
@@ -66,8 +67,10 @@ async function computeAvailableSlots_(trainerId, dateStr) {
     .where('trainerId', '==', trainerId).where('date', '==', dateStr).where('status', '==', 'Booked').get();
   const bookedSlots = bookedSnap.docs.map((d) => d.data().timeSlot);
 
-  const today = new Date().toISOString().slice(0, 10);
-  const nowMinutes = timeStrToMinutes_(new Date().toTimeString().slice(0, 5));
+  // Gym clock, not the server's UTC one: at 13:00 in Bangkok the server reads
+  // 06:00, so every slot between those times was still being offered as free.
+  const today = gymDayKey_(new Date());
+  const nowMinutes = gymMinutesOfDay_(new Date());
 
   const freeSlots = allSlots.filter((s) => {
     if (bookedSlots.includes(s)) return false;

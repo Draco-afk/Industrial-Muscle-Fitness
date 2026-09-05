@@ -181,6 +181,7 @@
     import { membershipState } from '../shared/membership-status.js';
     import { loadPosState, savePosState } from '../shared/pos-state.js';
     import { showPaymentQr } from '../shared/payment-qr.js';
+    import { gymToday, addMonths } from '../shared/gym-date.js';
 
     let members = [];
     let packages = [];
@@ -199,7 +200,7 @@
       $('app').classList.remove('hidden');
       window.doLogout = async () => { await signOut(auth); window.location.href = '../login.html'; };
 
-      $('f_startDate').value = new Date().toISOString().slice(0, 10);
+      $('f_startDate').value = gymToday();
       wireEvents();
       await Promise.all([loadPackages(), loadBirthdaySettings(), loadMembers()]);
       recalcExpiryAndPrice();
@@ -248,9 +249,7 @@
       const start = $('f_startDate').value;
       const pkgInfo = packages.find((p) => p.name === $('f_package').value);
       if (start) {
-        const d = new Date(start);
-        d.setMonth(d.getMonth() + (pkgInfo ? pkgInfo.durationMonths : 1));
-        $('f_expiryDate').value = d.toISOString().slice(0, 10);
+        $('f_expiryDate').value = addMonths(start, pkgInfo ? pkgInfo.durationMonths : 1);
       }
 
       if ($('f_docId').value) return; // editing: never touch the charge amount
@@ -370,7 +369,7 @@
       ['f_docId', 'f_fullName', 'f_phone', 'f_email', 'f_dob', 'f_pin', 'f_fingerprintId', 'f_coupon'].forEach((id) => { $(id).value = ''; });
       $('f_status').value = 'Active';
       $('f_payMethod').value = 'cash';
-      $('f_startDate').value = new Date().toISOString().slice(0, 10);
+      $('f_startDate').value = gymToday();
       $('formTitle').textContent = 'Add New Gym Member';
       $('editModeIndicator').classList.add('hidden');
       $('paymentSection').classList.remove('hidden');

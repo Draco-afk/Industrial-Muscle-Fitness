@@ -49,6 +49,7 @@
   <script type="module">
     import { callServer, auth, onAuthStateChanged, signOut } from '../shared/firebase-init.js';
     import { renderNav } from '../shared/admin-nav.js';
+    import { gymToday } from '../shared/gym-date.js';
 
     let members = [], trainers = [];
 
@@ -59,7 +60,7 @@
       document.getElementById('navSlot').outerHTML = renderNav('bookings', tok.claims.adminRole);
       document.getElementById('loadingGate').classList.add('hidden');
       document.getElementById('app').classList.remove('hidden');
-      document.getElementById('pickDate').value = new Date().toISOString().slice(0, 10);
+      document.getElementById('pickDate').value = gymToday();
       window.doLogout = async () => { await signOut(auth); window.location.href = '../login.html'; };
       await Promise.all([loadMembers(), loadTrainers(), loadBookings()]);
     });

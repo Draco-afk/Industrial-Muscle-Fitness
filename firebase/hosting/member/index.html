@@ -97,6 +97,7 @@
 
   <script type="module">
     import { callServer, auth, onAuthStateChanged, signOut } from '../shared/firebase-init.js';
+    import { gymToday } from '../shared/gym-date.js';
 
     onAuthStateChanged(auth, async (user) => {
       if (!user) { window.location.href = '../member-login.html'; return; }
@@ -104,7 +105,7 @@
       if (tok.claims.role !== 'member') { window.location.href = '../member-login.html'; return; }
       document.getElementById('loadingGate').classList.add('hidden');
       document.getElementById('app').classList.remove('hidden');
-      document.getElementById('bkDate').value = new Date().toISOString().slice(0, 10);
+      document.getElementById('bkDate').value = gymToday();
       await Promise.all([loadProfile(), loadTrainerOptions(), loadMyBookings(), loadMyWaitlist(), loadLineStatus()]);
     });
 

@@ -138,6 +138,7 @@
     import { callServer, auth, onAuthStateChanged, signOut } from '../shared/firebase-init.js';
     import { renderNav } from '../shared/admin-nav.js';
     import { ensureChartJs, baseChartOptions, chartTheme, exportRowsToExcel } from '../shared/lazy-libs.js';
+    import { gymToday, addDays, monthStart, monthEnd } from '../shared/gym-date.js';
 
     let revenueChart = null;
 
@@ -154,12 +155,11 @@
       $('app').classList.remove('hidden');
       window.doLogout = async () => { await signOut(auth); window.location.href = '../login.html'; };
 
-      const today = new Date();
-      const monthAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
-      $('startDate').value = monthAgo.toISOString().slice(0, 10);
-      $('endDate').value = today.toISOString().slice(0, 10);
-      $('expDate').value = today.toISOString().slice(0, 10);
-      $('billDate').value = today.toISOString().slice(0, 10);
+      const today = gymToday();
+      $('startDate').value = addDays(today, -30);
+      $('endDate').value = today;
+      $('expDate').value = today;
+      $('billDate').value = today;
 
       $('btnLoad').addEventListener('click', refresh);
       $('btnAddExpense').addEventListener('click', addExpense);
@@ -333,23 +333,30 @@
     }
 
     // Quick ranges matching the original's report presets.
+    //
+    // Computed from the gym's calendar date as a string. The previous version
+    // built local Date objects and read them back with toISOString(), which
+    // shifts to UTC — so "เดือนนี้" opened on the last day of the month before,
+    // and "เดือนที่แล้ว" was wrong at both ends.
     function applyPreset(name) {
-      const today = new Date();
-      const fmt = (d) => d.toISOString().slice(0, 10);
+      const today = gymToday();
       let start = today, end = today;
 
       if (name === 'today') {
         start = end = today;
       } else if (name === 'week') {
-        start = new Date(today.getTime() - 6 * 86400000);
+        start = addDays(today, -6);
       } else if (name === 'month') {
-        start = new Date(today.getFullYear(), today.getMonth(), 1);
+        // Ends today rather than at month end: the remaining days haven't
+        // happened yet and would only add empty bars to the chart.
+        start = monthStart(today);
       } else if (name === 'prevmonth') {
-        start = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-        end = new Date(today.getFullYear(), today.getMonth(), 0); // last day of previous month
+        const inPrevMonth = addDays(monthStart(today), -1);
+        start = monthStart(inPrevMonth);
+        end = monthEnd(inPrevMonth);
       }
-      $('startDate').value = fmt(start);
-      $('endDate').value = fmt(end);
+      $('startDate').value = start;
+      $('endDate').value = end;
       refresh();
     }
 

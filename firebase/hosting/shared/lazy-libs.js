@@ -1,3 +1,4 @@
+import { gymToday } from './gym-date.js';
 // Chart.js and SheetJS are only needed on the two pages that draw charts or
 // export spreadsheets, and only once the admin actually asks. Loading them
 // on demand keeps every other page's first paint free of ~400KB of JS.
@@ -34,7 +35,7 @@ export async function exportRowsToExcel(rows, sheetName, filenamePrefix) {
   const worksheet = XLSX.utils.json_to_sheet(rows);
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
-  XLSX.writeFile(workbook, `${filenamePrefix}_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  XLSX.writeFile(workbook, `${filenamePrefix}_${gymToday()}.xlsx`);
 }
 
 // Shared Chart.js look so charts match the dark red theme without each page

@@ -102,6 +102,7 @@
   <script type="module">
     import { callServer, auth, onAuthStateChanged, signOut } from '../shared/firebase-init.js';
     import { renderNav } from '../shared/admin-nav.js';
+    import { gymToday } from '../shared/gym-date.js';
 
     const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     const DAY_LABEL = { Sun: 'อา', Mon: 'จ', Tue: 'อ', Wed: 'พ', Thu: 'พฤ', Fri: 'ศ', Sat: 'ส' };
@@ -169,7 +170,7 @@
     }
 
     async function viewSchedule(t) {
-      const dateStr = prompt(`ดูตารางคิวของ "${t.fullName}" วันที่ไหน? (YYYY-MM-DD)`, new Date().toISOString().slice(0, 10));
+      const dateStr = prompt(`ดูตารางคิวของ "${t.fullName}" วันที่ไหน? (YYYY-MM-DD)`, gymToday());
       if (!dateStr) return;
       const list = await callServer('getTrainerScheduleByDate', { trainerId: t.trainerId, dateStr });
       if (!list.length) { alert(`${t.fullName} — ${dateStr}\n\nไม่มีคิวในวันนี้`); return; }

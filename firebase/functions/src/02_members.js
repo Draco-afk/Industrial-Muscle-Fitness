@@ -12,6 +12,7 @@
 const { onCall } = require('firebase-functions/v2/https');
 const { db, FieldValue } = require('./util/admin');
 const { requireAuth, authOrNull } = require('./util/authGuard');
+const { recordCheckin_ } = require('./util/checkinGuard');
 const { logAudit_ } = require('./util/auditLog');
 const { daysUntil_, isBirthdayMonth_ } = require('./util/dates');
 const { getNextReceiptNumber_ } = require('./util/receiptNumber');
@@ -379,16 +380,21 @@ exports.manualCheckIn = onCall(async (request) => {
       return { success: false, message: '❌ เช็คอินไม่ได้: ' + reason };
     }
 
-    const newCount = (m.checkInCount || 0) + 1;
-    await ref.update({ checkInCount: newCount });
-
-    await db.collection('checkinLogs').add({
+    // บันทึก log ก่อน แล้วค่อยบวกจำนวนครั้ง — ถ้าวันนี้เช็คอินไปแล้วจะไม่ผ่าน
+    // ตรงนี้ และจำนวนครั้งจะไม่ถูกบวกซ้ำ
+    const logged = await recordCheckin_(docId, {
       timestamp: FieldValue.serverTimestamp(),
       name: m.fullName,
       fingerprintId: m.fingerprintId || '',
-      status: 'SUCCESS',
       details: `Package: ${m.package} (เช็คอินด้วยมือโดย ${authCtx.token.adminRole || authCtx.uid} - เครื่องสแกนใช้งานไม่ได้)`
     });
+
+    if (!logged.ok) {
+      return { success: false, message: `⚠️ "${m.fullName}" เช็คอินไปแล้ววันนี้ (${logged.dayKey})` };
+    }
+
+    const newCount = (m.checkInCount || 0) + 1;
+    await ref.update({ checkInCount: newCount });
 
     await logAudit_(authCtx.token.adminRole || authCtx.uid, 'MANUAL_CHECK_IN', m.fullName, 'เช็คอินด้วยมือ (สำรองเวลาเครื่องสแกนใช้งานไม่ได้)');
     return { success: true, message: `🟢 เช็คอินให้ "${m.fullName}" สำเร็จแล้ว! (ครั้งที่ ${newCount})` };

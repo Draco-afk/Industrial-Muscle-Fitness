@@ -17,6 +17,7 @@ const { requireAuth, authOrNull } = require('./util/authGuard');
 const { logAudit_ } = require('./util/auditLog');
 const { daysUntil_ } = require('./util/dates');
 const config = require('./00_config');
+const { recordCheckin_ } = require('./util/checkinGuard');
 
 const PENDING_ENROLLMENT_DOC = db.collection('config').doc('pendingFingerprintEnrollment');
 const FINGERPRINT_CONFIG_DOC = db.collection('config').doc('fingerprint');
@@ -144,14 +145,34 @@ exports.fingerprintWebhook = onRequest(async (req, res) => {
     const expiryDate = new Date(m.expiryDate);
 
     if ((m.status || 'Active') === 'Active' && expiryDate >= today) {
-      await doc.ref.update({ checkInCount: (m.checkInCount || 0) + 1 });
       const daysLeftGate = daysUntil_(m.expiryDate);
       let detailsText = `Package: ${m.package}`;
       if (daysLeftGate !== null && daysLeftGate <= config.EXPIRY_ALERT_DAYS) {
         detailsText += daysLeftGate < 0 ? ` ⚠️ หมดอายุไปแล้ว ${Math.abs(daysLeftGate)} วัน` : ` ⚠️ ใกล้หมดอายุ (เหลือ ${daysLeftGate} วัน)`;
       }
-      await db.collection('checkinLogs').add({ timestamp: FieldValue.serverTimestamp(), name: m.fullName, fingerprintId, status: 'SUCCESS', details: detailsText });
-      res.status(200).json({ access: true, name: m.fullName, message: 'Access Granted', daysLeft: daysLeftGate, nearExpiry: daysLeftGate !== null && daysLeftGate <= config.EXPIRY_ALERT_DAYS });
+
+      // เช็คอินไปแล้ววันนี้ = ยังเปิดประตูให้ (จ่ายเงินมาแล้ว เข้า-ออกได้ทั้งวัน)
+      // แต่ไม่บันทึกซ้ำและไม่บวกจำนวนครั้ง ไม่งั้นเดินเข้าออกสิบรอบจะกลายเป็น
+      // เข้ายิมสิบครั้ง ซึ่งทำให้สถิติกับอันดับคนเข้าบ่อยเพี้ยนไปหมด
+      const logged = await recordCheckin_(doc.id, {
+        timestamp: FieldValue.serverTimestamp(),
+        name: m.fullName,
+        fingerprintId,
+        details: detailsText
+      }, validTimestamp);
+
+      if (logged.ok) {
+        await doc.ref.update({ checkInCount: (m.checkInCount || 0) + 1 });
+      }
+
+      res.status(200).json({
+        access: true,
+        name: m.fullName,
+        message: logged.ok ? 'Access Granted' : 'Already checked in today',
+        alreadyCheckedIn: !logged.ok,
+        daysLeft: daysLeftGate,
+        nearExpiry: daysLeftGate !== null && daysLeftGate <= config.EXPIRY_ALERT_DAYS
+      });
       return;
     }
 

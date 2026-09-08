@@ -107,6 +107,7 @@
     import { membershipState } from '../shared/membership-status.js';
 
     let members = [];
+    let checkedInToday = new Set();
 
     function escapeHtml(s) {
       return (s || '').toString().replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -142,6 +143,9 @@
         startDateStr: document.getElementById('statStart').value,
         endDateStr: document.getElementById('statEnd').value
       });
+      checkedInToday = new Set(stats.checkedInTodayIds || []);
+      renderList();   // ปุ่มของคนที่เช็คอินแล้วต้องเปลี่ยนสถานะทันที
+
       const t = stats.totals || {};
       const today = stats.today || { total: 0, memberPeople: 0, memberVisits: 0, dayPass: 0, date: gymToday() };
 
@@ -205,7 +209,8 @@
         // Same expiry-date rule as the members page. Showing a green Active
         // badge and then refusing the check-in is the confusing combination.
         const st = membershipState(m);
-        const canCheckIn = st.state === 'active' || st.state === 'expiring';
+        const already = checkedInToday.has(m.docId);
+        const canCheckIn = (st.state === 'active' || st.state === 'expiring') && !already;
         const badgeStyle = {
           expired: 'bg-red-950 text-red-300 border-red-600',
           expiring: 'bg-yellow-950 text-yellow-300 border-yellow-700',
@@ -229,10 +234,10 @@
               <i class="fa-solid fa-check text-sm"></i> เช็คอิน
             </button>` : `
             <div class="shrink-0 text-right">
-              <span class="block bg-gray-800 text-gray-500 font-black py-3 px-5 rounded-xl text-xs uppercase cursor-not-allowed">
-                <i class="fa-solid fa-ban text-sm mr-1"></i> เช็คอินไม่ได้
+              <span class="block ${already ? 'bg-green-950 text-green-400 border border-green-800' : 'bg-gray-800 text-gray-500'} font-black py-3 px-5 rounded-xl text-xs uppercase cursor-not-allowed">
+                <i class="fa-solid ${already ? 'fa-circle-check' : 'fa-ban'} text-sm mr-1"></i> ${already ? 'เช็คอินแล้ว' : 'เช็คอินไม่ได้'}
               </span>
-              <span class="block text-red-400 text-[10px] mt-1">${st.state === 'expired' ? 'ต่ออายุก่อน' : 'บัตรถูกระงับ'}</span>
+              <span class="block ${already ? 'text-green-500' : 'text-red-400'} text-[10px] mt-1">${already ? 'วันนี้เข้าแล้ว' : st.state === 'expired' ? 'ต่ออายุก่อน' : 'บัตรถูกระงับ'}</span>
             </div>`}
           </div>`;
       }).join('');
@@ -260,6 +265,7 @@
       }
 
       toast(res.message);
+      checkedInToday.add(docId);
       // Patch the one row that changed instead of refetching every member, and
       // let the counts catch up in the background. The next customer can be
       // served immediately rather than waiting on two more round trips.

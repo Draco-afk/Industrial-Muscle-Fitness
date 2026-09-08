@@ -138,6 +138,15 @@ exports.getCheckinStats = onCall(async (request) => {
 
     const todayBucket = buckets[today] || null;
 
+    // ใครเช็คอินไปแล้ววันนี้บ้าง — หน้าเช็คอินเอาไปปิดปุ่มไม่ให้กดซ้ำ
+    // ค้นด้วยช่อง date ช่องเดียว (เท่ากับ) จึงใช้ index อัตโนมัติ ไม่ต้องประกาศเพิ่ม
+    const todayIds = [];
+    const todaySnap = await db.collection('checkinLogs').where('date', '==', today).get();
+    todaySnap.forEach((doc) => {
+      const c = doc.data();
+      if (c.status === 'SUCCESS' && c.memberDocId) todayIds.push(c.memberDocId);
+    });
+
     return {
       startDateStr,
       endDateStr,
@@ -156,6 +165,7 @@ exports.getCheckinStats = onCall(async (request) => {
         peakHour,
         peakHourCount
       },
+      checkedInTodayIds: todayIds,
       today: todayBucket
         ? { date: today, memberVisits: todayBucket.memberVisits, memberPeople: memberNames[today].size, dayPass: todayBucket.dayPass, total: memberNames[today].size + todayBucket.dayPass }
         : { date: today, memberVisits: 0, memberPeople: 0, dayPass: 0, total: 0 }

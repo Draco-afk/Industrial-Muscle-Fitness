@@ -5,14 +5,56 @@
 // original already formatted for the client), so these accept strings or Date.
 'use strict';
 
-function daysUntil_(dateVal) {
+/**
+ * แปลงค่าวันที่ (สตริงหรือ Date) ให้เป็น "yyyy-MM-dd" ตามวันของยิม
+ *
+ * สตริง "2026-10-03" ถือเป็นวันนั้นตรง ๆ ไม่ต้องแปลงเขตเวลา ส่วน Date
+ * (เช่น timestamp จาก Firestore) ต้องเลื่อนเป็นเวลาไทยก่อนจึงจะได้วันที่ถูก
+ */
+function toDateKey_(dateVal) {
   if (!dateVal) return null;
-  const expDate = dateVal instanceof Date ? dateVal : new Date(dateVal);
-  if (isNaN(expDate.getTime())) return null;
-  const now = new Date();
-  const todayMid = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const expMid = new Date(expDate.getFullYear(), expDate.getMonth(), expDate.getDate());
-  return Math.round((expMid - todayMid) / (1000 * 60 * 60 * 24));
+  if (typeof dateVal === 'string') {
+    const m = dateVal.trim().match(/^(\d{4}-\d{2}-\d{2})/);
+    if (m) return m[1];
+    const parsed = new Date(dateVal);
+    return isNaN(parsed.getTime()) ? null : gymDayKey_(parsed);
+  }
+  if (dateVal instanceof Date) {
+    return isNaN(dateVal.getTime()) ? null : gymDayKey_(dateVal);
+  }
+  return null;
+}
+
+/**
+ * เหลืออีกกี่วันถึงวันนั้น (ติดลบ = เลยมาแล้ว)
+ *
+ * นับเป็น "วัน" บนปฏิทินของยิม ไม่ใช่ของเซิร์ฟเวอร์ ของเดิมเทียบวันแบบ UTC
+ * ทำให้ช่วงเที่ยงคืนถึง 7 โมงเช้าตามเวลาไทย ยังนับเป็นวันก่อนหน้าอยู่ ผลคือ
+ * "เหลืออีกกี่วัน" คลาดไป 1 วันในช่วงเช้ามืด และวันหมดอายุก็เพี้ยนตาม
+ */
+function daysUntil_(dateVal) {
+  const key = toDateKey_(dateVal);
+  if (!key) return null;
+  const target = Date.parse(`${key}T00:00:00Z`);
+  const today = Date.parse(`${gymDayKey_(new Date())}T00:00:00Z`);
+  return Math.round((target - today) / 86400000);
+}
+
+/**
+ * สมาชิกภาพหมดอายุแล้วหรือยัง ณ ตอนนี้
+ *
+ * ใช้ได้ "ถึงสิ้นวัน" ของวันหมดอายุ — บัตรหมดอายุ 3 ต.ค. ต้องเข้ายิมได้
+ * ตลอดวันที่ 3 ต.ค.
+ *
+ * ของเดิมเทียบ `new Date('2026-10-03') < new Date()` ซึ่ง "2026-10-03"
+ * ถูกอ่านเป็นเที่ยงคืน UTC = 7 โมงเช้าเวลาไทย สมาชิกจึงถูกปฏิเสธตั้งแต่
+ * 7 โมงเช้าของวันหมดอายุเอง ทั้งที่ยังเหลืออีกทั้งวัน — และเพราะขึ้นกับเวลา
+ * ที่มาเช็คอิน อาการจึงเป็น ๆ หาย ๆ (มาเช้ากว่า 7 โมงผ่าน มาสายกว่านั้นไม่ผ่าน)
+ */
+function isExpired_(expiryValue, now = new Date()) {
+  const key = toDateKey_(expiryValue);
+  if (!key) return false; // ไม่ได้ระบุวันหมดอายุ = ไม่ถือว่าหมดอายุ
+  return gymDayKey_(now) > key;
 }
 
 function isBirthdayMonth_(dobValue) {
@@ -80,7 +122,7 @@ function gymDayLabel_(date) {
 }
 
 module.exports = {
-  daysUntil_, isBirthdayMonth_,
+  daysUntil_, isBirthdayMonth_, isExpired_, toDateKey_,
   GYM_OFFSET_MS, gymDayKey_, gymTimeStr_, gymTimeHM_, gymMinutesOfDay_,
   gymDateThai_, gymDayLabel_
 };

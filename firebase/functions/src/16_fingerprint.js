@@ -18,6 +18,7 @@ const { logAudit_ } = require('./util/auditLog');
 const { daysUntil_ } = require('./util/dates');
 const config = require('./00_config');
 const { recordCheckin_ } = require('./util/checkinGuard');
+const { isExpired_ } = require('./util/dates');
 
 const PENDING_ENROLLMENT_DOC = db.collection('config').doc('pendingFingerprintEnrollment');
 const FINGERPRINT_CONFIG_DOC = db.collection('config').doc('fingerprint');
@@ -131,7 +132,6 @@ exports.fingerprintWebhook = onRequest(async (req, res) => {
 
     const logTimestamp = body.scanTimestamp ? new Date(body.scanTimestamp) : new Date();
     const validTimestamp = isNaN(logTimestamp.getTime()) ? new Date() : logTimestamp;
-    const today = new Date();
 
     const memberSnap = await db.collection('members').where('fingerprintId', '==', fingerprintId.toString().trim()).limit(1).get();
     if (memberSnap.empty) {
@@ -142,9 +142,9 @@ exports.fingerprintWebhook = onRequest(async (req, res) => {
 
     const doc = memberSnap.docs[0];
     const m = doc.data();
-    const expiryDate = new Date(m.expiryDate);
 
-    if ((m.status || 'Active') === 'Active' && expiryDate >= today) {
+    // ใช้ได้ถึงสิ้นวันของวันหมดอายุ ตามปฏิทินไทย ไม่ใช่เที่ยงคืน UTC
+    if ((m.status || 'Active') === 'Active' && !isExpired_(m.expiryDate, validTimestamp)) {
       const daysLeftGate = daysUntil_(m.expiryDate);
       let detailsText = `Package: ${m.package}`;
       if (daysLeftGate !== null && daysLeftGate <= config.EXPIRY_ALERT_DAYS) {

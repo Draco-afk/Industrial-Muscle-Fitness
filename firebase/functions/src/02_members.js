@@ -13,6 +13,7 @@ const { onCall } = require('firebase-functions/v2/https');
 const { db, FieldValue } = require('./util/admin');
 const { requireAuth, authOrNull } = require('./util/authGuard');
 const { recordCheckin_ } = require('./util/checkinGuard');
+const { isExpired_ } = require('./util/dates');
 const { logAudit_ } = require('./util/auditLog');
 const { daysUntil_, isBirthdayMonth_ } = require('./util/dates');
 const { getNextReceiptNumber_ } = require('./util/receiptNumber');
@@ -372,11 +373,12 @@ exports.manualCheckIn = onCall(async (request) => {
     const snap = await ref.get();
     if (!snap.exists) return { success: false, message: 'ไม่พบสมาชิกนี้ในระบบ' };
     const m = snap.data();
-    const expiryDate = new Date(m.expiryDate);
-    const today = new Date();
 
-    if (m.status !== 'Active' || expiryDate < today) {
-      const reason = m.status !== 'Active' ? 'สถานะ: ' + m.status : 'สมาชิกภาพหมดอายุแล้ว';
+    // ใช้ได้ถึงสิ้นวันของวันหมดอายุ ตามปฏิทินไทย
+    if (m.status !== 'Active' || isExpired_(m.expiryDate)) {
+      const reason = m.status !== 'Active'
+        ? 'สถานะ: ' + m.status
+        : `สมาชิกภาพหมดอายุแล้ว (หมดอายุ ${m.expiryDate})`;
       return { success: false, message: '❌ เช็คอินไม่ได้: ' + reason };
     }
 

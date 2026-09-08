@@ -7,7 +7,7 @@
 const { onCall } = require('firebase-functions/v2/https');
 const { db } = require('./util/admin');
 const { requireAuth } = require('./util/authGuard');
-const { daysUntil_, gymDayKey_, gymTimeStr_, gymDayLabel_ } = require('./util/dates');
+const { daysUntil_, isExpired_, gymDayKey_, gymTimeStr_, gymDayLabel_ } = require('./util/dates');
 const config = require('./00_config');
 
 function isDayPassItemName_(n) { return (n || '').toString().indexOf('ค่าเข้าใช้บริการฟิตเนสรายวัน') !== -1; }
@@ -311,13 +311,12 @@ exports.getDashboardStats = onCall(async (request) => {
   try {
     const memberSnap = await db.collection('members').get();
     let total = 0, active = 0;
-    const today = new Date();
     memberSnap.forEach((doc) => {
       const m = doc.data();
       total++;
       const status = m.status || 'Active';
-      const expiry = new Date(m.expiryDate);
-      if (status === 'Active' && expiry >= today) active++;
+      // กฎเดียวกับหน้าเช็คอิน — ใช้ได้ถึงสิ้นวันของวันหมดอายุ
+      if (status === 'Active' && !isExpired_(m.expiryDate)) active++;
     });
 
     const logSnap = await db.collection('checkinLogs').orderBy('timestamp', 'desc').limit(15).get();

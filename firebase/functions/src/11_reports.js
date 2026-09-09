@@ -11,6 +11,15 @@ const { daysUntil_, isExpired_, gymDayKey_, gymTimeStr_, gymDayLabel_ } = requir
 const config = require('./00_config');
 
 function isDayPassItemName_(n) { return (n || '').toString().indexOf('ค่าเข้าใช้บริการฟิตเนสรายวัน') !== -1; }
+// แยกว่าเป็นค่าเข้าของนักเรียนหรือผู้ใหญ่ จากชื่อรายการที่ POS บันทึกไว้
+// บิลเก่าที่ไม่มี itemsJson จะแยกไม่ได้ ตกไปอยู่กลุ่ม 'unknown' ตามจริง
+// ดีกว่าเดาว่าเป็นผู้ใหญ่แล้วทำให้ตัวเลขที่เอาไปใช้จริงเพี้ยน
+function dayPassKind_(n) {
+  const t = (n || '').toString();
+  if (t.indexOf('นักเรียน') !== -1 || t.indexOf('นักศึกษา') !== -1) return 'student';
+  if (t.indexOf('ผู้ใหญ่') !== -1) return 'adult';
+  return 'unknown';
+}
 function isMembershipItemName_(n) { return (n || '').toString().indexOf('สมัครสมาชิกรายเดือน') !== -1; }
 function isTrainerFeeItemName_(n) { return (n || '').toString().indexOf('ค่าเทรนเนอร์:') !== -1; }
 // Coupon / manual discounts are stored as negative-price line items. They only
@@ -98,6 +107,9 @@ async function getRevenueReportCore_(startDateStr, endDateStr) {
 
   let totalMembership = 0, totalDayPass = 0, totalProducts = 0, totalTrainerFees = 0, totalExpenses = 0, totalCash = 0, totalTransfer = 0;
   let membershipTxnCount = 0, dailyTxnCount = 0;
+  // จำนวน "คน" ที่ซื้อค่าเข้า และจำนวน "ชิ้น" สินค้าที่ขายได้ — นับตาม qty
+  // ไม่ใช่ตามจำนวนบิล เพราะบิลเดียวซื้อได้หลายคน/หลายชิ้น
+  let dayPassStudent = 0, dayPassAdult = 0, dayPassUnknown = 0, productQty = 0;
   const productRevenueMap = {};
   const trainerFeeMap = {};
 
@@ -149,12 +161,21 @@ async function getRevenueReportCore_(startDateStr, endDateStr) {
       } else if (isDayPassItemName_(it.name) || isDiscountItemName_(it.name)) {
         totalDayPass += lineTotal; // discounts carry a negative price
         if (dailyBuckets[dKey]) dailyBuckets[dKey].dayPass += lineTotal;
+        // ส่วนลดไม่ใช่คน จึงไม่นับหัว
+        if (isDayPassItemName_(it.name)) {
+          const heads = parseInt(it.qty, 10) || 1;
+          const kind = dayPassKind_(it.name);
+          if (kind === 'student') dayPassStudent += heads;
+          else if (kind === 'adult') dayPassAdult += heads;
+          else dayPassUnknown += heads;
+        }
       } else if (isMembershipItemName_(it.name)) {
         totalMembership += lineTotal;
         membershipTxnCount++;
         if (dailyBuckets[dKey]) { dailyBuckets[dKey].membership += lineTotal; dailyBuckets[dKey].membershipCount++; }
       } else {
         totalProducts += lineTotal;
+        productQty += (parseInt(it.qty, 10) || 1);
         if (dailyBuckets[dKey]) dailyBuckets[dKey].products += lineTotal;
         if (!productRevenueMap[it.name]) productRevenueMap[it.name] = { qty: 0, revenue: 0 };
         productRevenueMap[it.name].qty += (parseInt(it.qty, 10) || 1);
@@ -288,6 +309,10 @@ async function getRevenueReportCore_(startDateStr, endDateStr) {
       membership: totalMembership, dayPass: totalDayPass, products: totalProducts,
       grandTotal: totalMembership + totalDayPass + totalProducts,
       membershipCount: membershipTxnCount, dailyCount: dailyTxnCount,
+      // จำนวนคนที่ซื้อค่าเข้า แยกตามราคา และจำนวนชิ้นสินค้าที่ขายได้
+      dayPassStudent, dayPassAdult, dayPassUnknown,
+      dayPassPeople: dayPassStudent + dayPassAdult + dayPassUnknown,
+      productQty,
       expenses: totalExpenses,
       monthlyBills: totalMonthlyBills,
       netProfit: (totalMembership + totalDayPass + totalProducts) - totalExpenses - totalMonthlyBills,

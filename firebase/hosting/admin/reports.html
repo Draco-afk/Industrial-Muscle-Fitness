@@ -263,6 +263,19 @@
 
     // แยกรายรับเป็น 3 ทาง (สมาชิกรายเดือน / ค่าเข้ารายวัน / ขายสินค้า) ให้เห็นว่า
     // ยอดรวมมาจากไหน พร้อมจำนวนรายการ — ไม่ใช่เห็นแต่ยอดรวมก้อนเดียว
+    // "12 คน · ผู้ใหญ่ 9 · นักเรียน 3" — บอกทั้งจำนวนคนและแยกตามราคา
+    // บิลเก่าที่ไม่ได้เก็บรายการไว้จะแยกประเภทไม่ได้ ขึ้นเป็น "ไม่ระบุ" ตามจริง
+    // แทนที่จะเดาแล้วทำให้ตัวเลขที่เอาไปใช้ตัดสินใจผิด
+    function dayPassSub(t) {
+      const people = t.dayPassPeople || 0;
+      if (!people) return '0 คน';
+      const parts = [];
+      if (t.dayPassAdult) parts.push(`ผู้ใหญ่ ${t.dayPassAdult}`);
+      if (t.dayPassStudent) parts.push(`นักเรียน ${t.dayPassStudent}`);
+      if (t.dayPassUnknown) parts.push(`ไม่ระบุ ${t.dayPassUnknown}`);
+      return `${people.toLocaleString('th-TH')} คน` + (parts.length ? ` · ${parts.join(' · ')}` : '');
+    }
+
     function renderSummary(t, trainerFees) {
       const card = (label, value, opts = {}) => `
         <div class="panel rounded-2xl p-5">
@@ -281,8 +294,8 @@
       $('summary').innerHTML = `
         <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
           ${card('สมาชิกรายเดือน', baht(t.membership), { sub: `${t.membershipCount || 0} รายการ` })}
-          ${card('ค่าเข้ารายวัน', baht(t.dayPass))}
-          ${card('ขายสินค้า', baht(t.products))}
+          ${card('ค่าเข้ารายวัน', baht(t.dayPass), { sub: dayPassSub(t) })}
+          ${card('ขายสินค้า', baht(t.products), { sub: `${(t.productQty || 0).toLocaleString('th-TH')} ชิ้น` })}
           ${card('รวมรายรับทั้งหมด', baht(t.grandTotal), {
             color: 'text-red-500',
             sub: `${t.dailyCount || 0} บิลรายวัน/สินค้า`

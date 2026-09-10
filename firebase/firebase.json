@@ -18,8 +18,8 @@
     "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
     "headers": [
       {
-        "comment": "This app has no build step, so filenames never change between deploys. Without this the default max-age=3600 keeps serving the previous version of a page for an hour after a deploy — HTML especially, since it is the entry point that pulls everything else.",
-        "source": "**/*.@(html|js|css)",
+        "comment": "This app has no build step, so filenames never change between deploys. Without this the default max-age=3600 keeps serving the previous version of a page for an hour after a deploy — HTML especially, since it is the entry point that pulls everything else. The pattern is ** rather than **/*.@(html|js|css) because a header source is matched against the REQUEST path, not the file it resolves to: '/kiosk/' and '/' carry no extension, so the extension form skipped exactly the two entry points that matter and left them on the 1-hour default. Everything under hosting/ is html, js or css, so there is nothing here that wants caching.",
+        "source": "**",
         "headers": [{ "key": "Cache-Control", "value": "no-cache, max-age=0, must-revalidate" }]
       }
     ]

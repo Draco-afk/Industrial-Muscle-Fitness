@@ -1,0 +1,1196 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Industrial Muscle - ตู้บริการตนเอง</title>
+  <!-- Prompt covers Thai and Latin but has no CJK glyphs, so Chinese would fall
+       back to whatever the machine happens to have. Noto Sans SC pins it. -->
+  <link href="https://fonts.googleapis.com/css2?family=Urbanist:wght@700;900&family=Prompt:wght@300;400;600;700&family=Noto+Sans+SC:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <style>
+    /* Deliberately plain CSS, not Tailwind like the admin pages.
+       This screen is a fixed-format appliance UI on a portrait monitor that
+       has to be legible from a metre away, and it must paint correctly on
+       boot even if the CDN is slow — a kiosk with no staff beside it cannot
+       show a half-styled page while a stylesheet downloads. */
+    :root {
+      --bg: #000;
+      --panel: #121212;
+      --panel2: #1a1a1a;
+      --line: #2a2a2a;
+      --red: #dc2626;
+      --red-lt: #ef4444;
+      --green: #16a34a;
+      --amber: #f59e0b;
+      --text: #f5f5f5;
+      --muted: #9ca3af;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    html, body { height: 100%; background: #05070a; }
+    body {
+      font-family: Prompt, 'Noto Sans SC', system-ui, sans-serif;
+      color: var(--text);
+      display: flex; align-items: center; justify-content: center;
+      overflow: hidden;
+    }
+
+    /* 9:16 portrait frame. Fills a portrait monitor; letterboxes on a desktop. */
+    #frame {
+      --frame-w: min(100vw, calc(100vh * 9 / 16));
+      /* Every size on this page is a multiple of --u, so one layout serves the
+         real 1080x1920 panel and a laptop preview without a second set of
+         numbers. It has to live here, not on :root: a custom property is
+         resolved where it is declared, and --frame-w does not exist up there. */
+      --u: calc(var(--frame-w) / 100);
+      width: var(--frame-w);
+      height: min(100vh, calc(100vw * 16 / 9));
+      background: var(--bg);
+      position: relative; overflow: hidden;
+      box-shadow: 0 0 80px rgba(0, 0, 0, .8);
+    }
+
+    .screen { position: absolute; inset: 0; display: none; flex-direction: column; }
+    .screen.on { display: flex; }
+
+    /* ---- shared chrome ---- */
+    .topbar {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: calc(var(--u) * 3.5) calc(var(--u) * 4);
+      border-bottom: 1px solid var(--line); flex: 0 0 auto;
+    }
+    .topbar .ttl { font-size: calc(var(--u) * 4.2); font-weight: 700; }
+    .btn-back {
+      background: var(--panel2); border: 1px solid var(--line); color: var(--muted);
+      border-radius: calc(var(--u) * 2.5); padding: calc(var(--u) * 2) calc(var(--u) * 3.5);
+      font-family: inherit; font-size: calc(var(--u) * 3.2); font-weight: 600; cursor: pointer;
+    }
+    .body { flex: 1 1 auto; overflow-y: auto; padding: calc(var(--u) * 4); }
+    .foot { flex: 0 0 auto; padding: calc(var(--u) * 4); border-top: 1px solid var(--line); }
+
+    .btn {
+      display: block; width: 100%; border: 0; border-radius: calc(var(--u) * 3);
+      font-family: inherit; font-weight: 700; cursor: pointer; color: #fff;
+      padding: calc(var(--u) * 4.5); font-size: calc(var(--u) * 4.4);
+      background: var(--panel2); border: 1px solid var(--line);
+      transition: transform .08s ease, filter .12s ease;
+    }
+    .btn:active { transform: scale(.985); }
+    .btn:disabled { opacity: .35; cursor: not-allowed; }
+    .btn-primary { background: linear-gradient(135deg, var(--red-lt), #991b1b); border-color: transparent; }
+    .btn-go { background: linear-gradient(135deg, #22c55e, #15803d); border-color: transparent; }
+
+    .muted { color: var(--muted); }
+    .center { text-align: center; }
+
+    /* ---- ตัวหนังสือวิ่ง ---- */
+    /* All three languages ride in the same band rather than following the
+       selected one: this is the notice a customer needs before they have
+       chosen a language, and the kiosk resets to Thai between customers. */
+    .marquee {
+      position: absolute; left: 0; right: 0; overflow: hidden; z-index: 4;
+      height: calc(var(--u) * 6.4); display: flex; align-items: center;
+      background: rgba(220, 38, 38, .12);
+    }
+    .marquee.top { top: 0; border-bottom: 1px solid rgba(220, 38, 38, .35); }
+    .marquee.bottom { bottom: 0; border-top: 1px solid rgba(220, 38, 38, .35); }
+    .marquee .track { display: flex; white-space: nowrap; will-change: transform; }
+    .marquee .track span { padding: 0 calc(var(--u) * 2.5); font-size: calc(var(--u) * 3.3);
+                           font-weight: 600; color: #fca5a5; }
+    .marquee .track b { color: rgba(252, 165, 165, .45); font-weight: 400; }
+    /* The track holds two identical halves, so shifting it by exactly half its
+       width lands back on an identical frame and the loop has no seam. */
+    .marquee.top .track { animation: mqRight 26s linear infinite; }
+    .marquee.bottom .track { animation: mqLeft 26s linear infinite; }
+    @keyframes mqLeft { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+    @keyframes mqRight { from { transform: translateX(-50%); } to { transform: translateX(0); } }
+
+    /* ---- idle ---- */
+    #idle { justify-content: center; align-items: center; cursor: pointer; text-align: center;
+            padding: calc(var(--u) * 11) calc(var(--u) * 6); }
+    #idle .logo { font-family: Urbanist, sans-serif; font-weight: 900; letter-spacing: -.02em;
+                  font-size: calc(var(--u) * 11); line-height: 1; }
+    #idle .logo span { color: var(--red-lt); }
+    #idle .sub { color: var(--muted); font-size: calc(var(--u) * 3.6); margin-top: calc(var(--u) * 2); }
+    #idle .clock { font-family: Urbanist, sans-serif; font-weight: 700;
+                   font-size: calc(var(--u) * 16); margin: calc(var(--u) * 8) 0 calc(var(--u) * 1); }
+    #idle .date { color: var(--muted); font-size: calc(var(--u) * 3.6); }
+    .tapcue {
+      margin-top: calc(var(--u) * 10); border: 2px solid var(--red);
+      border-radius: 999px; padding: calc(var(--u) * 4) calc(var(--u) * 8);
+      font-size: calc(var(--u) * 4.6); font-weight: 700;
+      animation: pulse 2.2s ease-in-out infinite;
+    }
+    @keyframes pulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: .55; transform: scale(.97); } }
+
+    /* ---- language ---- */
+    /* Each language is written in its own script, not translated into Thai —
+       someone who cannot read Thai has to be able to find their own row. */
+    .langbar { display: flex; gap: calc(var(--u) * 2.5); justify-content: center; }
+    .langbar button {
+      font-family: inherit; cursor: pointer; color: var(--muted);
+      background: var(--panel2); border: 1px solid var(--line);
+      border-radius: 999px; padding: calc(var(--u) * 2) calc(var(--u) * 4);
+      font-size: calc(var(--u) * 3.2); font-weight: 600;
+    }
+    .langbar button.on { background: var(--red); border-color: var(--red); color: #fff; }
+    #idleLang { margin-top: calc(var(--u) * 7); }
+    #idleLang button { padding: calc(var(--u) * 2.4) calc(var(--u) * 5); font-size: calc(var(--u) * 3.6); }
+    #menuLang { margin-bottom: calc(var(--u) * 3.5); }
+    #menuLang button { padding: calc(var(--u) * 1.6) calc(var(--u) * 3.5); font-size: calc(var(--u) * 2.9); }
+
+    /* ---- menu tiles ---- */
+    .tile {
+      display: flex; align-items: center; gap: calc(var(--u) * 4);
+      width: 100%; text-align: left; cursor: pointer; color: #fff;
+      background: var(--panel); border: 1px solid var(--line);
+      border-radius: calc(var(--u) * 4); padding: calc(var(--u) * 5);
+      margin-bottom: calc(var(--u) * 3.5); font-family: inherit;
+    }
+    .tile:active { transform: scale(.99); }
+    .tile .ic {
+      flex: 0 0 auto; width: calc(var(--u) * 15); height: calc(var(--u) * 15);
+      border-radius: calc(var(--u) * 3.5); display: grid; place-items: center;
+      font-size: calc(var(--u) * 6.5);
+    }
+    .tile .t { font-size: calc(var(--u) * 5); font-weight: 700; }
+    .tile .d { font-size: calc(var(--u) * 3.1); color: var(--muted); margin-top: calc(var(--u) * .8); }
+
+    /* ---- rows / cards ---- */
+    .card { background: var(--panel); border: 1px solid var(--line);
+            border-radius: calc(var(--u) * 3.5); padding: calc(var(--u) * 4); }
+    .row { display: flex; align-items: center; justify-content: space-between; gap: calc(var(--u) * 3); }
+    .stepper { display: flex; align-items: center; gap: calc(var(--u) * 3); }
+    .stepper button {
+      width: calc(var(--u) * 12); height: calc(var(--u) * 12); border-radius: calc(var(--u) * 3);
+      background: var(--panel2); border: 1px solid var(--line); color: #fff;
+      font-size: calc(var(--u) * 5.5); font-weight: 700; cursor: pointer; font-family: inherit;
+    }
+    .stepper button:active { background: var(--red); }
+    .stepper .n { min-width: calc(var(--u) * 9); text-align: center;
+                  font-family: Urbanist, sans-serif; font-size: calc(var(--u) * 6.5); font-weight: 700; }
+
+    .total { display: flex; align-items: baseline; justify-content: space-between;
+             margin-bottom: calc(var(--u) * 3.5); }
+    .total .lb { font-size: calc(var(--u) * 4); color: var(--muted); }
+    .total .v { font-family: Urbanist, sans-serif; font-weight: 900; font-size: calc(var(--u) * 10); }
+
+    /* ---- products ---- */
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: calc(var(--u) * 3); }
+    .prod { background: var(--panel); border: 1px solid var(--line); color: #fff;
+            border-radius: calc(var(--u) * 3.5); padding: calc(var(--u) * 3.5);
+            text-align: left; cursor: pointer; font-family: inherit; position: relative; }
+    .prod:active { border-color: var(--red); }
+    .prod:disabled { opacity: .35; cursor: not-allowed; }
+    .prod .pn { font-size: calc(var(--u) * 3.6); font-weight: 600; line-height: 1.25;
+                min-height: calc(var(--u) * 9); }
+    .prod .pp { font-family: Urbanist, sans-serif; font-weight: 700;
+                font-size: calc(var(--u) * 5); color: var(--red-lt); }
+    .prod .qty { position: absolute; top: calc(var(--u) * -2); right: calc(var(--u) * -2);
+                 background: var(--red); border-radius: 999px; min-width: calc(var(--u) * 7);
+                 height: calc(var(--u) * 7); display: grid; place-items: center;
+                 font-size: calc(var(--u) * 3.4); font-weight: 700; padding: 0 calc(var(--u) * 1.5); }
+
+    /* ---- number pad ---- */
+    .display {
+      background: var(--panel); border: 1px solid var(--line); border-radius: calc(var(--u) * 3);
+      padding: calc(var(--u) * 4); text-align: center; margin-bottom: calc(var(--u) * 3.5);
+      font-family: Urbanist, sans-serif; font-weight: 700; font-size: calc(var(--u) * 8);
+      letter-spacing: .08em; min-height: calc(var(--u) * 16);
+      display: grid; place-items: center;
+    }
+    .keys { display: grid; grid-template-columns: repeat(3, 1fr); gap: calc(var(--u) * 3); }
+    .keys button {
+      height: calc(var(--u) * 15); border-radius: calc(var(--u) * 3);
+      background: var(--panel2); border: 1px solid var(--line); color: #fff;
+      font-family: Urbanist, sans-serif; font-weight: 700; font-size: calc(var(--u) * 6);
+      cursor: pointer;
+    }
+    .keys button:active { background: var(--red); }
+
+    /* ---- on-screen text keyboard ---- */
+    /* A kiosk has no keyboard and Windows will not raise its own touch one
+       reliably, so the nickname step has to bring its own. */
+    #nickDisplay {
+      background: var(--panel); border: 1px solid var(--line); border-radius: calc(var(--u) * 3);
+      padding: calc(var(--u) * 3.5); text-align: center; min-height: calc(var(--u) * 13);
+      font-size: calc(var(--u) * 6); font-weight: 700; display: grid; place-items: center;
+      margin-bottom: calc(var(--u) * 3);
+    }
+    #nickDisplay.empty { color: #4b5563; font-weight: 400; font-size: calc(var(--u) * 4); }
+    .kb { display: flex; flex-direction: column; gap: calc(var(--u) * 1.6); }
+    .kbrow { display: flex; gap: calc(var(--u) * 1.4); justify-content: center; }
+    /* Fixed key width rather than flex:1 — rows hold 12, 11, 10 and 9 keys, and
+       stretching each row to full width made the same letter a different size
+       depending on which row it sat in. A fixed 12-column grid keeps every key
+       the same and lets short rows centre. */
+    .kb button {
+      flex: 0 0 calc(var(--u) * 6.3); min-width: 0; height: calc(var(--u) * 10);
+      border-radius: calc(var(--u) * 2); background: var(--panel2);
+      border: 1px solid var(--line); color: #fff; cursor: pointer;
+      font-family: inherit; font-size: calc(var(--u) * 4);
+    }
+    .kb button:active { background: var(--red); }
+    .kb button.wide { flex: 0 0 calc(var(--u) * 20); font-size: calc(var(--u) * 3); }
+    .kb button.on { background: var(--red); border-color: var(--red); }
+
+    /* ---- result ---- */
+    .result { flex: 1; display: grid; place-items: center; text-align: center; padding: calc(var(--u) * 6); }
+    /* These are built as one string with newlines between the facts, so the
+       breaks have to survive into the render. */
+    #ciMeta, #doneMsg, #doneChange { white-space: pre-line; }
+    .bigicon { width: calc(var(--u) * 26); height: calc(var(--u) * 26); border-radius: 999px;
+               display: grid; place-items: center; font-size: calc(var(--u) * 13);
+               margin: 0 auto calc(var(--u) * 5); }
+    .ok { background: rgba(22,163,74,.15); color: #4ade80; border: 2px solid var(--green); }
+    .bad { background: rgba(220,38,38,.15); color: #fca5a5; border: 2px solid var(--red); }
+    .warn { background: rgba(245,158,11,.15); color: #fcd34d; border: 2px solid var(--amber); }
+
+    .qrbox { background: #fff; border-radius: calc(var(--u) * 3); padding: calc(var(--u) * 3);
+             display: grid; place-items: center; }
+    .qrbox img { width: 100%; max-height: calc(var(--u) * 70); object-fit: contain; }
+
+    /* ---- misc ---- */
+    #idleBar { position: absolute; left: 0; bottom: 0; height: calc(var(--u) * 1.2);
+               background: var(--amber); width: 0; transition: width .3s linear; z-index: 5; }
+    #demoBadge {
+      position: absolute; top: 0; left: 0; right: 0; height: calc(var(--u) * 5.5);
+      display: none; align-items: center; justify-content: center;
+      background: var(--amber); color: #000; font-weight: 700; z-index: 6;
+      font-size: calc(var(--u) * 2.8);
+    }
+    #frame.demo #demoBadge { display: flex; }
+    #frame.demo .screen { top: calc(var(--u) * 5.5); }
+    #gate {
+      position: absolute; inset: 0; background: rgba(0,0,0,.94); z-index: 20;
+      display: grid; place-items: center; padding: calc(var(--u) * 6);
+    }
+    #gate input {
+      width: 100%; background: var(--panel2); border: 1px solid var(--line); color: #fff;
+      border-radius: calc(var(--u) * 2.5); padding: calc(var(--u) * 3.5);
+      font-family: inherit; font-size: calc(var(--u) * 3.6); margin-bottom: calc(var(--u) * 2.5);
+    }
+    .hint { font-size: calc(var(--u) * 2.9); color: var(--muted); line-height: 1.55; }
+    .spin { animation: spin 1s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+<div id="frame">
+  <div id="idleBar"></div>
+  <div id="demoBadge">โหมดสาธิต — ไม่บันทึกลงระบบจริง</div>
+
+  <!-- ============ พักหน้าจอ ============ -->
+  <section id="idle" class="screen on">
+    <div class="marquee top"><div class="track"></div></div>
+    <div class="marquee bottom"><div class="track"></div></div>
+    <div class="logo">INDUSTRIAL<br><span>MUSCLE</span></div>
+    <div class="sub">FITNESS</div>
+    <div class="clock" id="clock">--:--</div>
+    <div class="date" id="today"></div>
+    <div class="tapcue"><i class="fa-solid fa-hand-pointer"></i> &nbsp;<span data-i18n="idle.tap">แตะเพื่อเริ่ม</span></div>
+    <div class="langbar" id="idleLang">
+      <button data-lang="th">ไทย</button>
+      <button data-lang="en">English</button>
+      <button data-lang="zh">中文</button>
+    </div>
+  </section>
+
+  <!-- ============ เมนูหลัก ============ -->
+  <section id="menu" class="screen">
+    <div class="topbar"><div class="ttl" data-i18n="menu.title">เลือกบริการ</div>
+      <button class="btn-back" data-go="idle" data-i18n="btn.cancel">ยกเลิก</button></div>
+    <div class="body">
+      <div class="langbar" id="menuLang">
+        <button data-lang="th">ไทย</button>
+        <button data-lang="en">English</button>
+        <button data-lang="zh">中文</button>
+      </div>
+      <button class="tile" data-go="phonePad">
+        <div class="ic" style="background:rgba(34,197,94,.14);color:#4ade80"><i class="fa-solid fa-user-check"></i></div>
+        <div><div class="t" data-i18n="menu.checkin.t">เช็คอินสมาชิก</div><div class="d" data-i18n="menu.checkin.d">ใส่เบอร์โทรศัพท์</div></div>
+      </button>
+      <button class="tile" data-go="daypass">
+        <div class="ic" style="background:rgba(239,68,68,.14);color:#f87171"><i class="fa-solid fa-ticket"></i></div>
+        <div><div class="t" data-i18n="menu.daypass.t">ซื้อบัตรรายวัน</div><div class="d" id="tileDayPassPrices"></div></div>
+      </button>
+      <button class="tile" data-go="shop">
+        <div class="ic" style="background:rgba(59,130,246,.14);color:#60a5fa"><i class="fa-solid fa-bottle-water"></i></div>
+        <div><div class="t" data-i18n="menu.shop.t">ซื้อสินค้า</div><div class="d" data-i18n="menu.shop.d">น้ำดื่ม เครื่องดื่ม ของใช้</div></div>
+      </button>
+    </div>
+    <div class="foot center hint" data-i18n="menu.help">ต้องการความช่วยเหลือ กดกริ่งที่เคาน์เตอร์</div>
+  </section>
+
+  <!-- ============ ใส่เบอร์โทร ============ -->
+  <section id="phonePad" class="screen">
+    <div class="topbar"><div class="ttl" data-i18n="pad.phone">ใส่เบอร์โทรศัพท์</div>
+      <button class="btn-back" data-go="menu" data-i18n="btn.back">ย้อนกลับ</button></div>
+    <div class="body">
+      <div class="display" id="padDisplay">&nbsp;</div>
+      <div class="keys" id="keys"></div>
+    </div>
+    <div class="foot">
+      <button class="btn btn-primary" id="padOk" data-i18n="pad.checkin" disabled>เช็คอิน</button>
+    </div>
+  </section>
+
+  <!-- ============ เลือกชื่อ (เบอร์ซ้ำ) ============ -->
+  <section id="pickMember" class="screen">
+    <div class="topbar"><div class="ttl" data-i18n="pick.title">เลือกชื่อของคุณ</div>
+      <button class="btn-back" data-go="phonePad" data-i18n="btn.back">ย้อนกลับ</button></div>
+    <div class="body">
+      <p class="hint" style="margin-bottom:calc(var(--u)*3)" data-i18n="pick.hint">
+        เบอร์นี้มีสมาชิกมากกว่าหนึ่งคน กรุณาเลือกชื่อของคุณ
+      </p>
+      <div id="pickList"></div>
+    </div>
+  </section>
+
+  <!-- ============ ผลเช็คอิน ============ -->
+  <section id="checkinResult" class="screen">
+    <div class="result">
+      <div>
+        <div class="bigicon" id="ciIcon"></div>
+        <div id="ciTitle" style="font-size:calc(var(--u)*6);font-weight:700"></div>
+        <div id="ciName" style="font-size:calc(var(--u)*4.6);margin-top:calc(var(--u)*2)"></div>
+        <div id="ciMeta" class="muted" style="font-size:calc(var(--u)*3.4);margin-top:calc(var(--u)*3);line-height:1.7"></div>
+      </div>
+    </div>
+    <div class="foot"><button class="btn btn-primary" data-go="idle" data-i18n="btn.done">เสร็จสิ้น</button></div>
+  </section>
+
+  <!-- ============ บัตรรายวัน ============ -->
+  <section id="daypass" class="screen">
+    <div class="topbar"><div class="ttl" data-i18n="dp.title">ซื้อบัตรรายวัน</div>
+      <button class="btn-back" data-go="menu" data-i18n="btn.back">ย้อนกลับ</button></div>
+    <div class="body">
+      <div class="card" style="margin-bottom:calc(var(--u)*3.5)">
+        <div class="row">
+          <div>
+            <div style="font-size:calc(var(--u)*4.4);font-weight:700" data-i18n="dp.adult">ผู้ใหญ่</div>
+            <div class="muted" style="font-size:calc(var(--u)*3.4)" id="pxAdult">-</div>
+          </div>
+          <div class="stepper" data-kind="adult">
+            <button data-d="-1">−</button><div class="n" id="qAdult">0</div><button data-d="1">+</button>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="row">
+          <div>
+            <div style="font-size:calc(var(--u)*4.4);font-weight:700" data-i18n="dp.student">นักเรียน / นักศึกษา</div>
+            <div class="muted" style="font-size:calc(var(--u)*3.4)" id="pxStudent">-</div>
+          </div>
+          <div class="stepper" data-kind="student">
+            <button data-d="-1">−</button><div class="n" id="qStudent">0</div><button data-d="1">+</button>
+          </div>
+        </div>
+      </div>
+      <p class="hint" style="margin-top:calc(var(--u)*4)">
+        <i class="fa-solid fa-circle-info"></i>
+        <span data-i18n="dp.hint">นักเรียนและนักศึกษาแสดงบัตรที่เคาน์เตอร์เมื่อพนักงานขอตรวจ</span>
+      </p>
+    </div>
+    <div class="foot">
+      <div class="total"><div class="lb" data-i18n="total">ยอดรวม</div><div class="v" id="dpTotal">0</div></div>
+      <button class="btn btn-primary" id="dpNext" data-i18n="btn.next" disabled>ถัดไป</button>
+    </div>
+  </section>
+
+  <!-- ============ ใส่ชื่อเล่น ============ -->
+  <section id="nickname" class="screen">
+    <div class="topbar"><div class="ttl" data-i18n="nick.title">ใส่ชื่อเล่น</div>
+      <button class="btn-back" data-go="daypass" data-i18n="btn.back">ย้อนกลับ</button></div>
+    <div class="body">
+      <div id="nickDisplay" class="empty"></div>
+      <p class="hint center" style="margin-bottom:calc(var(--u)*3)" data-i18n="nick.hint">
+        ใช้พิมพ์บนใบเสร็จและเรียกชื่อที่เคาน์เตอร์
+      </p>
+      <div class="kb" id="kb"></div>
+    </div>
+    <div class="foot">
+      <button class="btn btn-primary" id="nickOk" data-i18n="btn.confirm" disabled>ยืนยัน</button>
+    </div>
+  </section>
+
+  <!-- ============ สินค้า ============ -->
+  <section id="shop" class="screen">
+    <div class="topbar"><div class="ttl" data-i18n="shop.title">ซื้อสินค้า</div>
+      <button class="btn-back" data-go="menu" data-i18n="btn.back">ย้อนกลับ</button></div>
+    <div class="body"><div class="grid" id="prodGrid"></div></div>
+    <div class="foot">
+      <div class="total"><div class="lb" id="cartCount">0</div><div class="v" id="shopTotal">0</div></div>
+      <button class="btn btn-primary" id="shopNext" data-i18n="btn.next" disabled>ถัดไป</button>
+    </div>
+  </section>
+
+  <!-- ============ จ่าย QR ============ -->
+  <section id="payQr" class="screen">
+    <div class="topbar"><div class="ttl" data-i18n="qr.title">สแกนจ่าย</div>
+      <button class="btn-back" id="qrBack" data-i18n="btn.back">ย้อนกลับ</button></div>
+    <div class="body center">
+      <div class="muted" style="font-size:calc(var(--u)*3.4)" data-i18n="pay.due">ยอดที่ต้องชำระ</div>
+      <div style="font-family:Urbanist;font-weight:900;font-size:calc(var(--u)*11);margin-bottom:calc(var(--u)*1)"
+           id="qrAmount">0</div>
+      <div class="muted" style="font-size:calc(var(--u)*3);margin-bottom:calc(var(--u)*3)" id="qrItems"></div>
+      <div class="qrbox" id="qrBox">
+        <i class="fa-solid fa-circle-notch spin" style="font-size:calc(var(--u)*8);color:#111"></i>
+      </div>
+      <p class="hint" style="margin-top:calc(var(--u)*4)" id="qrCaption"></p>
+    </div>
+    <div class="foot">
+      <button class="btn btn-go" id="qrDone" data-i18n="qr.done">โอนแล้ว</button>
+    </div>
+  </section>
+
+  <!-- ============ กำลังบันทึก ============ -->
+  <section id="working" class="screen">
+    <div class="result">
+      <div>
+        <i class="fa-solid fa-circle-notch spin" style="font-size:calc(var(--u)*14);color:var(--red-lt)"></i>
+        <div style="font-size:calc(var(--u)*4.4);margin-top:calc(var(--u)*5)" data-i18n="working">กำลังบันทึกรายการ</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ เสร็จ ============ -->
+  <section id="done" class="screen">
+    <div class="result">
+      <div>
+        <div class="bigicon ok"><i class="fa-solid fa-check"></i></div>
+        <div style="font-size:calc(var(--u)*6);font-weight:700" data-i18n="done.thanks">ขอบคุณครับ</div>
+        <div id="doneMsg" style="font-size:calc(var(--u)*4.2);margin-top:calc(var(--u)*3);line-height:1.7"></div>
+      </div>
+    </div>
+    <div class="foot"><button class="btn btn-primary" data-go="idle" data-i18n="btn.done">เสร็จสิ้น</button></div>
+  </section>
+
+  <!-- ============ ประตูเปิดใช้งาน ============ -->
+  <div id="gate">
+    <div style="width:100%">
+      <div class="center" style="margin-bottom:calc(var(--u)*5)">
+        <div style="font-family:Urbanist;font-weight:900;font-size:calc(var(--u)*7)">ตั้งค่าตู้</div>
+        <p class="hint" style="margin-top:calc(var(--u)*2)">
+          ตู้ต้องเข้าสู่ระบบด้วยบัญชีผู้ดูแลหนึ่งครั้ง แล้วจะจำไว้ตลอด<br>
+          หรือกดดูตัวอย่างเพื่อลองใช้งานโดยไม่บันทึกอะไรลงระบบจริง
+        </p>
+      </div>
+      <input id="gateUser" placeholder="ชื่อผู้ใช้ผู้ดูแล" autocomplete="off">
+      <input id="gatePass" type="password" placeholder="รหัสผ่าน" autocomplete="off">
+      <button class="btn btn-primary" id="gateLogin" style="margin-bottom:calc(var(--u)*2.5)">เข้าสู่ระบบตู้</button>
+      <button class="btn" id="gateDemo">ดูตัวอย่าง (โหมดสาธิต)</button>
+      <p class="hint center" id="gateErr" style="margin-top:calc(var(--u)*3);color:#fca5a5"></p>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import { callServer, auth, signInWithCustomToken, onAuthStateChanged } from '../shared/firebase-init.js';
+import { membershipState } from '../shared/membership-status.js';
+import { gymToday } from '../shared/gym-date.js';
+
+const $ = (id) => document.getElementById(id);
+const baht = (n) => Math.round(n).toLocaleString('en-US');
+
+/* ------------------------------------------------------------------ ภาษา
+   Thai is the default and the screen returns to it between customers — the
+   next person at the door is far more likely to be Thai than not, and nobody
+   should inherit the previous customer's language. */
+const DEFAULT_LANG = 'th';
+const STR = {
+  th: {
+    'idle.tap': 'แตะเพื่อเริ่ม',
+    'btn.cancel': 'ยกเลิก', 'btn.back': 'ย้อนกลับ', 'btn.next': 'ถัดไป',
+    'btn.done': 'เสร็จสิ้น', 'btn.confirm': 'ยืนยัน',
+    'menu.title': 'เลือกบริการ',
+    'menu.checkin.t': 'เช็คอินสมาชิก', 'menu.checkin.d': 'ใส่เบอร์โทรศัพท์ที่ลงทะเบียนไว้',
+    'menu.daypass.t': 'ซื้อบัตรรายวัน',
+    'menu.shop.t': 'ซื้อสินค้า', 'menu.shop.d': 'น้ำดื่ม เครื่องดื่ม ของใช้',
+    'menu.help': 'ต้องการความช่วยเหลือ กดกริ่งที่เคาน์เตอร์',
+    'pad.phone': 'ใส่เบอร์โทรศัพท์', 'pad.checkin': 'เช็คอิน',
+    'pick.title': 'เลือกชื่อของคุณ',
+    'pick.hint': 'เบอร์นี้มีสมาชิกมากกว่าหนึ่งคน กรุณาเลือกชื่อของคุณ',
+    'res.ok': 'เช็คอินสำเร็จ', 'res.fail': 'เช็คอินไม่สำเร็จ',
+    'res.visits': (n) => `เข้าใช้บริการครั้งที่ ${n}`,
+    'res.until': (d) => `ใช้ได้ถึง ${d}`,
+    'res.expiring': (n) => (n === 0 ? '⚠ หมดอายุวันนี้ — ติดต่อต่ออายุที่เคาน์เตอร์'
+      : `⚠ เหลืออีก ${n} วัน — ติดต่อต่ออายุที่เคาน์เตอร์`),
+    'res.callStaff': 'กรุณาเรียกพนักงาน',
+    'res.noPhone': 'ไม่พบเบอร์โทรศัพท์นี้ในระบบ',
+    'res.expired': (d) => `สมาชิกภาพหมดอายุแล้ว\nหมดอายุ ${d}`,
+    'dp.title': 'ซื้อบัตรรายวัน', 'dp.adult': 'ผู้ใหญ่', 'dp.student': 'นักเรียน / นักศึกษา',
+    'dp.per': (p) => `${baht(p)} บาท / คน`,
+    'dp.hint': 'นักเรียนและนักศึกษาแสดงบัตรที่เคาน์เตอร์เมื่อพนักงานขอตรวจ',
+    'dp.sum': (a, s) => [a ? `ผู้ใหญ่ ${a}` : '', s ? `นักเรียน ${s}` : ''].filter(Boolean).join(' · '),
+    total: 'ยอดรวม',
+    'nick.title': 'ใส่ชื่อเล่น',
+    'nick.hint': 'ใช้พิมพ์บนใบเสร็จและเรียกชื่อที่เคาน์เตอร์',
+    'nick.ph': 'พิมพ์ชื่อเล่นของคุณ',
+    'kb.space': 'เว้นวรรค', 'kb.shift': 'พิมพ์ใหญ่', 'kb.del': 'ลบ', 'kb.clear': 'ล้าง',
+    'shop.title': 'ซื้อสินค้า', 'shop.items': (n) => `${n} ชิ้น`,
+    'shop.left': (n) => `เหลือ ${n}`, 'shop.out': 'หมด', 'shop.empty': 'ยังไม่มีสินค้าให้ขาย',
+    'pay.due': 'ยอดที่ต้องชำระ',
+    'qr.title': 'สแกนจ่าย', 'qr.done': 'โอนแล้ว',
+    'qr.caption': 'สแกนแล้วโอนตามยอดด้านบน จากนั้นกดปุ่มด้านล่าง',
+    'qr.notSet': 'ยังไม่ได้ตั้งค่า QR รับเงิน', 'qr.failed': 'โหลด QR ไม่สำเร็จ',
+    working: 'กำลังบันทึกรายการ',
+    'done.thanks': 'ขอบคุณครับ',
+    'done.saved': 'บันทึกรายการแล้ว กรุณารับใบเสร็จ',
+    'done.demo': 'โหมดสาธิต — ไม่ได้บันทึกลงระบบจริง',
+    'err.title': 'ทำรายการไม่สำเร็จ', 'err.connect': 'เชื่อมต่อไม่ได้',
+    'err.save': 'บันทึกรายการไม่สำเร็จ'
+  },
+  en: {
+    'idle.tap': 'Touch to start',
+    'btn.cancel': 'Cancel', 'btn.back': 'Back', 'btn.next': 'Next',
+    'btn.done': 'Done', 'btn.confirm': 'Confirm',
+    'menu.title': 'Choose a service',
+    'menu.checkin.t': 'Member check-in', 'menu.checkin.d': 'Enter your registered phone number',
+    'menu.daypass.t': 'Buy a day pass',
+    'menu.shop.t': 'Buy drinks & goods', 'menu.shop.d': 'Water, drinks, essentials',
+    'menu.help': 'Need help? Press the bell at the counter',
+    'pad.phone': 'Enter your phone number', 'pad.checkin': 'Check in',
+    'pick.title': 'Choose your name',
+    'pick.hint': 'More than one member uses this number. Please pick your name.',
+    'res.ok': 'Checked in', 'res.fail': 'Check-in failed',
+    'res.visits': (n) => `Visit number ${n}`,
+    'res.until': (d) => `Valid until ${d}`,
+    'res.expiring': (n) => (n === 0 ? '⚠ Expires today — please renew at the counter'
+      : `⚠ ${n} day${n === 1 ? '' : 's'} left — please renew at the counter`),
+    'res.callStaff': 'Please ask a staff member',
+    'res.noPhone': 'That phone number is not registered',
+    'res.expired': (d) => `Your membership has expired\nExpired on ${d}`,
+    'dp.title': 'Day pass', 'dp.adult': 'Adult', 'dp.student': 'Student',
+    'dp.per': (p) => `฿${baht(p)} per person`,
+    'dp.hint': 'Students may be asked to show a student ID at the counter',
+    'dp.sum': (a, s) => [a ? `Adult ${a}` : '', s ? `Student ${s}` : ''].filter(Boolean).join(' · '),
+    total: 'Total',
+    'nick.title': 'Enter your name',
+    'nick.hint': 'It goes on your receipt and is how staff will call you',
+    'nick.ph': 'Type your name',
+    'kb.space': 'space', 'kb.shift': 'Shift', 'kb.del': 'Delete', 'kb.clear': 'Clear',
+    'shop.title': 'Shop', 'shop.items': (n) => `${n} item${n === 1 ? '' : 's'}`,
+    'shop.left': (n) => `${n} left`, 'shop.out': 'Sold out', 'shop.empty': 'No products available',
+    'pay.due': 'Amount due',
+    'qr.title': 'Scan to pay', 'qr.done': 'I have paid',
+    'qr.caption': 'Scan the code, transfer the amount shown above, then press the button below',
+    'qr.notSet': 'Payment QR has not been set up yet', 'qr.failed': 'Could not load the QR code',
+    working: 'Processing',
+    'done.thanks': 'Thank you',
+    'done.saved': 'Payment recorded. Please take your receipt.',
+    'done.demo': 'Demo mode — nothing was saved',
+    'err.title': 'Transaction failed', 'err.connect': 'Cannot connect',
+    'err.save': 'Could not record the transaction'
+  },
+  zh: {
+    'idle.tap': '触摸开始',
+    'btn.cancel': '取消', 'btn.back': '返回', 'btn.next': '下一步',
+    'btn.done': '完成', 'btn.confirm': '确认',
+    'menu.title': '选择服务',
+    'menu.checkin.t': '会员签到', 'menu.checkin.d': '请输入登记的手机号',
+    'menu.daypass.t': '购买日票',
+    'menu.shop.t': '购买商品', 'menu.shop.d': '饮用水、饮料、日用品',
+    'menu.help': '需要帮助请按柜台的服务铃',
+    'pad.phone': '请输入手机号', 'pad.checkin': '签到',
+    'pick.title': '请选择您的姓名',
+    'pick.hint': '这个号码有多位会员，请选择您的姓名。',
+    'res.ok': '签到成功', 'res.fail': '签到失败',
+    'res.visits': (n) => `第 ${n} 次到访`,
+    'res.until': (d) => `有效期至 ${d}`,
+    'res.expiring': (n) => (n === 0 ? '⚠ 今天到期 — 请到柜台续费' : `⚠ 还剩 ${n} 天 — 请到柜台续费`),
+    'res.callStaff': '请联系工作人员',
+    'res.noPhone': '系统中没有这个手机号',
+    'res.expired': (d) => `会员资格已过期\n到期日 ${d}`,
+    'dp.title': '购买日票', 'dp.adult': '成人', 'dp.student': '学生',
+    'dp.per': (p) => `每人 ${baht(p)} 泰铢`,
+    'dp.hint': '学生可能需要在柜台出示学生证',
+    'dp.sum': (a, s) => [a ? `成人 ${a}` : '', s ? `学生 ${s}` : ''].filter(Boolean).join(' · '),
+    total: '合计',
+    'nick.title': '请输入您的名字',
+    'nick.hint': '将打印在小票上，工作人员也会这样称呼您',
+    'nick.ph': '输入您的名字',
+    'kb.space': '空格', 'kb.shift': '大写', 'kb.del': '删除', 'kb.clear': '清除',
+    'shop.title': '购买商品', 'shop.items': (n) => `${n} 件`,
+    'shop.left': (n) => `剩 ${n}`, 'shop.out': '售罄', 'shop.empty': '暂无商品',
+    'pay.due': '应付金额',
+    'qr.title': '扫码支付', 'qr.done': '我已支付',
+    'qr.caption': '扫码后按上方金额转账，然后按下方按钮',
+    'qr.notSet': '尚未设置收款二维码', 'qr.failed': '二维码加载失败',
+    working: '正在处理',
+    'done.thanks': '谢谢',
+    'done.saved': '已记录，请取走小票',
+    'done.demo': '演示模式 — 未保存任何数据',
+    'err.title': '交易失败', 'err.connect': '无法连接',
+    'err.save': '无法记录交易'
+  }
+};
+
+let lang = DEFAULT_LANG;
+/** Look up a string; call it with args when the entry is a template. */
+function t(key, ...args) {
+  const v = (STR[lang] && STR[lang][key]) !== undefined ? STR[lang][key] : STR[DEFAULT_LANG][key];
+  return typeof v === 'function' ? v(...args) : (v === undefined ? key : v);
+}
+
+const THAI_MONTHS = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.',
+  'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+const EN_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/** "yyyy-MM-dd" -> a date the reader of the current language expects. */
+function showDate(key) {
+  if (!key) return '';
+  const [y, m, d] = key.split('-').map(Number);
+  if (lang === 'en') return `${d} ${EN_MONTHS[m - 1]} ${y}`;
+  if (lang === 'zh') return `${y}年${m}月${d}日`;
+  return `${d} ${THAI_MONTHS[m - 1]} ${y + 543}`; // ปี พ.ศ. เฉพาะภาษาไทย
+}
+
+function setLang(next) {
+  lang = STR[next] ? next : DEFAULT_LANG;
+  document.documentElement.lang = lang === 'zh' ? 'zh-CN' : lang;
+  document.querySelectorAll('[data-i18n]').forEach((el) => { el.textContent = t(el.dataset.i18n); });
+  document.querySelectorAll('.langbar button').forEach((b) => {
+    b.classList.toggle('on', b.dataset.lang === lang);
+  });
+  // Anything drawn from data rather than markup has to be rebuilt by hand.
+  renderDayPass();
+  renderShop();
+  renderPad();
+  renderNick();
+  renderKeyboard();
+  $('tileDayPassPrices').textContent =
+    `${t('dp.adult')} ${baht(state.prices.adult)} · ${t('dp.student')} ${baht(state.prices.student)}`;
+  $('qrCaption').textContent = t('qr.caption');
+  tick();
+}
+
+document.querySelectorAll('.langbar').forEach((bar) => {
+  bar.addEventListener('click', (e) => {
+    e.stopPropagation(); // the idle screen's own click opens the menu
+    if (e.target.dataset && e.target.dataset.lang) setLang(e.target.dataset.lang);
+  });
+});
+
+/* ---------------------------------------------------------------- state */
+const IDLE_MS = 60000;
+const IDLE_WARN_MS = 15000;
+
+const state = {
+  mode: 'demo',
+  prices: { adult: 75, student: 60 },
+  products: [],
+  members: [],
+  dayPass: { adult: 0, student: 0 },
+  cart: [],
+  phone: '',
+  nick: '',
+  kb: { layout: 'th', shift: false },
+  paying: null // 'daypass' | 'shop'
+};
+
+/* ---------------------------------------------------------------- screens */
+let current = 'idle';
+function go(name) {
+  document.querySelectorAll('.screen').forEach((s) => s.classList.toggle('on', s.id === name));
+  current = name;
+  resetIdle();
+  if (name === 'idle') resetSale();
+}
+
+function resetSale() {
+  state.dayPass = { adult: 0, student: 0 };
+  state.cart = [];
+  state.phone = '';
+  state.nick = '';
+  state.kb = { layout: 'th', shift: false };
+  state.paying = null;
+  // The next person at the door should not inherit the last one's language.
+  if (lang !== DEFAULT_LANG) setLang(DEFAULT_LANG);
+  else { renderDayPass(); renderShop(); renderPad(); renderNick(); renderKeyboard(); }
+}
+
+document.querySelectorAll('[data-go]').forEach((el) => {
+  el.addEventListener('click', () => go(el.dataset.go));
+});
+$('idle').addEventListener('click', () => go('menu'));
+
+/* ------------------------------------------------------------ idle timer */
+let idleAt = Date.now();
+function resetIdle() { idleAt = Date.now(); }
+['pointerdown', 'keydown'].forEach((e) => document.addEventListener(e, resetIdle, true));
+
+setInterval(() => {
+  const left = IDLE_MS - (Date.now() - idleAt);
+  const bar = $('idleBar');
+  // An abandoned sale must not sit on screen holding someone's half-finished
+  // order — but the countdown only makes sense once they can see it coming.
+  if (current === 'idle' || current === 'working') { bar.style.width = '0'; return; }
+  if (left <= 0) { go('idle'); return; }
+  bar.style.width = left < IDLE_WARN_MS ? `${(left / IDLE_WARN_MS) * 100}%` : '0';
+}, 300);
+
+/* ------------------------------------------------------ ตัวหนังสือวิ่ง */
+const MARQUEE = ['สแกนจ่ายได้อย่างเดียว', 'QR payment only', '仅支持扫码支付'];
+
+/**
+ * Fill both bands with enough repeats to cover the screen, then duplicate the
+ * whole run so the -50% keyframe lands on an identical frame. Measuring first
+ * matters because the three phrases together are narrower than the panel at
+ * some sizes, which would otherwise scroll a visible gap across the screen.
+ */
+function buildMarquee() {
+  const unit = MARQUEE.map((s) => `<span>${s}</span><b>·</b>`).join('');
+  document.querySelectorAll('.marquee .track').forEach((tr) => {
+    tr.innerHTML = unit;
+    const unitW = tr.scrollWidth || 1;
+    const reps = Math.max(1, Math.ceil(tr.parentElement.clientWidth / unitW) + 1);
+    const half = unit.repeat(reps);
+    tr.innerHTML = half + half;
+  });
+}
+window.addEventListener('resize', buildMarquee);
+
+/* ---------------------------------------------------------------- clock */
+function tick() {
+  const th = new Date(Date.now() + 7 * 3600 * 1000);
+  $('clock').textContent = th.toISOString().slice(11, 16);
+  $('today').textContent = showDate(gymToday());
+}
+tick(); setInterval(tick, 10000);
+
+/* ------------------------------------------------------------------ totals */
+const dayPassTotal = () =>
+  state.dayPass.adult * state.prices.adult + state.dayPass.student * state.prices.student;
+const cartTotal = () => state.cart.reduce((s, i) => s + i.price * i.qty, 0);
+const cartCount = () => state.cart.reduce((s, i) => s + i.qty, 0);
+const payTotal = () => (state.paying === 'daypass' ? dayPassTotal() : cartTotal());
+
+/* --------------------------------------------------------------- day pass */
+document.querySelectorAll('#daypass .stepper').forEach((st) => {
+  st.querySelectorAll('button').forEach((b) => b.addEventListener('click', () => {
+    const kind = st.dataset.kind;
+    const next = state.dayPass[kind] + Number(b.dataset.d);
+    state.dayPass[kind] = Math.max(0, Math.min(10, next));
+    renderDayPass();
+  }));
+});
+
+function renderDayPass() {
+  $('qAdult').textContent = state.dayPass.adult;
+  $('qStudent').textContent = state.dayPass.student;
+  $('pxAdult').textContent = t('dp.per', state.prices.adult);
+  $('pxStudent').textContent = t('dp.per', state.prices.student);
+  $('dpTotal').textContent = baht(dayPassTotal());
+  $('dpNext').disabled = dayPassTotal() <= 0;
+}
+
+$('dpNext').addEventListener('click', () => { state.paying = 'daypass'; go('nickname'); });
+
+/* --------------------------------------------------------------- nickname */
+function renderNick() {
+  const el = $('nickDisplay');
+  el.textContent = state.nick || t('nick.ph');
+  el.classList.toggle('empty', !state.nick);
+  $('nickOk').disabled = state.nick.trim().length === 0;
+}
+
+/* Kedmanee for Thai, QWERTY for English. Two layers each: the shift layer is
+   where the less common Thai consonants live, so a name like "ฐิติ" is still
+   typeable without a physical keyboard. */
+const KB = {
+  th: {
+    base: [
+      ['ๆ', 'ไ', 'ำ', 'พ', 'ะ', 'ั', 'ี', 'ร', 'น', 'ย', 'บ', 'ล'],
+      ['ฟ', 'ห', 'ก', 'ด', 'เ', '้', '่', 'า', 'ส', 'ว', 'ง'],
+      ['ผ', 'ป', 'แ', 'อ', 'ิ', 'ื', 'ท', 'ม', 'ใ', 'ฝ'],
+      ['ภ', 'ถ', 'ุ', 'ึ', 'ค', 'ต', 'จ', 'ข', 'ช']
+    ],
+    shift: [
+      ['๐', 'ฎ', 'ฑ', 'ธ', 'ํ', '๊', 'ณ', 'ฯ', 'ญ', 'ฐ', 'ฅ', 'ฃ'],
+      ['ฤ', 'ฆ', 'ฏ', 'โ', 'ฌ', '็', '๋', 'ษ', 'ศ', 'ซ', 'ฉ'],
+      ['ฮ', 'ฺ', '์', 'ฒ', 'ฬ', 'ฦ', 'ฑ', 'ฎ', 'ฏ', 'ฐ'],
+      ['ู', 'ฃ', 'ฅ', 'ฆ', 'ฌ', 'ฎ', 'ฏ', 'ฐ', 'ฑ']
+    ]
+  },
+  en: {
+    base: [
+      ['q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p'],
+      ['a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l'],
+      ['z', 'x', 'c', 'v', 'b', 'n', 'm'],
+      ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0']
+    ],
+    shift: [
+      ['Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P'],
+      ['A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L'],
+      ['Z', 'X', 'C', 'V', 'B', 'N', 'M'],
+      ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0']
+    ]
+  }
+};
+const NICK_MAX = 20;
+
+function renderKeyboard() {
+  const kb = $('kb');
+  kb.innerHTML = '';
+  const rows = KB[state.kb.layout][state.kb.shift ? 'shift' : 'base'];
+  rows.forEach((row) => {
+    const r = document.createElement('div');
+    r.className = 'kbrow';
+    row.forEach((ch) => {
+      const b = document.createElement('button');
+      b.textContent = ch;
+      b.addEventListener('click', () => {
+        if (state.nick.length < NICK_MAX) state.nick += ch;
+        renderNick();
+      });
+      r.appendChild(b);
+    });
+    kb.appendChild(r);
+  });
+
+  const ctrl = document.createElement('div');
+  ctrl.className = 'kbrow';
+  const mk = (label, cls, fn) => {
+    const b = document.createElement('button');
+    b.textContent = label;
+    if (cls) b.className = cls;
+    b.addEventListener('click', fn);
+    ctrl.appendChild(b);
+    return b;
+  };
+  const shiftBtn = mk(t('kb.shift'), 'wide', () => { state.kb.shift = !state.kb.shift; renderKeyboard(); });
+  shiftBtn.classList.toggle('on', state.kb.shift);
+  const langBtn = mk(state.kb.layout === 'th' ? 'ABC' : 'ไทย', '', () => {
+    state.kb.layout = state.kb.layout === 'th' ? 'en' : 'th';
+    state.kb.shift = false;
+    renderKeyboard();
+  });
+  langBtn.classList.add('wide');
+  mk(t('kb.space'), 'wide', () => {
+    if (state.nick.length < NICK_MAX) state.nick += ' ';
+    renderNick();
+  });
+  mk('⌫', 'wide', () => { state.nick = state.nick.slice(0, -1); renderNick(); });
+  kb.appendChild(ctrl);
+}
+
+$('nickOk').addEventListener('click', () => {
+  state.nick = state.nick.trim();
+  if (!state.nick) return;
+  openQr();
+});
+
+/* ------------------------------------------------------------------- shop */
+function renderShop() {
+  const grid = $('prodGrid');
+  grid.innerHTML = '';
+  const sellable = state.products.filter((p) => p.status === 'Active');
+  if (!sellable.length) {
+    grid.innerHTML = `<p class="hint">${t('shop.empty')}</p>`;
+  }
+  sellable.forEach((p) => {
+    const inCart = state.cart.find((c) => c.name === p.name);
+    const qty = inCart ? inCart.qty : 0;
+    const out = p.stock !== null && p.stock <= qty;
+    const b = document.createElement('button');
+    b.className = 'prod';
+    b.disabled = out;
+    b.innerHTML = `${qty ? `<span class="qty">${qty}</span>` : ''}
+      <div class="pn">${p.name}</div>
+      <div class="pp">${baht(p.price)}</div>
+      <div class="muted" style="font-size:calc(var(--u)*2.7)">
+        ${p.stock === null ? '' : out ? t('shop.out') : t('shop.left', p.stock)}</div>`;
+    b.addEventListener('click', () => { addToCart(p); renderShop(); });
+    // Long-press removes one, so a mis-tap is recoverable without a second control.
+    let pressTimer = null;
+    b.addEventListener('pointerdown', () => {
+      pressTimer = setTimeout(() => { removeFromCart(p); renderShop(); }, 550);
+    });
+    ['pointerup', 'pointerleave'].forEach((e) => b.addEventListener(e, () => clearTimeout(pressTimer)));
+    grid.appendChild(b);
+  });
+  $('cartCount').textContent = t('shop.items', cartCount());
+  $('shopTotal').textContent = baht(cartTotal());
+  $('shopNext').disabled = cartTotal() <= 0;
+}
+
+function addToCart(p) {
+  const line = state.cart.find((c) => c.name === p.name);
+  if (line) line.qty += 1;
+  else state.cart.push({ name: p.name, price: p.price, qty: 1 });
+}
+function removeFromCart(p) {
+  const i = state.cart.findIndex((c) => c.name === p.name);
+  if (i < 0) return;
+  state.cart[i].qty -= 1;
+  if (state.cart[i].qty <= 0) state.cart.splice(i, 1);
+}
+
+$('shopNext').addEventListener('click', () => { state.paying = 'shop'; openQr(); });
+
+/* ---------------------------------------------------------------- payment */
+async function openQr() {
+  const total = payTotal();
+  $('qrAmount').textContent = `฿${baht(total)}`;
+  $('qrItems').textContent = state.paying === 'daypass'
+    ? [state.nick, t('dp.sum', state.dayPass.adult, state.dayPass.student)].filter(Boolean).join('  ·  ')
+    : t('shop.items', cartCount());
+  $('qrCaption').textContent = t('qr.caption');
+  go('payQr');
+
+  const box = $('qrBox');
+  box.innerHTML = '<i class="fa-solid fa-circle-notch spin" style="font-size:calc(var(--u)*8);color:#111"></i>';
+  if (state.mode === 'demo') {
+    box.innerHTML = '<div style="color:#111;padding:calc(var(--u)*10) 0;font-weight:700">'
+      + '[ QR PromptPay ]</div>';
+    return;
+  }
+  try {
+    const info = await callServer('getPaymentQRInfo');
+    box.innerHTML = info.url
+      ? `<img src="${info.url}" alt="PromptPay QR">`
+      : `<div style="color:#111;padding:calc(var(--u)*8) 0">${t('qr.notSet')}</div>`;
+    // The caption is whatever the owner typed in Settings, so it stays as written.
+    if (info.caption) $('qrCaption').textContent = info.caption;
+  } catch (e) {
+    box.innerHTML = `<div style="color:#111">${t('qr.failed')}</div>`;
+  }
+}
+
+$('qrBack').addEventListener('click', () => go(state.paying === 'daypass' ? 'nickname' : 'shop'));
+$('qrDone').addEventListener('click', () => submit());
+
+/* ----------------------------------------------------------- submit sale */
+async function submit() {
+  go('working');
+  const dayPassItems = [];
+  if (state.dayPass.adult > 0) dayPassItems.push({ type: 'adult', qty: state.dayPass.adult, price: state.prices.adult });
+  if (state.dayPass.student > 0) dayPassItems.push({ type: 'student', qty: state.dayPass.student, price: state.prices.student });
+
+  const finish = (msg) => {
+    $('doneMsg').textContent = msg;
+    go('done');
+    setTimeout(() => { if (current === 'done') go('idle'); }, 10000);
+  };
+
+  if (state.mode === 'demo') {
+    const demoMsg = t('done.demo');
+    setTimeout(() => finish(demoMsg), 700);
+    return;
+  }
+
+  try {
+    const res = await callServer('processDailyPayment', {
+      // The nickname the customer typed is what goes on the receipt and into
+      // the sales log; a shop-only sale has no one to ask, so it gets a label.
+      customerName: state.nick || 'ลูกค้าหน้าตู้บริการตนเอง',
+      phone: '',
+      dayPassItems,
+      items: state.cart,
+      trainerFees: [],
+      couponCode: '',
+      manualDiscountType: '',
+      manualDiscountValue: 0,
+      paymentMethod: 'transfer'
+    });
+    if (!res.success) { failScreen(res.message || t('err.save')); return; }
+    finish(t('done.saved'));
+    // Stock changed; refresh quietly so the next customer sees it.
+    loadProducts().catch(() => {});
+  } catch (e) {
+    failScreen(e.message || t('err.connect'));
+  }
+}
+
+function failScreen(msg) {
+  $('ciIcon').className = 'bigicon bad';
+  $('ciIcon').innerHTML = '<i class="fa-solid fa-xmark"></i>';
+  $('ciTitle').textContent = t('err.title');
+  $('ciName').textContent = '';
+  // The detail line can be a Thai message straight from the server, so the
+  // "ask a staff member" line is always shown in the reader's own language.
+  $('ciMeta').textContent = msg + '\n' + t('res.callStaff');
+  go('checkinResult');
+}
+
+/* --------------------------------------------------------------- keypad */
+const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'clr', '0', 'del'];
+KEYS.forEach((k) => {
+  const b = document.createElement('button');
+  b.innerHTML = k === 'del' ? '<i class="fa-solid fa-delete-left"></i>'
+    : k === 'clr' ? 'C' : k;
+  b.addEventListener('click', () => press(k));
+  $('keys').appendChild(b);
+});
+
+function press(k) {
+  if (k === 'del') state.phone = state.phone.slice(0, -1);
+  else if (k === 'clr') state.phone = '';
+  else if (state.phone.length < 10) state.phone += k;
+  renderPad();
+}
+
+function renderPad() {
+  $('padDisplay').textContent = state.phone || ' ';
+  $('padOk').disabled = state.phone.length < 9;
+}
+
+$('padOk').addEventListener('click', () => doCheckIn(state.phone));
+
+/* ------------------------------------------------------------- check-in */
+async function doCheckIn(phone) {
+  const hits = membersByPhone(phone);
+  if (!hits.length) return checkinFail(t('res.noPhone'));
+  // Two members already share a phone number in this data. Without a PIN there
+  // is nothing to tell them apart, so the person standing here has to say which
+  // one they are rather than the kiosk guessing and checking in the wrong one.
+  if (hits.length > 1) return showPicker(hits);
+  checkInMember(hits[0]);
+}
+
+function membersByPhone(phone) {
+  return state.members.filter((m) => (m.phone || '').replace(/\D/g, '') === phone);
+}
+
+function showPicker(hits) {
+  const list = $('pickList');
+  list.innerHTML = '';
+  hits.forEach((m) => {
+    const b = document.createElement('button');
+    b.className = 'tile';
+    b.innerHTML = `<div class="ic" style="background:rgba(34,197,94,.14);color:#4ade80">
+        <i class="fa-solid fa-user"></i></div>
+      <div><div class="t">${m.fullName}</div><div class="d">${m.package || ''}</div></div>`;
+    b.addEventListener('click', () => checkInMember(m));
+    list.appendChild(b);
+  });
+  go('pickMember');
+}
+
+async function checkInMember(m) {
+  const st = membershipState(m);
+  if (st.state === 'expired') return checkinFail(t('res.expired', showDate(m.expiryDate)), m.fullName);
+
+  if (state.mode === 'demo') {
+    go('working');
+    setTimeout(() => checkinOk(m, st, (m.checkInCount || 0) + 1), 600);
+    return;
+  }
+
+  go('working');
+  try {
+    const res = await callServer('manualCheckIn', { docId: m.docId });
+    if (!res.success) return checkinFail(res.message, m.fullName);
+    checkinOk(m, st, (m.checkInCount || 0) + 1);
+    loadMembers().catch(() => {});
+  } catch (e) {
+    checkinFail(e.message || t('err.connect'), m.fullName);
+  }
+}
+
+function checkinOk(m, st, count) {
+  $('ciIcon').className = 'bigicon ' + (st.state === 'expiring' ? 'warn' : 'ok');
+  $('ciIcon').innerHTML = '<i class="fa-solid fa-check"></i>';
+  $('ciTitle').textContent = t('res.ok');
+  $('ciName').textContent = m.fullName;
+  const lines = [t('res.visits', count)];
+  // The package name is data the owner typed in Thai; it is not translated.
+  if (m.package) lines.push(m.package);
+  // st.label is Thai from the shared module, so build the warning from the
+  // day count instead and let each language phrase it itself.
+  if (st.state === 'expiring') lines.push(t('res.expiring', st.days));
+  else if (m.expiryDate) lines.push(t('res.until', showDate(m.expiryDate)));
+  $('ciMeta').textContent = lines.join('\n');
+  go('checkinResult');
+  setTimeout(() => { if (current === 'checkinResult') go('idle'); }, 8000);
+}
+
+function checkinFail(msg, name) {
+  $('ciIcon').className = 'bigicon bad';
+  $('ciIcon').innerHTML = '<i class="fa-solid fa-xmark"></i>';
+  $('ciTitle').textContent = t('res.fail');
+  $('ciName').textContent = name || '';
+  $('ciMeta').textContent = (msg || '').replace(/^[❌⚠️🔒]\s*/u, '');
+  go('checkinResult');
+}
+
+/* ------------------------------------------------------------- data load */
+async function loadPrices() { state.prices = await callServer('getDailyPassPrices'); }
+async function loadProducts() { state.products = await callServer('getProductList'); renderShop(); }
+async function loadMembers() { state.members = await callServer('getMemberList'); }
+
+function demoData() {
+  state.prices = { adult: 75, student: 60 };
+  state.products = [
+    { name: 'น้ำเปล่า 600ml', price: 10, stock: 24, status: 'Active' },
+    { name: 'เกลือแร่', price: 20, stock: 12, status: 'Active' },
+    { name: 'โปรตีนเชค', price: 60, stock: 6, status: 'Active' },
+    { name: 'ผ้าเช็ดตัว', price: 50, stock: 3, status: 'Active' },
+    { name: 'ถุงมือฟิตเนส', price: 250, stock: 0, status: 'Active' },
+    { name: 'กาแฟดำ', price: 25, stock: null, status: 'Active' }
+  ];
+  const today = gymToday();
+  const shift = (n) => new Date(Date.parse(today + 'T00:00:00Z') + n * 86400000).toISOString().slice(0, 10);
+  state.members = [
+    { docId: 'd1', fullName: 'สมชาย ใจดี', phone: '0812345678',
+      package: 'รายเดือน', expiryDate: shift(45), status: 'Active', checkInCount: 37 },
+    { docId: 'd2', fullName: 'ศิริพร วงศ์ทอง', phone: '0898765432',
+      package: 'ราย 3 เดือน', expiryDate: shift(4), status: 'Active', checkInCount: 12 },
+    { docId: 'd3', fullName: 'อนุชา พูลสุข', phone: '0851112222',
+      package: 'รายเดือน', expiryDate: shift(-6), status: 'Active', checkInCount: 58 },
+    // Same number as d1 on purpose: the picker has to be demonstrable.
+    { docId: 'd4', fullName: 'สมหญิง ใจดี', phone: '0812345678',
+      package: 'รายเดือน', expiryDate: shift(20), status: 'Active', checkInCount: 5 }
+  ];
+  renderShop();
+}
+
+function afterReady() {
+  $('gate').style.display = 'none';
+  $('frame').classList.toggle('demo', state.mode === 'demo');
+  setLang(DEFAULT_LANG); // also draws everything that depends on language
+  buildMarquee();
+  go('idle');
+}
+
+/* ------------------------------------------------------------------ gate */
+$('gateDemo').addEventListener('click', () => {
+  state.mode = 'demo';
+  demoData();
+  afterReady();
+});
+
+$('gateLogin').addEventListener('click', async () => {
+  const user = $('gateUser').value.trim();
+  const pass = $('gatePass').value;
+  if (!user || !pass) { $('gateErr').textContent = 'กรอกชื่อผู้ใช้และรหัสผ่าน'; return; }
+  const btn = $('gateLogin');
+  btn.disabled = true; btn.textContent = 'กำลังเข้าสู่ระบบ...';
+  try {
+    const res = await callServer('loginAdmin', { user, pass });
+    if (!res.success) throw new Error(res.message || 'เข้าสู่ระบบไม่สำเร็จ');
+    await signInWithCustomToken(auth, res.token);
+    // onAuthStateChanged picks it up and boots into live mode.
+  } catch (e) {
+    $('gateErr').textContent = e.message || 'เข้าสู่ระบบไม่สำเร็จ';
+    btn.disabled = false; btn.textContent = 'เข้าสู่ระบบตู้';
+  }
+});
+
+onAuthStateChanged(auth, async (user) => {
+  if (!user) return; // gate stays up; demo button still available
+  try {
+    const token = await user.getIdTokenResult();
+    if (token.claims.role !== 'admin') return;
+    state.mode = 'live';
+    await Promise.all([loadPrices(), loadProducts(), loadMembers()]);
+    afterReady();
+  } catch (e) {
+    $('gateErr').textContent = 'โหลดข้อมูลไม่สำเร็จ: ' + (e.message || e);
+  }
+});
+</script>
+</body>
+</html>

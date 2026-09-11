@@ -2,7 +2,7 @@
 <html lang="th">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>Industrial Muscle - ตู้บริการตนเอง</title>
   <!-- Prompt covers Thai and Latin but has no CJK glyphs, so Chinese would fall
        back to whatever the machine happens to have. Noto Sans SC pins it. -->
@@ -26,8 +26,17 @@
       --text: #f5f5f5;
       --muted: #9ca3af;
     }
-    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
-    html, body { height: 100%; background: #05070a; }
+    * {
+      box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent;
+      /* Nobody types into this screen except the number pad and the on-screen
+         keyboard, so a long-press that pops a selection handle or a Copy menu
+         is only ever an accident on a public touchscreen. */
+      user-select: none; -webkit-user-select: none;
+      /* manipulation drops the double-tap-to-zoom gesture; without it a second
+         tap on a button silently zooms the whole cabinet display instead. */
+      touch-action: manipulation;
+    }
+    html, body { height: 100%; background: #05070a; overscroll-behavior: none; }
     body {
       font-family: Prompt, 'Noto Sans SC', system-ui, sans-serif;
       color: var(--text);
@@ -357,7 +366,43 @@
         <div id="ciMeta" class="muted" style="font-size:calc(var(--u)*3.4);margin-top:calc(var(--u)*3);line-height:1.7"></div>
       </div>
     </div>
-    <div class="foot"><button class="btn btn-primary" data-go="idle" data-i18n="btn.done">เสร็จสิ้น</button></div>
+    <div class="foot">
+      <button class="btn btn-go" id="ciRenew" data-i18n="res.renew" style="margin-bottom:calc(var(--u)*2.5);display:none">ต่ออายุสมาชิกที่นี่</button>
+      <button class="btn btn-primary" data-go="idle" data-i18n="btn.done">เสร็จสิ้น</button>
+    </div>
+  </section>
+
+  <!-- ============ ต่ออายุ: เลือกแพ็กเกจ ============ -->
+  <section id="renew" class="screen">
+    <div class="topbar"><div class="ttl" data-i18n="renew.title">เลือกแพ็กเกจ</div>
+      <button class="btn-back" data-go="checkinResult" data-i18n="btn.back">ย้อนกลับ</button></div>
+    <div class="body">
+      <div id="renewWho" class="card center" style="margin-bottom:calc(var(--u)*3.5)"></div>
+      <div id="pkgList"></div>
+    </div>
+  </section>
+
+  <!-- ============ ต่ออายุ: โอนแล้วสแกนสลิป ============ -->
+  <section id="renewQr" class="screen">
+    <div class="topbar"><div class="ttl" data-i18n="renew.qrTitle">โอนเงินแล้วสแกนสลิป</div>
+      <button class="btn-back" data-go="renew" data-i18n="btn.back">ย้อนกลับ</button></div>
+    <div class="body center">
+      <div class="muted" style="font-size:calc(var(--u)*3.4)" data-i18n="pay.due">ยอดที่ต้องชำระ</div>
+      <div style="font-family:Urbanist;font-weight:900;font-size:calc(var(--u)*11)" id="rnAmount">0</div>
+      <div class="muted" style="font-size:calc(var(--u)*3);margin-bottom:calc(var(--u)*3)" id="rnItems"></div>
+      <div class="qrbox" id="rnQrBox">
+        <i class="fa-solid fa-circle-notch spin" style="font-size:calc(var(--u)*8);color:#111"></i>
+      </div>
+      <p class="hint" style="margin-top:calc(var(--u)*3.5)" data-i18n="renew.hint">
+        โอนตามยอดด้านบน แล้วเอา QR บนสลิปจ่อที่ช่องสแกน
+      </p>
+      <div id="rnScanState" class="card" style="margin-top:calc(var(--u)*3);display:flex;align-items:center;
+           justify-content:center;gap:calc(var(--u)*2.5);font-size:calc(var(--u)*3.6);font-weight:600">
+        <i class="fa-solid fa-barcode"></i><span id="rnScanText"></span>
+      </div>
+      <button class="btn" id="rnSimulate" data-i18n="renew.simulate"
+              style="margin-top:calc(var(--u)*3);display:none">จำลองสแกนสลิป (สาธิต)</button>
+    </div>
   </section>
 
   <!-- ============ บัตรรายวัน ============ -->
@@ -519,6 +564,17 @@ const STR = {
     'res.callStaff': 'กรุณาเรียกพนักงาน',
     'res.noPhone': 'ไม่พบเบอร์โทรศัพท์นี้ในระบบ',
     'res.expired': (d) => `สมาชิกภาพหมดอายุแล้ว\nหมดอายุ ${d}`,
+    'res.renew': 'ต่ออายุสมาชิกที่นี่',
+    'renew.title': 'เลือกแพ็กเกจ',
+    'renew.months': (n) => `${n} เดือน`,
+    'renew.birthday': (l) => `ส่วนลดวันเกิด ${l}`,
+    'renew.noPkg': 'ยังไม่มีแพ็กเกจให้เลือก',
+    'renew.qrTitle': 'โอนเงินแล้วสแกนสลิป',
+    'renew.hint': 'โอนตามยอดด้านบน แล้วเอา QR บนสลิปจ่อที่ช่องสแกน',
+    'renew.waiting': 'รอสแกนสลิป',
+    'renew.reading': 'อ่านสลิปแล้ว กำลังตรวจสอบ',
+    'renew.simulate': 'จำลองสแกนสลิป (สาธิต)',
+    'renew.ok': 'ต่ออายุเรียบร้อย',
     'dp.title': 'ซื้อบัตรรายวัน', 'dp.adult': 'ผู้ใหญ่', 'dp.student': 'นักเรียน / นักศึกษา',
     'dp.per': (p) => `${baht(p)} บาท / คน`,
     'dp.hint': 'นักเรียนและนักศึกษาแสดงบัตรที่เคาน์เตอร์เมื่อพนักงานขอตรวจ',
@@ -561,6 +617,17 @@ const STR = {
     'res.callStaff': 'Please ask a staff member',
     'res.noPhone': 'That phone number is not registered',
     'res.expired': (d) => `Your membership has expired\nExpired on ${d}`,
+    'res.renew': 'Renew your membership here',
+    'renew.title': 'Choose a package',
+    'renew.months': (n) => `${n} month${n === 1 ? '' : 's'}`,
+    'renew.birthday': (l) => `Birthday discount ${l}`,
+    'renew.noPkg': 'No packages available',
+    'renew.qrTitle': 'Transfer, then scan your slip',
+    'renew.hint': 'Transfer the amount above, then hold the QR on your slip up to the scanner',
+    'renew.waiting': 'Waiting for your slip',
+    'renew.reading': 'Slip read — checking it now',
+    'renew.simulate': 'Simulate a slip scan (demo)',
+    'renew.ok': 'Membership renewed',
     'dp.title': 'Day pass', 'dp.adult': 'Adult', 'dp.student': 'Student',
     'dp.per': (p) => `฿${baht(p)} per person`,
     'dp.hint': 'Students may be asked to show a student ID at the counter',
@@ -602,6 +669,17 @@ const STR = {
     'res.callStaff': '请联系工作人员',
     'res.noPhone': '系统中没有这个手机号',
     'res.expired': (d) => `会员资格已过期\n到期日 ${d}`,
+    'res.renew': '在这里续费会员',
+    'renew.title': '选择套餐',
+    'renew.months': (n) => `${n} 个月`,
+    'renew.birthday': (l) => `生日折扣 ${l}`,
+    'renew.noPkg': '暂无可选套餐',
+    'renew.qrTitle': '转账后扫描凭证',
+    'renew.hint': '请按上方金额转账，然后将凭证上的二维码对准扫描口',
+    'renew.waiting': '等待扫描凭证',
+    'renew.reading': '已读取凭证，正在核对',
+    'renew.simulate': '模拟扫描凭证（演示）',
+    'renew.ok': '续费成功',
     'dp.title': '购买日票', 'dp.adult': '成人', 'dp.student': '学生',
     'dp.per': (p) => `每人 ${baht(p)} 泰铢`,
     'dp.hint': '学生可能需要在柜台出示学生证',
@@ -687,7 +765,10 @@ const state = {
   phone: '',
   nick: '',
   kb: { layout: 'th', shift: false },
-  paying: null // 'daypass' | 'shop'
+  paying: null, // 'daypass' | 'shop'
+  packages: [],
+  birthdayDiscount: { type: 'Percent', value: 5 },
+  renew: { member: null, pkg: null, amount: 0, busy: false }
 };
 
 /* ---------------------------------------------------------------- screens */
@@ -706,6 +787,7 @@ function resetSale() {
   state.nick = '';
   state.kb = { layout: 'th', shift: false };
   state.paying = null;
+  state.renew = { member: null, pkg: null, amount: 0, busy: false };
   // The next person at the door should not inherit the last one's language.
   if (lang !== DEFAULT_LANG) setLang(DEFAULT_LANG);
   else { renderDayPass(); renderShop(); renderPad(); renderNick(); renderKeyboard(); }
@@ -730,6 +812,27 @@ setInterval(() => {
   if (left <= 0) { go('idle'); return; }
   bar.style.width = left < IDLE_WARN_MS ? `${(left / IDLE_WARN_MS) * 100}%` : '0';
 }, 300);
+
+/* ------------------------------------------------- กันหลุดออกจากหน้าเว็บ
+   These only cover what a web page is allowed to cover. Alt+F4, Ctrl+Alt+Del
+   and the Windows touch edge-swipes are the operating system's, not the page's
+   — those are handled by the watchdog and the registry settings in
+   docs/kiosk/kiosk-setup/. */
+['contextmenu', 'dragstart', 'selectstart'].forEach((ev) => {
+  document.addEventListener(ev, (e) => e.preventDefault());
+});
+
+document.addEventListener('keydown', (e) => {
+  // The slip scanner is a keyboard: it sends plain characters and Enter, never
+  // a modifier, so blocking modifier combinations cannot break a scan.
+  const combo = e.ctrlKey || e.altKey || e.metaKey;
+  const fkey = /^F\d{1,2}$/.test(e.key);
+  if (combo || fkey) { e.preventDefault(); e.stopPropagation(); }
+}, true);
+
+// A pinch on the glass still zooms in some builds even with touch-action set.
+document.addEventListener('gesturestart', (e) => e.preventDefault());
+document.addEventListener('wheel', (e) => { if (e.ctrlKey) e.preventDefault(); }, { passive: false });
 
 /* ------------------------------------------------------ ตัวหนังสือวิ่ง */
 const MARQUEE = ['สแกนจ่ายได้อย่างเดียว', 'QR payment only', '仅支持扫码支付'];
@@ -1071,7 +1174,12 @@ function showPicker(hits) {
 
 async function checkInMember(m) {
   const st = membershipState(m);
-  if (st.state === 'expired') return checkinFail(t('res.expired', showDate(m.expiryDate)), m.fullName);
+  if (st.state === 'expired') {
+    checkinFail(t('res.expired', showDate(m.expiryDate)), m.fullName);
+    // Turning them away is the old behaviour; offering the renewal is the point.
+    offerRenewal(m, st);
+    return;
+  }
 
   if (state.mode === 'demo') {
     go('working');
@@ -1103,8 +1211,10 @@ function checkinOk(m, st, count) {
   if (st.state === 'expiring') lines.push(t('res.expiring', st.days));
   else if (m.expiryDate) lines.push(t('res.until', showDate(m.expiryDate)));
   $('ciMeta').textContent = lines.join('\n');
+  offerRenewal(m, st);
   go('checkinResult');
-  setTimeout(() => { if (current === 'checkinResult') go('idle'); }, 8000);
+  // A member who is about to expire gets longer to notice the renew button.
+  setTimeout(() => { if (current === 'checkinResult') go('idle'); }, st.state === 'expiring' ? 14000 : 8000);
 }
 
 function checkinFail(msg, name) {
@@ -1113,6 +1223,176 @@ function checkinFail(msg, name) {
   $('ciTitle').textContent = t('res.fail');
   $('ciName').textContent = name || '';
   $('ciMeta').textContent = (msg || '').replace(/^[❌⚠️🔒]\s*/u, '');
+  // Hidden unless the caller explicitly offers it afterwards; most failures
+  // here are a wrong number, where there is no membership to renew.
+  $('ciRenew').style.display = 'none';
+  state.renew.member = null;
+  go('checkinResult');
+}
+
+/* ------------------------------------------------------------ ต่ออายุ */
+/**
+ * Show the renew button only where it helps: a member who is already expired
+ * or is inside the warning window. Offering it to someone with 45 days left is
+ * noise, and the result screen auto-closes in a few seconds.
+ */
+function offerRenewal(member, st) {
+  const worth = st.state === 'expired' || st.state === 'expiring';
+  const btn = $('ciRenew');
+  btn.style.display = worth && state.packages.length ? 'block' : 'none';
+  state.renew.member = worth ? member : null;
+}
+
+/** What the member will actually be charged, mirroring computeBirthdayDiscount_. */
+function priceFor(pkg, member) {
+  const base = pkg.price || 0;
+  if (!member || !member.isBirthdayMonth) return { amount: base, label: '' };
+  const d = state.birthdayDiscount;
+  let off = d.type === 'Fixed' ? d.value : Math.round(base * (d.value / 100) * 100) / 100;
+  if (off > base) off = base;
+  return {
+    amount: Math.round((base - off) * 100) / 100,
+    label: d.type === 'Fixed' ? `${baht(d.value)} บาท` : `${d.value}%`
+  };
+}
+
+$('ciRenew').addEventListener('click', () => {
+  const m = state.renew.member;
+  if (!m) return;
+  $('renewWho').innerHTML =
+    `<div style="font-size:calc(var(--u)*4.6);font-weight:700">${m.fullName}</div>`
+    + `<div class="muted" style="font-size:calc(var(--u)*3.2);margin-top:calc(var(--u)*1)">`
+    + `${m.expiryDate ? t('res.until', showDate(m.expiryDate)) : ''}</div>`;
+
+  const list = $('pkgList');
+  list.innerHTML = '';
+  const open = state.packages.filter((p) => p.status === 'Active');
+  if (!open.length) { list.innerHTML = `<p class="hint">${t('renew.noPkg')}</p>`; go('renew'); return; }
+  open.forEach((p) => {
+    const { amount, label } = priceFor(p, m);
+    const b = document.createElement('button');
+    b.className = 'tile';
+    b.innerHTML = `<div class="ic" style="background:rgba(239,68,68,.14);color:#f87171">
+        <i class="fa-solid fa-id-card"></i></div>
+      <div style="flex:1">
+        <div class="t">${p.name}</div>
+        <div class="d">${t('renew.months', p.durationMonths)}${label ? ' · ' + t('renew.birthday', label) : ''}</div>
+      </div>
+      <div style="font-family:Urbanist;font-weight:900;font-size:calc(var(--u)*5.5)">${baht(amount)}</div>`;
+    b.addEventListener('click', () => openRenewQr(p, amount));
+    list.appendChild(b);
+  });
+  go('renew');
+});
+
+async function openRenewQr(pkg, amount) {
+  state.renew.pkg = pkg;
+  state.renew.amount = amount;
+  state.renew.busy = false;
+  $('rnAmount').textContent = `฿${baht(amount)}`;
+  $('rnItems').textContent = `${state.renew.member.fullName} · ${pkg.name}`;
+  $('rnScanText').textContent = t('renew.waiting');
+  $('rnSimulate').style.display = state.mode === 'demo' ? 'block' : 'none';
+  go('renewQr');
+
+  const box = $('rnQrBox');
+  box.innerHTML = '<i class="fa-solid fa-circle-notch spin" style="font-size:calc(var(--u)*8);color:#111"></i>';
+  if (state.mode === 'demo') {
+    box.innerHTML = '<div style="color:#111;padding:calc(var(--u)*10) 0;font-weight:700">[ QR PromptPay ]</div>';
+    return;
+  }
+  try {
+    const info = await callServer('getPaymentQRInfo');
+    box.innerHTML = info.url
+      ? `<img src="${info.url}" alt="PromptPay QR">`
+      : `<div style="color:#111;padding:calc(var(--u)*8) 0">${t('qr.notSet')}</div>`;
+  } catch (e) {
+    box.innerHTML = `<div style="color:#111">${t('qr.failed')}</div>`;
+  }
+}
+
+/* A USB QR scanner is a keyboard: it types the decoded payload and presses
+   Enter. Capturing keystrokes therefore needs no driver and no permission, and
+   typing the same string by hand is an exact substitute while the scanner is
+   still on order. A person types far slower than the burst a scanner sends, so
+   a gap resets the buffer rather than gluing two scans together. */
+let scanBuf = '';
+let scanGap = null;
+document.addEventListener('keydown', (e) => {
+  if (current !== 'renewQr' || state.renew.busy) return;
+  if (e.key === 'Enter') {
+    const code = scanBuf.trim();
+    scanBuf = '';
+    if (code.length >= 8) submitRenewal(code);
+    return;
+  }
+  if (e.key.length !== 1) return;
+  scanBuf += e.key;
+  clearTimeout(scanGap);
+  scanGap = setTimeout(() => { scanBuf = ''; }, 1500);
+});
+
+$('rnSimulate').addEventListener('click', () => {
+  submitRenewal('DEMO-SLIP-' + Date.now());
+});
+
+async function submitRenewal(qrData) {
+  if (state.renew.busy) return;
+  state.renew.busy = true;
+  $('rnScanText').textContent = t('renew.reading');
+  const m = state.renew.member;
+  const pkg = state.renew.pkg;
+
+  if (state.mode === 'demo') {
+    go('working');
+    setTimeout(() => renewOk(m, pkg, state.renew.amount, null), 800);
+    return;
+  }
+
+  go('working');
+  try {
+    // The slip is the proof. The kiosk deliberately never sends slipConfirmed:
+    // that path exists so a staff member who watched the money arrive can vouch
+    // for it, and there is nobody at the cabinet to do the watching.
+    const res = await callServer('processRenewalPayment', {
+      memberDocId: m.docId,
+      package: pkg.name,
+      paymentMethod: 'transfer',
+      qrData
+    });
+    if (!res.success) { state.renew.busy = false; return renewFail(res.message, m.fullName); }
+    // They paid and they are standing at the door, so let them in on the same
+    // visit rather than making them start over at the number pad.
+    let checked = null;
+    try { checked = await callServer('manualCheckIn', { docId: m.docId }); } catch (e2) { /* renewal still stands */ }
+    renewOk(m, pkg, res.paidAmount, checked);
+    loadMembers().catch(() => {});
+  } catch (e) {
+    state.renew.busy = false;
+    renewFail(e.message || t('err.connect'), m.fullName);
+  }
+}
+
+function renewOk(member, pkg, paidAmount, checked) {
+  $('ciIcon').className = 'bigicon ok';
+  $('ciIcon').innerHTML = '<i class="fa-solid fa-check"></i>';
+  $('ciTitle').textContent = t('renew.ok');
+  $('ciName').textContent = member.fullName;
+  const lines = [`${pkg.name} · ฿${baht(paidAmount != null ? paidAmount : state.renew.amount)}`];
+  if (checked && checked.success) lines.push(t('res.ok'));
+  $('ciMeta').textContent = lines.join('\n');
+  $('ciRenew').style.display = 'none';
+  go('checkinResult');
+  setTimeout(() => { if (current === 'checkinResult') go('idle'); }, 10000);
+}
+
+function renewFail(msg, name) {
+  $('ciIcon').className = 'bigicon bad';
+  $('ciIcon').innerHTML = '<i class="fa-solid fa-xmark"></i>';
+  $('ciTitle').textContent = t('err.title');
+  $('ciName').textContent = name || '';
+  $('ciMeta').textContent = (msg || '').replace(/^[❌⚠️🔒]\s*/u, '') + '\n' + t('res.callStaff');
+  $('ciRenew').style.display = 'none';
   go('checkinResult');
 }
 
@@ -1120,6 +1400,12 @@ function checkinFail(msg, name) {
 async function loadPrices() { state.prices = await callServer('getDailyPassPrices'); }
 async function loadProducts() { state.products = await callServer('getProductList'); renderShop(); }
 async function loadMembers() { state.members = await callServer('getMemberList'); }
+async function loadPackages() { state.packages = await callServer('getPackageList'); }
+async function loadBirthdayDiscount() {
+  // Needed so the price on screen matches what the server will actually charge
+  // a member renewing during their birthday month.
+  state.birthdayDiscount = await callServer('getBirthdayDiscountSettings');
+}
 
 function demoData() {
   state.prices = { adult: 75, student: 60 };
@@ -1142,8 +1428,17 @@ function demoData() {
       package: 'รายเดือน', expiryDate: shift(-6), status: 'Active', checkInCount: 58 },
     // Same number as d1 on purpose: the picker has to be demonstrable.
     { docId: 'd4', fullName: 'สมหญิง ใจดี', phone: '0812345678',
-      package: 'รายเดือน', expiryDate: shift(20), status: 'Active', checkInCount: 5 }
+      package: 'รายเดือน', expiryDate: shift(20), status: 'Active', checkInCount: 5 },
+    // Birthday month, so the renewal price on screen shows the discount.
+    { docId: 'd5', fullName: 'ปรีชา มั่นคง', phone: '0861234567', isBirthdayMonth: true,
+      package: 'รายเดือน', expiryDate: shift(-2), status: 'Active', checkInCount: 21 }
   ];
+  state.packages = [
+    { name: 'รายเดือน', price: 800, durationMonths: 1, status: 'Active' },
+    { name: 'ราย 3 เดือน', price: 2100, durationMonths: 3, status: 'Active' },
+    { name: 'รายปี', price: 7500, durationMonths: 12, status: 'Active' }
+  ];
+  state.birthdayDiscount = { type: 'Percent', value: 5 };
   renderShop();
 }
 
@@ -1185,7 +1480,8 @@ onAuthStateChanged(auth, async (user) => {
     const token = await user.getIdTokenResult();
     if (token.claims.role !== 'admin') return;
     state.mode = 'live';
-    await Promise.all([loadPrices(), loadProducts(), loadMembers()]);
+    await Promise.all([loadPrices(), loadProducts(), loadMembers(),
+      loadPackages(), loadBirthdayDiscount()]);
     afterReady();
   } catch (e) {
     $('gateErr').textContent = 'โหลดข้อมูลไม่สำเร็จ: ' + (e.message || e);

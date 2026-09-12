@@ -439,6 +439,9 @@
           payload.amount = $('f_amount').value;
           payload.couponCode = $('f_coupon').value.trim();
           payload.paymentMethod = $('f_payMethod').value;
+          // Same as the till: choosing transfer here means the staff member has
+          // already seen the money arrive, so it is recorded as their say-so.
+          payload.slipConfirmed = payload.paymentMethod === 'transfer';
           const res = await callServer('saveMemberData', payload);
           if (!res.success) return showErr(res.message);
           alert(res.message);

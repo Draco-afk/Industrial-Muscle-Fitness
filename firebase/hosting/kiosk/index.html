@@ -255,6 +255,25 @@
     .bad { background: rgba(220,38,38,.15); color: #fca5a5; border: 2px solid var(--red); }
     .warn { background: rgba(245,158,11,.15); color: #fcd34d; border: 2px solid var(--amber); }
 
+    /* ---- cash ---- */
+    .notes { display: grid; grid-template-columns: repeat(3, 1fr); gap: calc(var(--u) * 3); }
+    .note {
+      border-radius: calc(var(--u) * 2.5); border: 1px solid var(--line); background: var(--panel2);
+      color: #fff; font-family: Urbanist, sans-serif; font-weight: 700;
+      font-size: calc(var(--u) * 5); padding: calc(var(--u) * 4) 0; cursor: pointer;
+    }
+    .note:disabled { opacity: .25; cursor: not-allowed; }
+    .note:active:not(:disabled) { background: var(--green); }
+
+    #demoTools { display: none; margin-top: calc(var(--u) * 6); gap: calc(var(--u) * 2);
+                 align-items: center; flex-wrap: wrap; justify-content: center;
+                 font-size: calc(var(--u) * 2.7); }
+    #frame.demo #demoTools { display: flex; }
+    #demoTools button { background: var(--panel2); border: 1px solid var(--line); color: var(--muted);
+                        border-radius: 999px; padding: calc(var(--u) * 1.4) calc(var(--u) * 3);
+                        font-family: inherit; font-size: calc(var(--u) * 2.7); cursor: pointer; }
+    #demoTools button:active { background: var(--amber); color: #000; }
+
     .qrbox { background: #fff; border-radius: calc(var(--u) * 3); padding: calc(var(--u) * 3);
              display: grid; place-items: center; }
     .qrbox img { width: 100%; max-height: calc(var(--u) * 70); object-fit: contain; }
@@ -302,6 +321,15 @@
       <button data-lang="th">ไทย</button>
       <button data-lang="en">English</button>
       <button data-lang="zh">中文</button>
+    </div>
+    <!-- Demo only. Lets the coin level be forced so the "cannot make change"
+         path can actually be shown, instead of only existing in the code. -->
+    <div id="demoTools">
+      <span class="muted">สาธิต · เหรียญในเครื่อง</span>
+      <button data-coins="full">เต็ม</button>
+      <button data-coins="low">เหลือน้อย</button>
+      <button data-coins="empty">หมด</button>
+      <span id="coinNow" class="muted"></span>
     </div>
   </section>
 
@@ -483,6 +511,56 @@
     </div>
   </section>
 
+  <!-- ============ เลือกวิธีจ่าย ============ -->
+  <section id="pay" class="screen">
+    <div class="topbar"><div class="ttl" data-i18n="pay.title">ชำระเงิน</div>
+      <button class="btn-back" id="payBack" data-i18n="btn.back">ย้อนกลับ</button></div>
+    <div class="body">
+      <div class="card center" style="margin-bottom:calc(var(--u)*4)">
+        <div class="muted" style="font-size:calc(var(--u)*3.6)" data-i18n="pay.due">ยอดที่ต้องชำระ</div>
+        <div style="font-family:Urbanist;font-weight:900;font-size:calc(var(--u)*14)" id="payAmount">0</div>
+        <div class="muted" style="font-size:calc(var(--u)*3.2)" id="payItems"></div>
+      </div>
+      <button class="tile" id="payCashBtn">
+        <div class="ic" style="background:rgba(34,197,94,.14);color:#4ade80"><i class="fa-solid fa-money-bill-wave"></i></div>
+        <div><div class="t" data-i18n="pay.cash.t">เงินสด</div><div class="d" id="cashHint"></div></div>
+      </button>
+      <button class="tile" id="payQrBtn">
+        <div class="ic" style="background:rgba(59,130,246,.14);color:#60a5fa"><i class="fa-solid fa-qrcode"></i></div>
+        <div><div class="t" data-i18n="pay.qr.t">สแกนจ่าย QR</div><div class="d" data-i18n="pay.qr.d">พร้อมเพย์ ทุกธนาคาร</div></div>
+      </button>
+    </div>
+  </section>
+
+  <!-- ============ จ่ายเงินสด ============ -->
+  <section id="payCash" class="screen">
+    <div class="topbar"><div class="ttl" data-i18n="cash.title">ใส่เงินสด</div>
+      <button class="btn-back" data-go="pay" data-i18n="btn.back">ย้อนกลับ</button></div>
+    <div class="body">
+      <div class="card" style="margin-bottom:calc(var(--u)*3.5)">
+        <div class="row" style="margin-bottom:calc(var(--u)*2.5)">
+          <span class="muted" style="font-size:calc(var(--u)*3.6)" data-i18n="pay.due">ยอดที่ต้องชำระ</span>
+          <span style="font-family:Urbanist;font-weight:700;font-size:calc(var(--u)*5.5)" id="cashDue">0</span>
+        </div>
+        <div class="row" style="margin-bottom:calc(var(--u)*2.5)">
+          <span class="muted" style="font-size:calc(var(--u)*3.6)" data-i18n="cash.got">รับมาแล้ว</span>
+          <span style="font-family:Urbanist;font-weight:700;font-size:calc(var(--u)*5.5);color:#4ade80" id="cashGot">0</span>
+        </div>
+        <div class="row">
+          <span class="muted" style="font-size:calc(var(--u)*3.6)" data-i18n="cash.left">ยังขาดอีก</span>
+          <span style="font-family:Urbanist;font-weight:700;font-size:calc(var(--u)*5.5);color:#fcd34d" id="cashLeft">0</span>
+        </div>
+      </div>
+      <div class="muted center" style="font-size:calc(var(--u)*3.2);margin-bottom:calc(var(--u)*2.5)"
+           data-i18n="cash.insert">สอดแบงก์ที่ช่องด้านล่าง</div>
+      <div class="notes" id="noteBtns"></div>
+      <p class="hint center" style="margin-top:calc(var(--u)*3.5)" id="cashNote"></p>
+    </div>
+    <div class="foot">
+      <button class="btn btn-go" id="cashDone" data-i18n="cash.pay" disabled>ชำระเงิน</button>
+    </div>
+  </section>
+
   <!-- ============ จ่าย QR ============ -->
   <section id="payQr" class="screen">
     <div class="topbar"><div class="ttl" data-i18n="qr.title">สแกนจ่าย</div>
@@ -495,10 +573,16 @@
       <div class="qrbox" id="qrBox">
         <i class="fa-solid fa-circle-notch spin" style="font-size:calc(var(--u)*8);color:#111"></i>
       </div>
-      <p class="hint" style="margin-top:calc(var(--u)*4)" id="qrCaption"></p>
-    </div>
-    <div class="foot">
-      <button class="btn btn-go" id="qrDone" data-i18n="qr.done">โอนแล้ว</button>
+      <p class="hint" style="margin-top:calc(var(--u)*4)" data-i18n="renew.hint">
+        โอนตามยอดด้านบน แล้วเอา QR บนสลิปจ่อที่ช่องสแกน
+      </p>
+      <div id="qrScanState" class="card" style="margin-top:calc(var(--u)*3);display:flex;align-items:center;
+           justify-content:center;gap:calc(var(--u)*2.5);font-size:calc(var(--u)*3.6);font-weight:600">
+        <i class="fa-solid fa-barcode"></i><span id="qrScanText"></span>
+      </div>
+      <button class="btn" id="qrSimulate" data-i18n="renew.simulate"
+              style="margin-top:calc(var(--u)*3);display:none">จำลองสแกนสลิป (สาธิต)</button>
+      <p class="hint" style="margin-top:calc(var(--u)*3)" id="qrCaption"></p>
     </div>
   </section>
 
@@ -519,6 +603,7 @@
         <div class="bigicon ok"><i class="fa-solid fa-check"></i></div>
         <div style="font-size:calc(var(--u)*6);font-weight:700" data-i18n="done.thanks">ขอบคุณครับ</div>
         <div id="doneMsg" style="font-size:calc(var(--u)*4.2);margin-top:calc(var(--u)*3);line-height:1.7"></div>
+        <div id="doneChange" class="muted" style="font-size:calc(var(--u)*3.6);margin-top:calc(var(--u)*3)"></div>
       </div>
     </div>
     <div class="foot"><button class="btn btn-primary" data-go="idle" data-i18n="btn.done">เสร็จสิ้น</button></div>
@@ -611,7 +696,20 @@ const STR = {
     'kb.space': 'เว้นวรรค', 'kb.shift': 'พิมพ์ใหญ่', 'kb.del': 'ลบ', 'kb.clear': 'ล้าง',
     'shop.title': 'ซื้อสินค้า', 'shop.items': (n) => `${n} ชิ้น`,
     'shop.left': (n) => `เหลือ ${n}`, 'shop.out': 'หมด', 'shop.empty': 'ยังไม่มีสินค้าให้ขาย',
-    'pay.due': 'ยอดที่ต้องชำระ',
+    'pay.title': 'ชำระเงิน', 'pay.due': 'ยอดที่ต้องชำระ',
+    'pay.cash.t': 'เงินสด', 'pay.cash.d': 'รับแบงก์ 20 / 50 / 100 และเหรียญ',
+    'pay.cash.noCoins': 'เหรียญทอนไม่พอ ขณะนี้รับเฉพาะสแกนจ่าย',
+    'pay.cash.satang': 'ยอดมีเศษสตางค์ ทอนเงินสดไม่ได้ กรุณาสแกนจ่าย',
+    'pay.cash.tooBig': 'ยอดสูงเกินกว่าจะรับเป็นเงินสด กรุณาสแกนจ่าย',
+    'pay.qr.t': 'สแกนจ่าย QR', 'pay.qr.d': 'พร้อมเพย์ ทุกธนาคาร',
+    'cash.title': 'ใส่เงินสด', 'cash.got': 'รับมาแล้ว', 'cash.left': 'ยังขาดอีก',
+    'cash.insert': 'สอดแบงก์ที่ช่องด้านล่าง', 'cash.pay': 'ชำระเงิน',
+    'cash.dim': 'ปุ่มที่จางคือแบงก์ที่ตอนนี้ทอนไม่ได้',
+    'cash.exact': 'จ่ายพอดี ไม่มีเงินทอน',
+    'cash.change': (amt, coins) => `เงินทอน ${baht(amt)} บาท  (${coins})`,
+    'cash.cant': 'เหรียญทอนไม่พอ กรุณาเรียกพนักงาน',
+    'coin.10': (n) => `เหรียญ 10 x${n}`, 'coin.5': (n) => `เหรียญ 5 x${n}`,
+    'done.change': (amt) => `รับเงินทอน ${baht(amt)} บาทที่ถาดด้านล่าง`,
     'qr.title': 'สแกนจ่าย', 'qr.done': 'โอนแล้ว',
     'qr.caption': 'สแกนแล้วโอนตามยอดด้านบน จากนั้นกดปุ่มด้านล่าง',
     'qr.notSet': 'ยังไม่ได้ตั้งค่า QR รับเงิน', 'qr.failed': 'โหลด QR ไม่สำเร็จ',
@@ -676,7 +774,20 @@ const STR = {
     'kb.space': 'space', 'kb.shift': 'Shift', 'kb.del': 'Delete', 'kb.clear': 'Clear',
     'shop.title': 'Shop', 'shop.items': (n) => `${n} item${n === 1 ? '' : 's'}`,
     'shop.left': (n) => `${n} left`, 'shop.out': 'Sold out', 'shop.empty': 'No products available',
-    'pay.due': 'Amount due',
+    'pay.title': 'Payment', 'pay.due': 'Amount due',
+    'pay.cash.t': 'Cash', 'pay.cash.d': 'Accepts ฿20 / ฿50 / ฿100 notes and coins',
+    'pay.cash.noCoins': 'Not enough coins for change — QR payment only right now',
+    'pay.cash.satang': 'This amount includes satang and cannot be given in change. Please pay by QR.',
+    'pay.cash.tooBig': 'Too large to take in cash. Please pay by QR.',
+    'pay.qr.t': 'Scan to pay (QR)', 'pay.qr.d': 'PromptPay — works with any Thai bank app',
+    'cash.title': 'Insert cash', 'cash.got': 'Received', 'cash.left': 'Still needed',
+    'cash.insert': 'Insert notes into the slot below', 'cash.pay': 'Pay',
+    'cash.dim': 'Dimmed notes cannot be changed right now',
+    'cash.exact': 'Exact amount — no change due',
+    'cash.change': (amt, coins) => `Change ฿${baht(amt)}  (${coins})`,
+    'cash.cant': 'Not enough coins for change. Please ask a staff member.',
+    'coin.10': (n) => `฿10 x${n}`, 'coin.5': (n) => `฿5 x${n}`,
+    'done.change': (amt) => `Collect ฿${baht(amt)} change from the tray below`,
     'qr.title': 'Scan to pay', 'qr.done': 'I have paid',
     'qr.caption': 'Scan the code, transfer the amount shown above, then press the button below',
     'qr.notSet': 'Payment QR has not been set up yet', 'qr.failed': 'Could not load the QR code',
@@ -740,7 +851,20 @@ const STR = {
     'kb.space': '空格', 'kb.shift': '大写', 'kb.del': '删除', 'kb.clear': '清除',
     'shop.title': '购买商品', 'shop.items': (n) => `${n} 件`,
     'shop.left': (n) => `剩 ${n}`, 'shop.out': '售罄', 'shop.empty': '暂无商品',
-    'pay.due': '应付金额',
+    'pay.title': '支付', 'pay.due': '应付金额',
+    'pay.cash.t': '现金', 'pay.cash.d': '接受 20 / 50 / 100 泰铢纸币和硬币',
+    'pay.cash.noCoins': '零钱不足，目前仅支持扫码支付',
+    'pay.cash.satang': '金额含角币，无法找零，请扫码支付',
+    'pay.cash.tooBig': '金额过大，无法用现金支付，请扫码支付',
+    'pay.qr.t': '扫码支付', 'pay.qr.d': 'PromptPay — 支持泰国各家银行',
+    'cash.title': '投入现金', 'cash.got': '已收', 'cash.left': '还需',
+    'cash.insert': '请将纸币投入下方投币口', 'cash.pay': '支付',
+    'cash.dim': '灰色的纸币目前无法找零',
+    'cash.exact': '金额刚好，无需找零',
+    'cash.change': (amt, coins) => `找零 ${baht(amt)} 泰铢（${coins}）`,
+    'cash.cant': '零钱不足，请联系工作人员',
+    'coin.10': (n) => `10泰铢 x${n}`, 'coin.5': (n) => `5泰铢 x${n}`,
+    'done.change': (amt) => `请在下方托盘取回 ${baht(amt)} 泰铢零钱`,
     'qr.title': '扫码支付', 'qr.done': '我已支付',
     'qr.caption': '扫码后按上方金额转账，然后按下方按钮',
     'qr.notSet': '尚未设置收款二维码', 'qr.failed': '二维码加载失败',
@@ -814,6 +938,12 @@ const state = {
   nick: '',
   kb: { layout: 'th', shift: false },
   paying: null, // 'daypass' | 'shop'
+  cash: { got: 0 },
+  qrBusy: false,
+  // Coins loaded in the two hoppers. The real build reads these back from the
+  // dispenser's own counters; until that hardware exists they start at the
+  // float the parts list specifies.
+  coins: { ten: 300, five: 200 },
   packages: [],
   birthdayDiscount: { type: 'Percent', value: 5 },
   renew: { member: null, pkg: null, amount: 0, busy: false },
@@ -835,6 +965,8 @@ function resetSale() {
   state.nick = '';
   state.kb = { layout: 'th', shift: false };
   state.paying = null;
+  state.cash = { got: 0 };
+  state.qrBusy = false;
   state.renew = { member: null, pkg: null, amount: 0, busy: false };
   state.signup = { name: '', phone: '', dob: '', pkg: null, amount: 0, busy: false };
   padCtx = null;
@@ -848,6 +980,18 @@ document.querySelectorAll('[data-go]').forEach((el) => {
   el.addEventListener('click', () => go(el.dataset.go));
 });
 $('idle').addEventListener('click', () => go('menu'));
+
+const COIN_PRESETS = { full: { ten: 300, five: 200 }, low: { ten: 1, five: 1 }, empty: { ten: 0, five: 0 } };
+$('demoTools').addEventListener('click', (e) => {
+  e.stopPropagation(); // sits inside the idle screen, whose click opens the menu
+  const k = e.target.dataset && e.target.dataset.coins;
+  if (!k) return;
+  state.coins = { ...COIN_PRESETS[k] };
+  renderCoinNow();
+});
+function renderCoinNow() {
+  $('coinNow').textContent = `(10 บาท x${state.coins.ten} · 5 บาท x${state.coins.five})`;
+}
 
 /* ------------------------------------------------------------ idle timer */
 let idleAt = Date.now();
@@ -943,7 +1087,7 @@ function renderDayPass() {
 $('dpNext').addEventListener('click', () => {
   state.paying = 'daypass';
   askText({ titleKey: 'nick.title', hintKey: 'nick.hint', phKey: 'nick.ph', back: 'daypass',
-    onDone: (v) => { state.nick = v; openQr(); } });
+    onDone: (v) => { state.nick = v; openPayChoice(); } });
 });
 
 /* ------------------------------------------------ ช่องพิมพ์ข้อความ (ใช้ซ้ำ)
@@ -1108,42 +1252,166 @@ function removeFromCart(p) {
   if (state.cart[i].qty <= 0) state.cart.splice(i, 1);
 }
 
-$('shopNext').addEventListener('click', () => { state.paying = 'shop'; openQr(); });
+$('shopNext').addEventListener('click', () => { state.paying = 'shop'; openPayChoice(); });
 
 /* ---------------------------------------------------------------- payment */
-async function openQr() {
-  const total = payTotal();
-  $('qrAmount').textContent = `฿${baht(total)}`;
-  $('qrItems').textContent = state.paying === 'daypass'
-    ? [state.nick, t('dp.sum', state.dayPass.adult, state.dayPass.student)].filter(Boolean).join('  ·  ')
-    : t('shop.items', cartCount());
-  $('qrCaption').textContent = t('qr.caption');
-  go('payQr');
+/* Notes the bill acceptor is set to take. 500 and 1000 are switched off on
+   purpose: a 500 against a 75-baht day pass needs 425 in change, which is 43
+   ten-baht coins — longer than anyone will wait and enough to empty the hopper
+   in one sale. */
+const NOTES = [20, 50, 100];
+/* Cash is only offered on the small sales. Every real bill in the records is
+   under 200 baht, while a package is 800 and up — and a note acceptor with no
+   refund path would strand a customer's money if they stopped feeding it
+   halfway through eight hundred-baht notes. */
+const CASH_MAX = 1000;
 
-  const box = $('qrBox');
-  box.innerHTML = '<i class="fa-solid fa-circle-notch spin" style="font-size:calc(var(--u)*8);color:#111"></i>';
-  if (state.mode === 'demo') {
-    box.innerHTML = '<div style="color:#111;padding:calc(var(--u)*10) 0;font-weight:700">'
-      + '[ QR PromptPay ]</div>';
-    return;
-  }
-  try {
-    const info = await callServer('getPaymentQRInfo');
-    box.innerHTML = info.url
-      ? `<img src="${info.url}" alt="PromptPay QR">`
-      : `<div style="color:#111;padding:calc(var(--u)*8) 0">${t('qr.notSet')}</div>`;
-    // The caption is whatever the owner typed in Settings, so it stays as written.
-    if (info.caption) $('qrCaption').textContent = info.caption;
-  } catch (e) {
-    box.innerHTML = `<div style="color:#111">${t('qr.failed')}</div>`;
-  }
+function openPayChoice() {
+  const total = payTotal();
+  $('payAmount').textContent = baht(total);
+  $('payItems').textContent = payDescription();
+
+  const canCash = total <= CASH_MAX && cashPossible(total, state.coins);
+  $('payCashBtn').disabled = !canCash;
+  $('payCashBtn').style.opacity = canCash ? '1' : '.4';
+  $('cashHint').textContent = canCash
+    ? t('pay.cash.d')
+    : (total % 5 !== 0 ? t('pay.cash.satang')
+      : total > CASH_MAX ? t('pay.cash.tooBig') : t('pay.cash.noCoins'));
+  go('pay');
 }
 
-$('qrBack').addEventListener('click', () => go(state.paying === 'daypass' ? 'nickname' : 'shop'));
-$('qrDone').addEventListener('click', () => submit());
+function payDescription() {
+  return state.paying === 'daypass'
+    ? [state.nick, t('dp.sum', state.dayPass.adult, state.dayPass.student)].filter(Boolean).join('  ·  ')
+    : t('shop.items', cartCount());
+}
+
+$('payBack').addEventListener('click', () => go(state.paying === 'daypass' ? 'nickname' : 'shop'));
+
+/* ------------------------------------------------------------ เงินสด */
+/**
+ * Coins to hand back, or null if this machine cannot make that amount.
+ * Greedy on tens but capped by what is actually in the hopper — the amount is
+ * always a multiple of 5 and so is every ten, so the remainder stays payable
+ * in fives.
+ */
+function planChange(amount, coins) {
+  if (amount < 0) return null;
+  if (amount % 5 !== 0) return null; // เครื่องทอนเหรียญทอนสตางค์ไม่ได้
+  const ten = Math.min(Math.floor(amount / 10), coins.ten);
+  const five = (amount - ten * 10) / 5;
+  if (five > coins.five) return null;
+  return { ten, five };
+}
+
+/** "เหรียญ 10 x2" — a denomination the machine isn't paying out is left off
+    rather than shown as x0, which reads as an error to the person waiting. */
+function coinWords(change) {
+  return [change.ten ? t('coin.10', change.ten) : '',
+    change.five ? t('coin.5', change.five) : ''].filter(Boolean).join(' · ');
+}
+
+/** Is there any way to pay this total in notes we accept and still change it? */
+function cashPossible(total, coins) {
+  if (total % 5 !== 0) return false;
+  for (let a = 0; a <= 10; a++) {
+    for (let b = 0; b <= 4; b++) {
+      for (let c = 0; c <= 12; c++) {
+        const sum = a * 20 + b * 50 + c * 100;
+        if (sum < total) continue;
+        if (planChange(sum - total, coins)) return true;
+      }
+    }
+  }
+  return false;
+}
+
+/** Notes we can safely take right now: either they don't finish the payment,
+    or they do and we can change the difference. */
+function acceptableNotes(total, got, coins) {
+  return NOTES.filter((n) => {
+    const after = got + n;
+    return after < total ? true : planChange(after - total, coins) !== null;
+  });
+}
+
+$('payCashBtn').addEventListener('click', () => {
+  if ($('payCashBtn').disabled) return;
+  state.cash = { got: 0 };
+  renderCash();
+  go('payCash');
+});
+
+function renderCash() {
+  const total = payTotal();
+  const left = Math.max(0, total - state.cash.got);
+  $('cashDue').textContent = baht(total);
+  $('cashGot').textContent = baht(state.cash.got);
+  $('cashLeft').textContent = baht(left);
+
+  const ok = acceptableNotes(total, state.cash.got, state.coins);
+  const box = $('noteBtns');
+  box.innerHTML = '';
+  NOTES.forEach((n) => {
+    const b = document.createElement('button');
+    b.className = 'note';
+    b.textContent = `฿${n}`;
+    b.disabled = !ok.includes(n);
+    b.addEventListener('click', () => { state.cash.got += n; renderCash(); });
+    box.appendChild(b);
+  });
+
+  const enough = state.cash.got >= total;
+  const change = enough ? planChange(state.cash.got - total, state.coins) : null;
+  $('cashDone').disabled = !enough || !change;
+  $('cashNote').textContent = enough
+    ? (change
+        ? (state.cash.got - total > 0
+            ? t('cash.change', state.cash.got - total, coinWords(change))
+            : t('cash.exact'))
+        : t('cash.cant'))
+    : t('cash.dim');
+}
+
+$('cashDone').addEventListener('click', () => {
+  const total = payTotal();
+  const change = planChange(state.cash.got - total, state.coins);
+  if (!change) return;
+  // Take the coins out of stock at the moment we commit, not when the sale is
+  // recorded — the hopper has physically dispensed them either way.
+  state.coins.ten -= change.ten;
+  state.coins.five -= change.five;
+  renderCoinNow();
+  submit('cash', '', state.cash.got - total);
+});
+
+/* --------------------------------------------------------------- QR + สลิป */
+$('payQrBtn').addEventListener('click', () => openQr());
+
+async function openQr() {
+  state.qrBusy = false;
+  $('qrAmount').textContent = `฿${baht(payTotal())}`;
+  $('qrItems').textContent = payDescription();
+  $('qrScanText').textContent = t('renew.waiting');
+  $('qrSimulate').style.display = state.mode === 'demo' ? 'block' : 'none';
+  $('qrCaption').textContent = '';
+  go('payQr');
+  await fillQrBox($('qrBox'));
+}
+
+$('qrBack').addEventListener('click', () => go('pay'));
+$('qrSimulate').addEventListener('click', () => onSaleSlip('DEMO-SLIP-' + Date.now()));
+
+function onSaleSlip(code) {
+  if (state.qrBusy) return;
+  state.qrBusy = true;
+  $('qrScanText').textContent = t('renew.reading');
+  submit('transfer', code, 0);
+}
 
 /* ----------------------------------------------------------- submit sale */
-async function submit() {
+async function submit(method, qrData, changeAmount) {
   go('working');
   const dayPassItems = [];
   if (state.dayPass.adult > 0) dayPassItems.push({ type: 'adult', qty: state.dayPass.adult, price: state.prices.adult });
@@ -1151,8 +1419,9 @@ async function submit() {
 
   const finish = (msg) => {
     $('doneMsg').textContent = msg;
+    $('doneChange').textContent = changeAmount > 0 ? t('done.change', changeAmount) : '';
     go('done');
-    setTimeout(() => { if (current === 'done') go('idle'); }, 10000);
+    setTimeout(() => { if (current === 'done') go('idle'); }, 12000);
   };
 
   if (state.mode === 'demo') {
@@ -1173,13 +1442,17 @@ async function submit() {
       couponCode: '',
       manualDiscountType: '',
       manualDiscountValue: 0,
-      paymentMethod: 'transfer'
+      paymentMethod: method,
+      qrData
+      // slipConfirmed is never sent: that path is for a staff member who saw
+      // the money arrive, and nobody is standing at the cabinet.
     });
-    if (!res.success) { failScreen(res.message || t('err.save')); return; }
+    if (!res.success) { state.qrBusy = false; failScreen(res.message || t('err.save')); return; }
     finish(t('done.saved'));
     // Stock changed; refresh quietly so the next customer sees it.
     loadProducts().catch(() => {});
   } catch (e) {
+    state.qrBusy = false;
     failScreen(e.message || t('err.connect'));
   }
 }
@@ -1427,13 +1700,18 @@ async function fillQrBox(box) {
 let scanBuf = '';
 let scanGap = null;
 document.addEventListener('keydown', (e) => {
-  if (current !== 'renewQr' || state.renew.busy || state.signup.busy) return;
+  const onSale = current === 'payQr' && !state.qrBusy;
+  const onMembership = current === 'renewQr' && !state.renew.busy && !state.signup.busy;
+  if (!onSale && !onMembership) return;
   if (e.key === 'Enter') {
     const code = scanBuf.trim();
     scanBuf = '';
-    // The same screen collects the slip for a renewal and for a signup; which
-    // one is running is whichever set a package.
-    if (code.length >= 8) (state.signup.pkg ? submitSignup : submitRenewal)(code);
+    if (code.length < 8) return;
+    // Three flows share this listener. The membership screen collects a slip
+    // for a renewal or a signup — whichever one set a package — and the sale
+    // screen collects one for a day pass or a shop basket.
+    if (onSale) onSaleSlip(code);
+    else (state.signup.pkg ? submitSignup : submitRenewal)(code);
     return;
   }
   if (e.key.length !== 1) return;
@@ -1708,6 +1986,7 @@ function demoData() {
 function afterReady() {
   $('gate').style.display = 'none';
   $('frame').classList.toggle('demo', state.mode === 'demo');
+  renderCoinNow();
   setLang(DEFAULT_LANG); // also draws everything that depends on language
   buildMarquee();
   go('idle');

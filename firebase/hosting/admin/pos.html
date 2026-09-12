@@ -461,7 +461,12 @@
           couponCode: st.coupon ? st.coupon.code : '',
           manualDiscountType: st.manualDiscount ? st.manualDiscount.type : '',
           manualDiscountValue: st.manualDiscount ? st.manualDiscount.value : 0,
-          paymentMethod: st.paymentMethod
+          paymentMethod: st.paymentMethod,
+          // The till now has to say where the proof came from. Staff pick the
+          // transfer tab after seeing the money land in the bank app, which is
+          // exactly the "someone vouched for it" case — recorded as such rather
+          // than silently accepted the way it used to be.
+          slipConfirmed: st.paymentMethod === 'transfer'
         });
         if (!res.success) return showErr(res.message);
 

@@ -50,6 +50,15 @@ exports.saveMemberData = onCall(async (request) => {
   if (!authCtx) return { success: false, message: 'Session หมดอายุ กรุณา Login ใหม่' };
   const data = request.data || {};
   try {
+    // ตรวจหลักฐานก่อนสร้างสมาชิก ถ้าสลิปซ้ำหรือไม่มีหลักฐาน จะได้ไม่เกิด
+    // สมาชิกค้างไว้ในระบบโดยที่เงินไม่เข้า
+    const deferPaymentEarly = !!data.deferPayment;
+    const { checkPaymentProof_ } = require('./util/slip');
+    const proof = deferPaymentEarly
+      ? { ok: true, qrData: '', confirmedManually: false }
+      : await checkPaymentProof_(data);
+    if (!proof.ok) return { success: false, message: proof.message };
+
     const pinInput = (data.pin || '1234').toString().trim();
     const { hashPassword_ } = require('./util/hash');
     const pinHash = hashPassword_(pinInput);
@@ -106,7 +115,7 @@ exports.saveMemberData = onCall(async (request) => {
         timestamp: FieldValue.serverTimestamp(),
         memberName: data.fullName,
         package: data.package,
-        qrData: data.qrData ? data.qrData.toString().trim() : '',
+        qrData: proof.qrData,
         newExpiryDate: expiryDateStr,
         receiptNo,
         amount: chargeAmount,
@@ -114,7 +123,9 @@ exports.saveMemberData = onCall(async (request) => {
         refundReason: '',
         refundedBy: '',
         refundedAt: '',
-        paymentMethod
+        paymentMethod,
+        slipConfirmedManually: proof.confirmedManually,
+        slipConfirmedBy: proof.confirmedManually ? (authCtx.token.adminRole || authCtx.uid) : ''
       });
     }
     if (newMemberCouponResult) {

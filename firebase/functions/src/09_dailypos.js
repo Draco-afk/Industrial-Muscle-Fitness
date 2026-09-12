@@ -289,12 +289,21 @@ exports.processDailyPayment = onCall(async (request) => {
       stockDeductions.push({ ref: prodDoc.ref, newStock: stockVal - item.qty });
     }
 
+    // หลักฐานการโอน ตรวจด้วยกติกาเดียวกับการต่ออายุและการสมัครสมาชิก
+    const { checkPaymentProof_ } = require('./util/slip');
+    const proof = await checkPaymentProof_(data);
+    if (!proof.ok) return { success: false, message: proof.message };
+
     const receiptNo = await getNextReceiptNumber_();
     const phone = (data.phone || '').toString().trim();
     const paymentMethod = data.paymentMethod === 'transfer' ? 'โอนเงิน' : 'เงินสด';
     await db.collection('dailyPayments').add({
       timestamp: FieldValue.serverTimestamp(), customerName: name, phone, amount: totalAmount, receiptNo,
-      itemsJson: JSON.stringify(items), refundStatus: '', refundReason: '', refundedBy: '', refundedAt: '', paymentMethod
+      itemsJson: JSON.stringify(items), refundStatus: '', refundReason: '', refundedBy: '', refundedAt: '', paymentMethod,
+      qrData: proof.qrData,
+      // ใครเป็นคนรับรอง เมื่อไม่มีสลิปมายืนยัน
+      slipConfirmedManually: proof.confirmedManually,
+      slipConfirmedBy: proof.confirmedManually ? (authCtx.token.adminRole || authCtx.uid) : ''
     });
     if (couponResult) {
       const { applyCouponUsage_ } = require('./06_coupons');

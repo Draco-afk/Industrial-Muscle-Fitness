@@ -44,17 +44,13 @@ exports.processRenewalPayment = onCall(async (request) => {
     //                       bank app and says so. Recorded as such, because
     //                       this is the one path with no duplicate protection.
     //   transfer, neither - refused.
-    const isTransfer = data.paymentMethod === 'transfer';
-    const inputQrData = data.qrData ? data.qrData.toString().trim() : '';
-    const slipConfirmedManually = isTransfer && !inputQrData && data.slipConfirmed === true;
-
-    if (isTransfer && !inputQrData && !slipConfirmedManually) {
-      return { success: false, message: '❌ กรุณาแนบสลิปโอนเงิน หรือกดยืนยันว่าได้รับเงินโอนแล้ว' };
-    }
-    if (inputQrData) {
-      const dupe = await db.collection('payments').where('qrData', '==', inputQrData).limit(1).get();
-      if (!dupe.empty) return { success: false, message: '❌ ไม่สามารถใช้สลิปนี้ซ้ำได้! เคยถูกใช้ต่ออายุไปแล้ว' };
-    }
+    // ย้ายมาใช้ตัวตรวจกลาง ของเดิมดูซ้ำเฉพาะคอลเลกชัน payments ของตัวเอง
+    // สลิปที่เคยใช้จ่ายค่าเข้ารายวันจึงยังเอามาต่ออายุได้อีกใบ
+    const { checkPaymentProof_ } = require('./util/slip');
+    const proof = await checkPaymentProof_(data);
+    if (!proof.ok) return { success: false, message: proof.message };
+    const inputQrData = proof.qrData;
+    const slipConfirmedManually = proof.confirmedManually;
 
     const memberSnap = await db.collection('members').doc(data.memberDocId).get();
     if (!memberSnap.exists) return { success: false, message: '❌ ไม่พบรายชื่อสมาชิกนี้ในระบบ' };

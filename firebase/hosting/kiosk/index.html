@@ -319,6 +319,10 @@
         <div class="ic" style="background:rgba(34,197,94,.14);color:#4ade80"><i class="fa-solid fa-user-check"></i></div>
         <div><div class="t" data-i18n="menu.checkin.t">เช็คอินสมาชิก</div><div class="d" data-i18n="menu.checkin.d">ใส่เบอร์โทรศัพท์</div></div>
       </button>
+      <button class="tile" id="tileSignup">
+        <div class="ic" style="background:rgba(168,85,247,.14);color:#c084fc"><i class="fa-solid fa-user-plus"></i></div>
+        <div><div class="t" data-i18n="menu.signup.t">สมัครสมาชิก</div><div class="d" data-i18n="menu.signup.d">สมัครที่ตู้ ใช้ได้ทันที</div></div>
+      </button>
       <button class="tile" data-go="daypass">
         <div class="ic" style="background:rgba(239,68,68,.14);color:#f87171"><i class="fa-solid fa-ticket"></i></div>
         <div><div class="t" data-i18n="menu.daypass.t">ซื้อบัตรรายวัน</div><div class="d" id="tileDayPassPrices"></div></div>
@@ -333,14 +337,15 @@
 
   <!-- ============ ใส่เบอร์โทร ============ -->
   <section id="phonePad" class="screen">
-    <div class="topbar"><div class="ttl" data-i18n="pad.phone">ใส่เบอร์โทรศัพท์</div>
+    <div class="topbar"><div class="ttl" id="padTitle">ใส่เบอร์โทรศัพท์</div>
       <button class="btn-back" data-go="menu" data-i18n="btn.back">ย้อนกลับ</button></div>
     <div class="body">
       <div class="display" id="padDisplay">&nbsp;</div>
       <div class="keys" id="keys"></div>
     </div>
     <div class="foot">
-      <button class="btn btn-primary" id="padOk" data-i18n="pad.checkin" disabled>เช็คอิน</button>
+      <button class="btn btn-primary" id="padOk" disabled>เช็คอิน</button>
+      <button class="btn" id="padSkip" style="margin-top:calc(var(--u)*2.5);display:none"></button>
     </div>
   </section>
 
@@ -379,6 +384,16 @@
     <div class="body">
       <div id="renewWho" class="card center" style="margin-bottom:calc(var(--u)*3.5)"></div>
       <div id="pkgList"></div>
+    </div>
+  </section>
+
+  <!-- ============ สมัครสมาชิก: เลือกแพ็กเกจ ============ -->
+  <section id="signupPkg" class="screen">
+    <div class="topbar"><div class="ttl" data-i18n="renew.title">เลือกแพ็กเกจ</div>
+      <button class="btn-back" data-go="menu" data-i18n="btn.back">ย้อนกลับ</button></div>
+    <div class="body">
+      <div id="signupWho" class="card center" style="margin-bottom:calc(var(--u)*3.5)"></div>
+      <div id="signupPkgList"></div>
     </div>
   </section>
 
@@ -445,13 +460,11 @@
 
   <!-- ============ ใส่ชื่อเล่น ============ -->
   <section id="nickname" class="screen">
-    <div class="topbar"><div class="ttl" data-i18n="nick.title">ใส่ชื่อเล่น</div>
+    <div class="topbar"><div class="ttl" id="nickTitle">ใส่ชื่อเล่น</div>
       <button class="btn-back" data-go="daypass" data-i18n="btn.back">ย้อนกลับ</button></div>
     <div class="body">
       <div id="nickDisplay" class="empty"></div>
-      <p class="hint center" style="margin-bottom:calc(var(--u)*3)" data-i18n="nick.hint">
-        ใช้พิมพ์บนใบเสร็จและเรียกชื่อที่เคาน์เตอร์
-      </p>
+      <p class="hint center" id="nickHint" style="margin-bottom:calc(var(--u)*3)"></p>
       <div class="kb" id="kb"></div>
     </div>
     <div class="foot">
@@ -533,7 +546,7 @@
 <script type="module">
 import { callServer, auth, signInWithCustomToken, onAuthStateChanged } from '../shared/firebase-init.js';
 import { membershipState } from '../shared/membership-status.js';
-import { gymToday } from '../shared/gym-date.js';
+import { gymToday, addMonths } from '../shared/gym-date.js';
 
 const $ = (id) => document.getElementById(id);
 const baht = (n) => Math.round(n).toLocaleString('en-US');
@@ -575,6 +588,18 @@ const STR = {
     'renew.reading': 'อ่านสลิปแล้ว กำลังตรวจสอบ',
     'renew.simulate': 'จำลองสแกนสลิป (สาธิต)',
     'renew.ok': 'ต่ออายุเรียบร้อย',
+    'menu.signup.t': 'สมัครสมาชิก',
+    'menu.signup.d': 'สมัครที่ตู้ ใช้ได้ทันที',
+    'su.name': 'ชื่อ-นามสกุล',
+    'su.nameHint': 'ใช้ชื่อจริงเพื่อออกใบเสร็จและยืนยันตัวตน',
+    'su.namePh': 'พิมพ์ชื่อ-นามสกุล',
+    'su.phone': 'เบอร์โทรศัพท์',
+    'su.dob': 'วันเกิด (วว/ดด/ปปปป)',
+    'su.skip': 'ข้ามไม่ระบุวันเกิด',
+    'su.badDob': 'วันเกิดไม่ถูกต้อง กรุณากรอกใหม่',
+    'su.already': (n) => `เบอร์นี้เป็นสมาชิกอยู่แล้ว (${n})\nกรุณาใช้เมนูเช็คอินสมาชิก`,
+    'su.ok': 'สมัครสมาชิกเรียบร้อย',
+    'su.pin': (p) => `PIN สำหรับแอปมือถือ: ${p}`,
     'dp.title': 'ซื้อบัตรรายวัน', 'dp.adult': 'ผู้ใหญ่', 'dp.student': 'นักเรียน / นักศึกษา',
     'dp.per': (p) => `${baht(p)} บาท / คน`,
     'dp.hint': 'นักเรียนและนักศึกษาแสดงบัตรที่เคาน์เตอร์เมื่อพนักงานขอตรวจ',
@@ -628,6 +653,18 @@ const STR = {
     'renew.reading': 'Slip read — checking it now',
     'renew.simulate': 'Simulate a slip scan (demo)',
     'renew.ok': 'Membership renewed',
+    'menu.signup.t': 'Become a member',
+    'menu.signup.d': 'Sign up here, use it straight away',
+    'su.name': 'Your full name',
+    'su.nameHint': 'Your real name goes on the receipt and on your membership',
+    'su.namePh': 'Type your full name',
+    'su.phone': 'Your phone number',
+    'su.dob': 'Date of birth (DD/MM/YYYY)',
+    'su.skip': 'Skip — no date of birth',
+    'su.badDob': 'That date is not valid. Please enter it again.',
+    'su.already': (n) => `This number is already a member (${n})\nPlease use member check-in instead`,
+    'su.ok': 'Welcome — you are a member',
+    'su.pin': (p) => `PIN for the mobile app: ${p}`,
     'dp.title': 'Day pass', 'dp.adult': 'Adult', 'dp.student': 'Student',
     'dp.per': (p) => `฿${baht(p)} per person`,
     'dp.hint': 'Students may be asked to show a student ID at the counter',
@@ -680,6 +717,18 @@ const STR = {
     'renew.reading': '已读取凭证，正在核对',
     'renew.simulate': '模拟扫描凭证（演示）',
     'renew.ok': '续费成功',
+    'menu.signup.t': '成为会员',
+    'menu.signup.d': '在这里注册，立即可用',
+    'su.name': '您的姓名',
+    'su.nameHint': '请填写真实姓名，将用于小票和会员资料',
+    'su.namePh': '输入您的姓名',
+    'su.phone': '您的手机号',
+    'su.dob': '出生日期（日/月/年）',
+    'su.skip': '跳过，不填出生日期',
+    'su.badDob': '日期不正确，请重新输入',
+    'su.already': (n) => `这个号码已经是会员了（${n}）\n请改用会员签到`,
+    'su.ok': '欢迎，注册成功',
+    'su.pin': (p) => `手机应用的密码：${p}`,
     'dp.title': '购买日票', 'dp.adult': '成人', 'dp.student': '学生',
     'dp.per': (p) => `每人 ${baht(p)} 泰铢`,
     'dp.hint': '学生可能需要在柜台出示学生证',
@@ -762,13 +811,13 @@ const state = {
   members: [],
   dayPass: { adult: 0, student: 0 },
   cart: [],
-  phone: '',
   nick: '',
   kb: { layout: 'th', shift: false },
   paying: null, // 'daypass' | 'shop'
   packages: [],
   birthdayDiscount: { type: 'Percent', value: 5 },
-  renew: { member: null, pkg: null, amount: 0, busy: false }
+  renew: { member: null, pkg: null, amount: 0, busy: false },
+  signup: { name: '', phone: '', dob: '', pkg: null, amount: 0, busy: false }
 };
 
 /* ---------------------------------------------------------------- screens */
@@ -783,11 +832,13 @@ function go(name) {
 function resetSale() {
   state.dayPass = { adult: 0, student: 0 };
   state.cart = [];
-  state.phone = '';
   state.nick = '';
   state.kb = { layout: 'th', shift: false };
   state.paying = null;
   state.renew = { member: null, pkg: null, amount: 0, busy: false };
+  state.signup = { name: '', phone: '', dob: '', pkg: null, amount: 0, busy: false };
+  padCtx = null;
+  textCtx = null;
   // The next person at the door should not inherit the last one's language.
   if (lang !== DEFAULT_LANG) setLang(DEFAULT_LANG);
   else { renderDayPass(); renderShop(); renderPad(); renderNick(); renderKeyboard(); }
@@ -889,14 +940,36 @@ function renderDayPass() {
   $('dpNext').disabled = dayPassTotal() <= 0;
 }
 
-$('dpNext').addEventListener('click', () => { state.paying = 'daypass'; go('nickname'); });
+$('dpNext').addEventListener('click', () => {
+  state.paying = 'daypass';
+  askText({ titleKey: 'nick.title', hintKey: 'nick.hint', phKey: 'nick.ph', back: 'daypass',
+    onDone: (v) => { state.nick = v; openQr(); } });
+});
 
-/* --------------------------------------------------------------- nickname */
+/* ------------------------------------------------ ช่องพิมพ์ข้อความ (ใช้ซ้ำ)
+   Both the day-pass nickname and the signup name need the same on-screen
+   keyboard, so the screen takes a title, a placeholder and what to do with the
+   answer rather than existing twice. */
+let textCtx = null;
+
+function askText(opts) {
+  textCtx = Object.assign({ value: '', max: NICK_MAX }, opts);
+  state.kb = { layout: 'th', shift: false };
+  renderNick();
+  renderKeyboard();
+  go('nickname');
+}
+
 function renderNick() {
   const el = $('nickDisplay');
-  el.textContent = state.nick || t('nick.ph');
-  el.classList.toggle('empty', !state.nick);
-  $('nickOk').disabled = state.nick.trim().length === 0;
+  const v = textCtx ? textCtx.value : '';
+  const ph = textCtx ? t(textCtx.phKey) : '';
+  $('nickTitle').textContent = textCtx ? t(textCtx.titleKey) : '';
+  $('nickHint').textContent = textCtx ? t(textCtx.hintKey) : '';
+  el.textContent = v || ph;
+  el.classList.toggle('empty', !v);
+  $('nickOk').disabled = v.trim().length === 0;
+  $('nickname').querySelector('.btn-back').dataset.go = (textCtx && textCtx.back) || 'menu';
 }
 
 /* Kedmanee for Thai, QWERTY for English. Two layers each: the shift layer is
@@ -945,7 +1018,7 @@ function renderKeyboard() {
       const b = document.createElement('button');
       b.textContent = ch;
       b.addEventListener('click', () => {
-        if (state.nick.length < NICK_MAX) state.nick += ch;
+        if (textCtx && textCtx.value.length < textCtx.max) textCtx.value += ch;
         renderNick();
       });
       r.appendChild(b);
@@ -972,17 +1045,21 @@ function renderKeyboard() {
   });
   langBtn.classList.add('wide');
   mk(t('kb.space'), 'wide', () => {
-    if (state.nick.length < NICK_MAX) state.nick += ' ';
+    if (textCtx && textCtx.value.length < textCtx.max) textCtx.value += ' ';
     renderNick();
   });
-  mk('⌫', 'wide', () => { state.nick = state.nick.slice(0, -1); renderNick(); });
+  mk('⌫', 'wide', () => {
+    if (textCtx) textCtx.value = textCtx.value.slice(0, -1);
+    renderNick();
+  });
   kb.appendChild(ctrl);
 }
 
 $('nickOk').addEventListener('click', () => {
-  state.nick = state.nick.trim();
-  if (!state.nick) return;
-  openQr();
+  if (!textCtx) return;
+  const v = textCtx.value.trim();
+  if (!v) return;
+  textCtx.onDone(v);
 });
 
 /* ------------------------------------------------------------------- shop */
@@ -1128,19 +1205,46 @@ KEYS.forEach((k) => {
   $('keys').appendChild(b);
 });
 
+/* One number pad, several jobs. The screen is opened with what it should ask
+   for and what to do with the answer, so the phone number, the signup phone
+   and the date of birth all share the same keys instead of three copies. */
+let padCtx = null;
+
+function openPad(opts) {
+  padCtx = Object.assign({ value: '', min: 1, max: 10, okKey: 'btn.next', show: (v) => v }, opts);
+  renderPad();
+  go('phonePad');
+}
+
 function press(k) {
-  if (k === 'del') state.phone = state.phone.slice(0, -1);
-  else if (k === 'clr') state.phone = '';
-  else if (state.phone.length < 10) state.phone += k;
+  if (!padCtx) return;
+  if (k === 'del') padCtx.value = padCtx.value.slice(0, -1);
+  else if (k === 'clr') padCtx.value = '';
+  else if (padCtx.value.length < padCtx.max) padCtx.value += k;
   renderPad();
 }
 
 function renderPad() {
-  $('padDisplay').textContent = state.phone || ' ';
-  $('padOk').disabled = state.phone.length < 9;
+  if (!padCtx) { $('padDisplay').textContent = ' '; $('padOk').disabled = true; return; }
+  $('padTitle').textContent = t(padCtx.titleKey);
+  $('padDisplay').textContent = padCtx.show(padCtx.value) || ' ';
+  $('padOk').textContent = t(padCtx.okKey);
+  $('padOk').disabled = padCtx.value.length < padCtx.min;
+  $('padSkip').style.display = padCtx.skipKey ? 'block' : 'none';
+  if (padCtx.skipKey) $('padSkip').textContent = t(padCtx.skipKey);
+  $('phonePad').querySelector('.btn-back').dataset.go = padCtx.back || 'menu';
 }
 
-$('padOk').addEventListener('click', () => doCheckIn(state.phone));
+$('padOk').addEventListener('click', () => {
+  if (!padCtx || padCtx.value.length < padCtx.min) return;
+  padCtx.onDone(padCtx.value);
+});
+$('padSkip').addEventListener('click', () => { if (padCtx && padCtx.onSkip) padCtx.onSkip(); });
+
+document.querySelector('[data-go="phonePad"]').addEventListener('click', () => {
+  openPad({ titleKey: 'pad.phone', min: 9, max: 10, okKey: 'pad.checkin', back: 'menu',
+    onDone: (v) => doCheckIn(v) });
+});
 
 /* ------------------------------------------------------------- check-in */
 async function doCheckIn(phone) {
@@ -1293,9 +1397,13 @@ async function openRenewQr(pkg, amount) {
   $('rnItems').textContent = `${state.renew.member.fullName} · ${pkg.name}`;
   $('rnScanText').textContent = t('renew.waiting');
   $('rnSimulate').style.display = state.mode === 'demo' ? 'block' : 'none';
+  $('renewQr').querySelector('.btn-back').dataset.go = 'renew';
   go('renewQr');
+  await fillQrBox($('rnQrBox'));
+}
 
-  const box = $('rnQrBox');
+/** The gym's own PromptPay image, shared by every screen that asks for money. */
+async function fillQrBox(box) {
   box.innerHTML = '<i class="fa-solid fa-circle-notch spin" style="font-size:calc(var(--u)*8);color:#111"></i>';
   if (state.mode === 'demo') {
     box.innerHTML = '<div style="color:#111;padding:calc(var(--u)*10) 0;font-weight:700">[ QR PromptPay ]</div>';
@@ -1319,11 +1427,13 @@ async function openRenewQr(pkg, amount) {
 let scanBuf = '';
 let scanGap = null;
 document.addEventListener('keydown', (e) => {
-  if (current !== 'renewQr' || state.renew.busy) return;
+  if (current !== 'renewQr' || state.renew.busy || state.signup.busy) return;
   if (e.key === 'Enter') {
     const code = scanBuf.trim();
     scanBuf = '';
-    if (code.length >= 8) submitRenewal(code);
+    // The same screen collects the slip for a renewal and for a signup; which
+    // one is running is whichever set a package.
+    if (code.length >= 8) (state.signup.pkg ? submitSignup : submitRenewal)(code);
     return;
   }
   if (e.key.length !== 1) return;
@@ -1333,7 +1443,8 @@ document.addEventListener('keydown', (e) => {
 });
 
 $('rnSimulate').addEventListener('click', () => {
-  submitRenewal('DEMO-SLIP-' + Date.now());
+  const code = 'DEMO-SLIP-' + Date.now();
+  (state.signup.pkg ? submitSignup : submitRenewal)(code);
 });
 
 async function submitRenewal(qrData) {
@@ -1392,6 +1503,158 @@ function renewFail(msg, name) {
   $('ciTitle').textContent = t('err.title');
   $('ciName').textContent = name || '';
   $('ciMeta').textContent = (msg || '').replace(/^[❌⚠️🔒]\s*/u, '') + '\n' + t('res.callStaff');
+  $('ciRenew').style.display = 'none';
+  go('checkinResult');
+}
+
+/* ------------------------------------------------------ สมัครสมาชิกใหม่ */
+$('tileSignup').addEventListener('click', () => {
+  state.signup = { name: '', phone: '', dob: '', pkg: null, amount: 0, busy: false };
+  askSignupName();
+});
+
+function askSignupName() {
+  askText({ titleKey: 'su.name', hintKey: 'su.nameHint', phKey: 'su.namePh',
+    max: 60, back: 'menu', value: state.signup.name,
+    onDone: (v) => { state.signup.name = v; askSignupPhone(); } });
+}
+
+function askSignupPhone() {
+  openPad({ titleKey: 'su.phone', min: 9, max: 10, okKey: 'btn.next', back: 'menu',
+    onDone: (v) => {
+      // Someone who is already a member should be checked in, not signed up a
+      // second time — this data already has duplicate phone numbers and every
+      // extra one makes the check-in picker worse for everybody on that number.
+      const already = membersByPhone(v);
+      if (already.length) return signupFail(t('su.already', already[0].fullName));
+      state.signup.phone = v;
+      askSignupDob();
+    } });
+}
+
+/** 8 digits typed as DDMMYYYY; the year may be Buddhist or Gregorian. */
+function askSignupDob() {
+  openPad({ titleKey: 'su.dob', min: 8, max: 8, okKey: 'btn.next', back: 'menu',
+    skipKey: 'su.skip',
+    show: (v) => (v.length > 4 ? `${v.slice(0, 2)}/${v.slice(2, 4)}/${v.slice(4)}`
+      : v.length > 2 ? `${v.slice(0, 2)}/${v.slice(2)}` : v),
+    onDone: (v) => {
+      const iso = dobToIso(v);
+      if (!iso) return signupFail(t('su.badDob'));
+      state.signup.dob = iso;
+      openSignupPkg();
+    },
+    onSkip: () => { state.signup.dob = ''; openSignupPkg(); } });
+}
+
+function dobToIso(v) {
+  const d = parseInt(v.slice(0, 2), 10);
+  const m = parseInt(v.slice(2, 4), 10);
+  let y = parseInt(v.slice(4), 10);
+  // People write their birth year in either calendar, and 2540 is not a year
+  // anyone was born in. Anything past the Gregorian present must be Buddhist.
+  if (y > 2400) y -= 543;
+  const nowY = Number(gymToday().slice(0, 4));
+  if (!d || !m || d > 31 || m > 12 || y < 1900 || y > nowY) return '';
+  const iso = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+  // Rejects 31 April and the like, which would otherwise roll into the next month.
+  const back = new Date(`${iso}T00:00:00Z`);
+  return back.getUTCDate() === d && back.getUTCMonth() + 1 === m ? iso : '';
+}
+
+function openSignupPkg() {
+  $('signupWho').innerHTML =
+    `<div style="font-size:calc(var(--u)*4.6);font-weight:700">${state.signup.name}</div>`
+    + `<div class="muted" style="font-size:calc(var(--u)*3.2);margin-top:calc(var(--u)*1)">${state.signup.phone}</div>`;
+  const list = $('signupPkgList');
+  list.innerHTML = '';
+  const open = state.packages.filter((p) => p.status === 'Active');
+  if (!open.length) { list.innerHTML = `<p class="hint">${t('renew.noPkg')}</p>`; go('signupPkg'); return; }
+  open.forEach((p) => {
+    const b = document.createElement('button');
+    b.className = 'tile';
+    b.innerHTML = `<div class="ic" style="background:rgba(168,85,247,.14);color:#c084fc">
+        <i class="fa-solid fa-id-card"></i></div>
+      <div style="flex:1">
+        <div class="t">${p.name}</div>
+        <div class="d">${t('renew.months', p.durationMonths)}</div>
+      </div>
+      <div style="font-family:Urbanist;font-weight:900;font-size:calc(var(--u)*5.5)">${baht(p.price)}</div>`;
+    // No birthday discount here: saveMemberData does not apply one, so showing
+    // a reduced price would not match what the server charges.
+    b.addEventListener('click', () => openSignupQr(p));
+    list.appendChild(b);
+  });
+  go('signupPkg');
+}
+
+async function openSignupQr(pkg) {
+  state.signup.pkg = pkg;
+  state.signup.amount = pkg.price || 0;
+  state.signup.busy = false;
+  state.renew.busy = false;
+  $('rnAmount').textContent = `฿${baht(state.signup.amount)}`;
+  $('rnItems').textContent = `${state.signup.name} · ${pkg.name}`;
+  $('rnScanText').textContent = t('renew.waiting');
+  $('rnSimulate').style.display = state.mode === 'demo' ? 'block' : 'none';
+  $('renewQr').querySelector('.btn-back').dataset.go = 'signupPkg';
+  go('renewQr');
+  await fillQrBox($('rnQrBox'));
+}
+
+async function submitSignup(qrData) {
+  if (state.signup.busy) return;
+  state.signup.busy = true;
+  const s = state.signup;
+  go('working');
+  const start = gymToday();
+  // addMonths here matches the server's own renewal arithmetic, including how
+  // it rolls a 31st into the following month.
+  const expiry = addMonths(start, s.pkg.durationMonths || 1);
+
+  if (state.mode === 'demo') {
+    setTimeout(() => signupOk({ message: t('done.demo'), pin: '1234' }, expiry), 800);
+    return;
+  }
+  try {
+    const res = await callServer('saveMemberData', {
+      fullName: s.name, phone: s.phone, email: '', dob: s.dob,
+      package: s.pkg.name, startDate: start, expiryDate: expiry,
+      paymentMethod: 'transfer', qrData
+      // amount is left out on purpose so the package price comes from the
+      // server record and cannot be talked down from this screen.
+    });
+    if (!res.success) { state.signup.busy = false; return signupFail(res.message); }
+    signupOk(res, expiry);
+    loadMembers().catch(() => {});
+  } catch (e) {
+    state.signup.busy = false;
+    signupFail(e.message || t('err.connect'));
+  }
+}
+
+function signupOk(res, expiry) {
+  $('ciIcon').className = 'bigicon ok';
+  $('ciIcon').innerHTML = '<i class="fa-solid fa-user-check"></i>';
+  $('ciTitle').textContent = t('su.ok');
+  $('ciName').textContent = state.signup.name;
+  $('ciMeta').textContent = [
+    `${state.signup.pkg.name} · ฿${baht(state.signup.amount)}`,
+    t('res.until', showDate(expiry)),
+    t('su.pin', res.pin || '1234')
+  ].join('\n');
+  $('ciRenew').style.display = 'none';
+  go('checkinResult');
+  // Longer than a check-in: there is a PIN on screen that they need to read.
+  setTimeout(() => { if (current === 'checkinResult') go('idle'); }, 20000);
+}
+
+function signupFail(msg) {
+  $('ciIcon').className = 'bigicon bad';
+  $('ciIcon').innerHTML = '<i class="fa-solid fa-xmark"></i>';
+  $('ciTitle').textContent = t('err.title');
+  $('ciName').textContent = '';
+  $('ciMeta').textContent = (msg || '').replace(/^[❌⚠️🔒]\s*/u, '');
   $('ciRenew').style.display = 'none';
   go('checkinResult');
 }
